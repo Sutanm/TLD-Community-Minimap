@@ -2,9 +2,9 @@ using System.Reflection;
 using MelonLoader;
 using CommunityMinimap;
 
-[assembly: AssemblyTitle("Community Minimap Prototype")]
+[assembly: AssemblyTitle("社区HUD地图")]
 [assembly: AssemblyDescription("Community map HUD and calibration prototype for The Long Dark")]
-[assembly: AssemblyVersion("0.4.0")]
-[assembly: AssemblyFileVersion("0.4.0")]
-[assembly: MelonInfo(typeof(ModEntry), "Community Minimap Prototype", "0.4.0", "Codex + user")]
+[assembly: AssemblyVersion("0.4.1")]
+[assembly: AssemblyFileVersion("0.4.1")]
+[assembly: MelonInfo(typeof(ModEntry), "社区HUD地图", "0.4.1", "Codex + sutanm")]
 [assembly: MelonGame("Hinterland", "TheLongDark")]

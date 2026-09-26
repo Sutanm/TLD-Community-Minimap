@@ -1,4 +1,4 @@
-# Community Minimap for The Long Dark
+# 社区HUD地图
 
 An experimental MelonLoader mod that displays community-made region maps as a
 corner minimap or an opaque full-screen map.
@@ -8,7 +8,7 @@ and ModSettings 2.2.5.
 
 ## Current status
 
-- Version 0.4.0 adds a multi-region map catalog and automatic scene switching.
+- Version 0.4.1 adds a multi-region map catalog and automatic scene switching.
 - `Tab` switches between the corner minimap and the opaque full-screen map.
 - The full-screen map supports mouse-wheel zoom and left-button dragging.
 - Minimap UI size and local map zoom are independent settings.
@@ -38,14 +38,15 @@ from the original cartographers before redistributing map artwork.
 ## Controls
 
 - `Tab`: switch between corner minimap and full-screen map.
+- `Esc`: leave the full-screen map and return to the corner minimap.
 - `F8`: temporarily show or hide the map UI.
 - `F9`: record the current scene, map ID, world position, and heading to
   `Mods/CommunityMinimap/calibration_points.csv`.
 - Mouse wheel: zoom the full-screen map.
 - Left mouse drag: pan the full-screen map.
 
-Size, position, opacity, local zoom, marker size, and key bindings are available
-through ModSettings.
+Size, position, minimap opacity, full-screen background opacity, local zoom, marker
+size, and key bindings are available through ModSettings.
 
 ## Building
 

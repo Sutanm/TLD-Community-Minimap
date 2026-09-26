@@ -26,6 +26,11 @@ internal sealed class MinimapSettings : JsonModSettings
     [Slider(0.25f, 1f, 16, NumberFormat = "{0:P0}")]
     public float Opacity = 0.9f;
 
+    [Name("全屏背景不透明度")]
+    [Description("调整完整地图周围的深色背景。0% 完全透明，100% 完全不透明。")]
+    [Slider(0f, 1f, 21, NumberFormat = "{0:P0}")]
+    public float FullMapBackgroundOpacity = 0.97f;
+
     [Name("边距")]
     [Description("小地图与屏幕边缘的距离。")]
     [Slider(0, 100, 21)]
@@ -48,7 +53,7 @@ internal sealed class MinimapSettings : JsonModSettings
     [Section("快捷键与校准")]
 
     [Name("切换小地图/完整地图")]
-    [Description("在角落小地图和不透明全屏完整地图之间切换。")]
+    [Description("在角落小地图和全屏完整地图之间切换；全屏时可按 Esc 返回。")]
     public KeyCode MapModeKey = KeyCode.Tab;
 
     [Name("快速显示/隐藏")]

@@ -15,6 +15,9 @@ namespace CommunityMinimap;
 
 public sealed class ModEntry : MelonMod
 {
+    private static bool s_fullMapActive;
+    private static int s_suppressEscapeThroughFrame = -1;
+
     private enum DisplayMode
     {
         MiniMap,
@@ -39,6 +42,7 @@ public sealed class ModEntry : MelonMod
 
     private GameObject _uiRoot;
     private GameObject _backgroundObject;
+    private Image _backgroundImage;
     private RectTransform _mapRect;
     private RawImage _mapImage;
     private GameObject _markerRoot;
@@ -46,11 +50,12 @@ public sealed class ModEntry : MelonMod
 
     public override void OnInitializeMelon()
     {
-        _settings.AddToModSettings("Community Minimap / 民间小地图", MenuType.Both);
+        HarmonyInstance.PatchAll();
+        _settings.AddToModSettings("社区HUD地图", MenuType.Both);
         _modDirectory = Path.Combine(MelonEnvironment.ModsDirectory, "CommunityMinimap");
         _mapsDirectory = Path.Combine(_modDirectory, "maps");
         Directory.CreateDirectory(_mapsDirectory);
-        LoggerInstance.Msg("Community Minimap 0.4.0 initialized.");
+        LoggerInstance.Msg("社区HUD地图 0.4.1 initialized.");
         LoggerInstance.Msg($"Map directory: {_mapsDirectory}");
     }
 
@@ -58,7 +63,11 @@ public sealed class ModEntry : MelonMod
     {
         if (Input.GetKeyDown(_settings.ToggleKey))
             _temporarilyHidden = !_temporarilyHidden;
-        if (Input.GetKeyDown(_settings.MapModeKey))
+        bool leaveFullMap = _displayMode == DisplayMode.FullMap &&
+                            Input.GetKeyDown(KeyCode.Escape);
+        if (leaveFullMap)
+            LeaveFullMap();
+        else if (Input.GetKeyDown(_settings.MapModeKey))
             ToggleDisplayMode();
         if (Input.GetKeyDown(_settings.RecordPointKey))
             RecordCalibrationPoint();
@@ -135,9 +144,26 @@ public sealed class ModEntry : MelonMod
         _displayMode = _displayMode == DisplayMode.MiniMap
             ? DisplayMode.FullMap
             : DisplayMode.MiniMap;
+        s_fullMapActive = _displayMode == DisplayMode.FullMap;
         _fullMapUv = new Rect(0f, 0f, 1f, 1f);
         _dragging = false;
         LoggerInstance.Msg($"Map display mode: {_displayMode}.");
+    }
+
+    private void LeaveFullMap()
+    {
+        _displayMode = DisplayMode.MiniMap;
+        s_fullMapActive = false;
+        s_suppressEscapeThroughFrame = Time.frameCount + 1;
+        _fullMapUv = new Rect(0f, 0f, 1f, 1f);
+        _dragging = false;
+        LoggerInstance.Msg("Full map closed with Escape.");
+    }
+
+    internal static bool ShouldSuppressGameEscape()
+    {
+        return Input.GetKeyDown(KeyCode.Escape) &&
+               (s_fullMapActive || Time.frameCount <= s_suppressEscapeThroughFrame);
     }
 
     private bool LoadCurrentMapIntoUnityUi()
@@ -207,9 +233,10 @@ public sealed class ModEntry : MelonMod
         backgroundRect.anchorMax = Vector2.one;
         backgroundRect.offsetMin = Vector2.zero;
         backgroundRect.offsetMax = Vector2.zero;
-        Image background = _backgroundObject.GetComponent<Image>();
-        background.color = new Color(0.015f, 0.025f, 0.035f, 0.97f);
-        background.raycastTarget = false;
+        _backgroundImage = _backgroundObject.GetComponent<Image>();
+        _backgroundImage.color = new Color(0.015f, 0.025f, 0.035f,
+            _settings.FullMapBackgroundOpacity);
+        _backgroundImage.raycastTarget = false;
 
         GameObject mapObject = CreateUiObject("Map",
             typeof(RectTransform), typeof(CanvasRenderer), typeof(RawImage));
@@ -275,6 +302,8 @@ public sealed class ModEntry : MelonMod
     {
         bool fullMap = _displayMode == DisplayMode.FullMap;
         _backgroundObject.SetActive(fullMap);
+        _backgroundImage.color = new Color(0.015f, 0.025f, 0.035f,
+            _settings.FullMapBackgroundOpacity);
         _mapImage.color = new Color(1f, 1f, 1f, fullMap ? 1f : _settings.Opacity);
 
         Vector2 mapSize = fullMap ? ApplyFullMapLayout() : ApplyMiniMapLayout();
