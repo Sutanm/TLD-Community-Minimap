@@ -8,10 +8,11 @@ and ModSettings 2.2.5.
 
 ## Current status
 
-- Version 0.4.7 adds a multi-region map catalog and automatic scene switching.
+- Version 0.4.8 adds a multi-region map catalog and automatic scene switching.
 - `Tab` switches between the corner minimap and the opaque full-screen map.
 - The full-screen map always fits the complete current-region image to the screen.
 - Minimap UI size and local map zoom are independent settings.
+- The corner minimap defaults to the upper-left and remains configurable.
 - The player marker is a single soft compass pointer: a translucent dark position
   ring, warm center dot, and a configurable accent color. Coral red, wine red,
   lavender, teal, amber, and bright red presets are included.

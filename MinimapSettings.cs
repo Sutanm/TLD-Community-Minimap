@@ -14,7 +14,7 @@ internal sealed class MinimapSettings : JsonModSettings
     [Name("HUD 位置")]
     [Description("选择小地图在屏幕上的位置。")]
     [Choice("右上", "左上", "右下", "左下")]
-    public int Position = 0;
+    public int HudPosition = 1;
 
     [Name("小地图 UI 大小")]
     [Description("小地图占屏幕短边的百分比，与地图局部缩放分开计算。")]

@@ -54,7 +54,7 @@ public sealed class ModEntry : MelonMod
         _modDirectory = Path.Combine(MelonEnvironment.ModsDirectory, "CommunityMinimap");
         _mapsDirectory = Path.Combine(_modDirectory, "maps");
         Directory.CreateDirectory(_mapsDirectory);
-        LoggerInstance.Msg("社区HUD地图 0.4.7 initialized.");
+        LoggerInstance.Msg("社区HUD地图 0.4.8 initialized.");
         LoggerInstance.Msg($"Map directory: {_mapsDirectory}");
     }
 
@@ -443,7 +443,7 @@ public sealed class ModEntry : MelonMod
         Vector2 anchor;
         Vector2 offset;
         float margin = _settings.Margin;
-        switch (_settings.Position)
+        switch (_settings.HudPosition)
         {
             case 1: anchor = new Vector2(0f, 1f); offset = new Vector2(margin, -margin); break;
             case 2: anchor = new Vector2(1f, 0f); offset = new Vector2(-margin, margin); break;
