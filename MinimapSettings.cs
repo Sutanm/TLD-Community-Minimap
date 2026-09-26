@@ -46,6 +46,11 @@ internal sealed class MinimapSettings : JsonModSettings
     [Slider(40, 80, 21)]
     public int MarkerSize = 54;
 
+    [Name("玩家指针配色")]
+    [Description("切换方向针和内环的强调色；深色外环与暖白中心点保持不变。")]
+    [Choice("珊瑚红", "酒红", "淡紫", "青绿色", "琥珀金", "鲜红")]
+    public int PointerPalette = 0;
+
     [Name("显示坐标诊断")]
     [Description("在小地图下方显示场景名、玩家世界坐标和朝向，供地图配准使用。")]
     public bool ShowDiagnostics = true;

@@ -45,7 +45,7 @@ public sealed class ModEntry : MelonMod
     private GameObject _markerRoot;
     private RectTransform _markerRect;
     private RawImage _markerImage;
-    private Texture2D _markerTexture;
+    private readonly Texture2D[] _markerTextures = new Texture2D[6];
 
     public override void OnInitializeMelon()
     {
@@ -54,7 +54,7 @@ public sealed class ModEntry : MelonMod
         _modDirectory = Path.Combine(MelonEnvironment.ModsDirectory, "CommunityMinimap");
         _mapsDirectory = Path.Combine(_modDirectory, "maps");
         Directory.CreateDirectory(_mapsDirectory);
-        LoggerInstance.Msg("社区HUD地图 0.4.6 initialized.");
+        LoggerInstance.Msg("社区HUD地图 0.4.7 initialized.");
         LoggerInstance.Msg($"Map directory: {_mapsDirectory}");
     }
 
@@ -245,8 +245,9 @@ public sealed class ModEntry : MelonMod
         _markerImage = _markerRoot.GetComponent<RawImage>();
         _markerImage.raycastTarget = false;
         _markerImage.color = Color.white;
-        _markerTexture = CreatePointerTexture();
-        _markerImage.texture = _markerTexture;
+        for (int i = 0; i < _markerTextures.Length; i++)
+            _markerTextures[i] = CreatePointerTexture(i);
+        ApplyPointerPalette();
 
         _backgroundObject.SetActive(false);
         _uiRoot.SetActive(false);
@@ -261,9 +262,10 @@ public sealed class ModEntry : MelonMod
         return new GameObject(name, il2CppTypes);
     }
 
-    private static Texture2D CreatePointerTexture()
+    private static Texture2D CreatePointerTexture(int paletteIndex)
     {
         const int size = 128;
+        Color accent = GetPointerAccent(paletteIndex);
         var pixels = new Color32[size * size];
         for (int y = 0; y < size; y++)
         {
@@ -276,7 +278,7 @@ public sealed class ModEntry : MelonMod
                     {
                         Vector2 point = new(x + (sx + 0.5f) * 0.5f,
                             y + (sy + 0.5f) * 0.5f);
-                        accumulated += SamplePointer(point) * 0.25f;
+                        accumulated += SamplePointer(point, accent) * 0.25f;
                     }
                 }
                 pixels[y * size + x] = accumulated;
@@ -293,7 +295,7 @@ public sealed class ModEntry : MelonMod
         return texture;
     }
 
-    private static Color SamplePointer(Vector2 point)
+    private static Color SamplePointer(Vector2 point, Color accent)
     {
         Vector2 center = new(64f, 42f);
         Color result = Color.clear;
@@ -306,17 +308,30 @@ public sealed class ModEntry : MelonMod
         if (distance >= 22f && distance <= 31f)
             result = AlphaOver(result, new Color(0.02f, 0.025f, 0.03f, 0.78f));
         if (distance >= 24.5f && distance <= 28.5f)
-            result = AlphaOver(result, new Color(0.92f, 0.08f, 0.055f, 0.90f));
+            result = AlphaOver(result, new Color(accent.r, accent.g, accent.b, 0.88f));
 
         if (PointInTriangle(point, new Vector2(64f, 112f),
                 new Vector2(54f, 43f), new Vector2(74f, 43f)))
-            result = AlphaOver(result, new Color(0.94f, 0.075f, 0.05f, 0.96f));
+            result = AlphaOver(result, new Color(accent.r, accent.g, accent.b, 0.96f));
 
         if (distance <= 8f)
             result = AlphaOver(result, new Color(0.02f, 0.025f, 0.03f, 0.90f));
         if (distance <= 4.5f)
-            result = AlphaOver(result, new Color(0.95f, 0.08f, 0.055f, 0.98f));
+            result = AlphaOver(result, new Color(0.93f, 0.88f, 0.76f, 0.98f));
         return result;
+    }
+
+    private static Color GetPointerAccent(int paletteIndex)
+    {
+        return paletteIndex switch
+        {
+            1 => new Color(0.76f, 0.25f, 0.29f, 1f),
+            2 => new Color(0.72f, 0.52f, 0.91f, 1f),
+            3 => new Color(0.21f, 0.74f, 0.72f, 1f),
+            4 => new Color(0.85f, 0.66f, 0.24f, 1f),
+            5 => new Color(0.94f, 0.075f, 0.05f, 1f),
+            _ => new Color(0.88f, 0.35f, 0.28f, 1f)
+        };
     }
 
     private static bool PointInTriangle(Vector2 point, Vector2 a, Vector2 b, Vector2 c)
@@ -402,11 +417,18 @@ public sealed class ModEntry : MelonMod
             ((uv.y - visibleUv.y) / visibleUv.height - 0.5f) * mapSize.y);
         float markerSize = Mathf.Max(44f, _settings.MarkerSize) * (fullMap ? 1.15f : 1f);
         _markerRect.sizeDelta = new Vector2(markerSize, markerSize);
+        ApplyPointerPalette();
 
         _currentDefinition.TryWorldToMap(player.position + player.forward * 2f, out Vector2 aheadUv);
         float angle = Mathf.Atan2(aheadUv.x - uv.x, aheadUv.y - uv.y) * Mathf.Rad2Deg;
         _markerRect.localEulerAngles = new Vector3(0f, 0f, -angle);
         _markerRoot.SetActive(true);
+    }
+
+    private void ApplyPointerPalette()
+    {
+        int index = Mathf.Clamp(_settings.PointerPalette, 0, _markerTextures.Length - 1);
+        _markerImage.texture = _markerTextures[index];
     }
 
     private Vector2 ApplyMiniMapLayout()
