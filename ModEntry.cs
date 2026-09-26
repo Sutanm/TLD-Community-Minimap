@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Text;
 using Il2Cpp;
 using Il2CppInterop.Runtime;
 using Il2CppInterop.Runtime.InteropTypes.Arrays;
@@ -42,6 +44,10 @@ public sealed class ModEntry : MelonMod
     private MapDefinition _currentDefinition;
     private string _loadedMapId = "";
     private Texture2D _currentTexture;
+    private bool _usingVanillaMap;
+    private string _vanillaProjectionScene = "";
+    private Rect _vanillaMapLocalBounds = new(-1024f, -1024f, 2048f, 2048f);
+    private Rect _vanillaTextureUv = new(0f, 0f, 1f, 1f);
 
     private GameObject _uiRoot;
     private GameObject _backgroundObject;
@@ -52,6 +58,15 @@ public sealed class ModEntry : MelonMod
     private RectTransform _markerRect;
     private RawImage _markerImage;
     private readonly Texture2D[] _markerTextures = new Texture2D[6];
+    private readonly List<VanillaIcon> _vanillaIcons = new();
+
+    private sealed class VanillaIcon
+    {
+        public GameObject Root;
+        public RectTransform Rect;
+        public Vector2 MapUv;
+        public Vector2 MapUvSize;
+    }
 
     public override void OnInitializeMelon()
     {
@@ -66,7 +81,7 @@ public sealed class ModEntry : MelonMod
             message => LoggerInstance.Warning(message));
         _calibrationLastWriteUtc = File.GetLastWriteTimeUtc(_calibrationPath);
         _sceneCatalogAfterUtc = DateTime.UtcNow.AddSeconds(5);
-        LoggerInstance.Msg("社区HUD地图 0.5.3 initialized.");
+        LoggerInstance.Msg("社区HUD地图 0.5.6 initialized.");
         LoggerInstance.Msg($"Map directory: {_mapsDirectory}");
     }
 
@@ -141,6 +156,9 @@ public sealed class ModEntry : MelonMod
     {
         _observedSceneHandle = handle;
         SetUiVisible(false);
+        ClearVanillaIcons();
+        _usingVanillaMap = false;
+        _vanillaProjectionScene = "";
         _currentDefinition = MapCatalog.Find(sceneName);
 
         if (_currentDefinition == null)
@@ -413,7 +431,7 @@ public sealed class ModEntry : MelonMod
         if (fullMap)
             _mapImage.uvRect = new Rect(0f, 0f, 1f, 1f);
 
-        bool hasPosition = _currentDefinition.TryWorldToMap(player.position, out Vector2 uv);
+        bool hasPosition = TryPlayerToMapUv(player.position, out Vector2 uv);
         if (!hasPosition)
         {
             if (!fullMap)
@@ -439,6 +457,7 @@ public sealed class ModEntry : MelonMod
 
         bool markerVisible = uv.x >= visibleUv.xMin && uv.x <= visibleUv.xMax &&
                              uv.y >= visibleUv.yMin && uv.y <= visibleUv.yMax;
+        UpdateVanillaIcons(visibleUv, mapSize);
         if (!markerVisible)
         {
             _markerRoot.SetActive(false);
@@ -452,10 +471,64 @@ public sealed class ModEntry : MelonMod
         _markerRect.sizeDelta = new Vector2(markerSize, markerSize);
         ApplyPointerPalette();
 
-        _currentDefinition.TryWorldToMap(player.position + player.forward * 2f, out Vector2 aheadUv);
+        TryPlayerToMapUv(player.position + player.forward * 2f, out Vector2 aheadUv);
         float angle = Mathf.Atan2(aheadUv.x - uv.x, aheadUv.y - uv.y) * Mathf.Rad2Deg;
         _markerRect.localEulerAngles = new Vector3(0f, 0f, -angle);
         _markerRoot.SetActive(true);
+    }
+
+    private void UpdateVanillaIcons(Rect visibleUv, Vector2 mapSize)
+    {
+        bool show = _usingVanillaMap;
+        for (int i = 0; i < _vanillaIcons.Count; i++)
+        {
+            VanillaIcon icon = _vanillaIcons[i];
+            bool visible = show &&
+                           icon.MapUv.x + icon.MapUvSize.x * 0.5f >= visibleUv.xMin &&
+                           icon.MapUv.x - icon.MapUvSize.x * 0.5f <= visibleUv.xMax &&
+                           icon.MapUv.y + icon.MapUvSize.y * 0.5f >= visibleUv.yMin &&
+                           icon.MapUv.y - icon.MapUvSize.y * 0.5f <= visibleUv.yMax;
+            icon.Root.SetActive(visible);
+            if (!visible)
+                continue;
+
+            icon.Rect.anchoredPosition = new Vector2(
+                ((icon.MapUv.x - visibleUv.x) / visibleUv.width - 0.5f) * mapSize.x,
+                ((icon.MapUv.y - visibleUv.y) / visibleUv.height - 0.5f) * mapSize.y);
+            icon.Rect.sizeDelta = new Vector2(
+                icon.MapUvSize.x / visibleUv.width * mapSize.x,
+                icon.MapUvSize.y / visibleUv.height * mapSize.y);
+        }
+    }
+
+    private bool TryPlayerToMapUv(Vector3 worldPosition, out Vector2 uv)
+    {
+        uv = default;
+        if (!_usingVanillaMap)
+            return _currentDefinition != null &&
+                   _currentDefinition.TryWorldToMap(worldPosition, out uv);
+
+        try
+        {
+            Panel_Map panel = InterfaceManager.GetPanel<Panel_Map>();
+            if (panel == null || ReferenceEquals(_currentTexture, null))
+                return false;
+            Vector3 mapPosition = panel.WorldPositionToMapPosition(
+                _vanillaProjectionScene, worldPosition);
+            float localU = Mathf.InverseLerp(_vanillaMapLocalBounds.xMin,
+                _vanillaMapLocalBounds.xMax, mapPosition.x);
+            float localV = Mathf.InverseLerp(_vanillaMapLocalBounds.yMin,
+                _vanillaMapLocalBounds.yMax, mapPosition.y);
+            uv = new Vector2(
+                _vanillaTextureUv.x + localU * _vanillaTextureUv.width,
+                _vanillaTextureUv.y + localV * _vanillaTextureUv.height);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            LoggerInstance.Warning($"Vanilla player projection failed: {ex.Message}");
+            return false;
+        }
     }
 
     private void ApplyPointerPalette()
@@ -598,6 +671,8 @@ public sealed class ModEntry : MelonMod
             Quaternion mapRotation = panel.WorldRotationToMapRotation(sceneName, worldRotation);
             mapHeading = mapRotation.eulerAngles.z;
             available = true;
+            if (panel.gameObject.activeInHierarchy)
+                ExportVanillaMapTextures(panel, sceneName);
         }
         catch (Exception ex)
         {
@@ -642,6 +717,326 @@ public sealed class ModEntry : MelonMod
             LoggerInstance.Warning(
                 $"Vanilla map projection unavailable for {sceneName}: {error}");
         }
+    }
+
+    private void DumpVanillaMapHierarchy(Panel_Map panel)
+    {
+        try
+        {
+            var output = new StringBuilder();
+            output.AppendLine($"capturedUtc={DateTime.UtcNow:O}");
+            output.AppendLine($"panelActive={panel.gameObject.activeInHierarchy}");
+            AppendTransformDiagnostics(panel.transform, "", output);
+            string path = Path.Combine(_modDirectory, "vanilla_map_hierarchy.txt");
+            File.WriteAllText(path, output.ToString());
+            LoggerInstance.Msg($"Exported active vanilla map hierarchy: {path}");
+        }
+        catch (Exception ex)
+        {
+            LoggerInstance.Warning($"Failed exporting vanilla map hierarchy: {ex}");
+        }
+    }
+
+    private void ExportVanillaMapTextures(Panel_Map panel, string sceneName)
+    {
+        try
+        {
+            Transform regionMap = FindActiveRegionMap(panel.transform);
+            if (regionMap == null)
+            {
+                LoggerInstance.Warning(
+                    "Vanilla map is open, but no active *_RegionMap texture was found.");
+                return;
+            }
+
+            string exportDirectory = Path.Combine(_modDirectory, "vanilla_map_exports");
+            Directory.CreateDirectory(exportDirectory);
+            string prefix = SanitizeFileName(sceneName);
+            int exported = 0;
+
+            UITexture main = regionMap.GetComponent<UITexture>();
+            if (main != null && main.mainTexture != null)
+            {
+                Vector4 drawing = main.drawingDimensions;
+                _vanillaMapLocalBounds = new Rect(drawing.x, drawing.y,
+                    drawing.z - drawing.x, drawing.w - drawing.y);
+                _vanillaTextureUv = main.uvRect;
+                CaptureVanillaIcons(regionMap.parent);
+                Texture2D capturedMain = CaptureTexture(main.mainTexture);
+                WriteTextureToPng(capturedMain,
+                    Path.Combine(exportDirectory, prefix + "_main.png"));
+                UseCapturedVanillaMap(capturedMain, sceneName);
+                LoggerInstance.Msg(
+                    $"Vanilla map widget bounds={_vanillaMapLocalBounds}, " +
+                    $"uv={_vanillaTextureUv}, widget={main.width}x{main.height}.");
+                exported++;
+            }
+
+            Transform detailTransform = FindChildByName(regionMap, "RegionDetailMap");
+            UITexture detail = detailTransform == null
+                ? null
+                : detailTransform.GetComponent<UITexture>();
+            if (detail != null && detail.mainTexture != null)
+            {
+                Texture2D capturedDetail = CaptureTexture(detail.mainTexture);
+                WriteTextureToPng(capturedDetail,
+                    Path.Combine(exportDirectory, prefix + "_detail.png"));
+                UnityEngine.Object.Destroy(capturedDetail);
+                exported++;
+            }
+
+            LoggerInstance.Msg(
+                $"Exported {exported} vanilla map texture(s) from {regionMap.name}: " +
+                exportDirectory);
+        }
+        catch (Exception ex)
+        {
+            LoggerInstance.Warning($"Failed exporting vanilla map textures: {ex}");
+        }
+    }
+
+    private void CaptureVanillaIcons(Transform mapElements)
+    {
+        ClearVanillaIcons();
+        string[] containerNames =
+        {
+            "ActiveElementsBigSprite",
+            "ActiveElementsSmallSprite",
+            "ActiveElementsDetailEntry"
+        };
+        for (int i = 0; i < containerNames.Length; i++)
+        {
+            Transform container = FindChildByName(mapElements, containerNames[i]);
+            if (container != null)
+                CaptureVanillaIconsRecursive(container, mapElements);
+        }
+
+        _markerRoot.transform.SetAsLastSibling();
+        LoggerInstance.Msg($"Captured {_vanillaIcons.Count} visible vanilla map icon layers.");
+    }
+
+    private void CaptureVanillaIconsRecursive(Transform transform, Transform mapElements)
+    {
+        if (!transform.gameObject.activeInHierarchy)
+            return;
+
+        UISprite sprite = transform.GetComponent<UISprite>();
+        if (sprite != null && sprite.mainTexture != null && sprite.isVisible)
+        {
+            float alpha = sprite.CalculateFinalAlpha(Time.frameCount);
+            Vector4 sourceUv = sprite.drawingUVs;
+            var corners = sprite.worldCorners;
+            if (alpha > 0.01f && corners != null && corners.Length >= 4 &&
+                sourceUv.z > sourceUv.x && sourceUv.w > sourceUv.y)
+            {
+                Vector3 first = mapElements.InverseTransformPoint(corners[0]);
+                float minX = first.x;
+                float maxX = first.x;
+                float minY = first.y;
+                float maxY = first.y;
+                for (int i = 1; i < corners.Length; i++)
+                {
+                    Vector3 point = mapElements.InverseTransformPoint(corners[i]);
+                    minX = Mathf.Min(minX, point.x);
+                    maxX = Mathf.Max(maxX, point.x);
+                    minY = Mathf.Min(minY, point.y);
+                    maxY = Mathf.Max(maxY, point.y);
+                }
+
+                Vector2 minUv = VanillaLocalToTextureUv(minX, minY);
+                Vector2 maxUv = VanillaLocalToTextureUv(maxX, maxY);
+                GameObject iconObject = CreateUiObject("VanillaMapIcon",
+                    typeof(RectTransform), typeof(CanvasRenderer), typeof(RawImage));
+                iconObject.transform.SetParent(_mapRect, false);
+                RectTransform rect = iconObject.GetComponent<RectTransform>();
+                rect.anchorMin = new Vector2(0.5f, 0.5f);
+                rect.anchorMax = new Vector2(0.5f, 0.5f);
+                rect.pivot = new Vector2(0.5f, 0.5f);
+                RawImage image = iconObject.GetComponent<RawImage>();
+                image.texture = sprite.mainTexture;
+                image.uvRect = new Rect(sourceUv.x, sourceUv.y,
+                    sourceUv.z - sourceUv.x, sourceUv.w - sourceUv.y);
+                Color color = sprite.color;
+                color.a = alpha;
+                image.color = color;
+                image.raycastTarget = false;
+                _vanillaIcons.Add(new VanillaIcon
+                {
+                    Root = iconObject,
+                    Rect = rect,
+                    MapUv = (minUv + maxUv) * 0.5f,
+                    MapUvSize = new Vector2(Mathf.Abs(maxUv.x - minUv.x),
+                        Mathf.Abs(maxUv.y - minUv.y))
+                });
+            }
+        }
+
+        for (int i = 0; i < transform.childCount; i++)
+            CaptureVanillaIconsRecursive(transform.GetChild(i), mapElements);
+    }
+
+    private Vector2 VanillaLocalToTextureUv(float x, float y)
+    {
+        float localU = Mathf.InverseLerp(_vanillaMapLocalBounds.xMin,
+            _vanillaMapLocalBounds.xMax, x);
+        float localV = Mathf.InverseLerp(_vanillaMapLocalBounds.yMin,
+            _vanillaMapLocalBounds.yMax, y);
+        return new Vector2(
+            _vanillaTextureUv.x + localU * _vanillaTextureUv.width,
+            _vanillaTextureUv.y + localV * _vanillaTextureUv.height);
+    }
+
+    private void ClearVanillaIcons()
+    {
+        for (int i = 0; i < _vanillaIcons.Count; i++)
+        {
+            if (!ReferenceEquals(_vanillaIcons[i].Root, null))
+                UnityEngine.Object.Destroy(_vanillaIcons[i].Root);
+        }
+        _vanillaIcons.Clear();
+    }
+
+    private void UseCapturedVanillaMap(Texture2D texture, string sceneName)
+    {
+        EnsureUnityUi();
+        Texture2D previous = _currentTexture;
+        _currentTexture = texture;
+        _mapImage.texture = texture;
+        _loadedMapId = "__vanilla__" + sceneName;
+        _vanillaProjectionScene = sceneName;
+        _usingVanillaMap = true;
+        _textureReady = true;
+        if (!ReferenceEquals(previous, null))
+            UnityEngine.Object.Destroy(previous);
+        LoggerInstance.Msg(
+            $"Captured vanilla map is now active in the HUD: {texture.width}x{texture.height}.");
+    }
+
+    private static Transform FindActiveRegionMap(Transform root)
+    {
+        if (root.gameObject.activeInHierarchy &&
+            root.name.EndsWith("_RegionMap", StringComparison.Ordinal) &&
+            root.GetComponent<UITexture>() != null)
+        {
+            return root;
+        }
+
+        for (int i = 0; i < root.childCount; i++)
+        {
+            Transform result = FindActiveRegionMap(root.GetChild(i));
+            if (result != null)
+                return result;
+        }
+
+        return null;
+    }
+
+    private static Transform FindChildByName(Transform root, string name)
+    {
+        for (int i = 0; i < root.childCount; i++)
+        {
+            Transform child = root.GetChild(i);
+            if (string.Equals(child.name, name, StringComparison.Ordinal))
+                return child;
+            Transform result = FindChildByName(child, name);
+            if (result != null)
+                return result;
+        }
+
+        return null;
+    }
+
+    private static Texture2D CaptureTexture(Texture source)
+    {
+        var target = new RenderTexture(source.width, source.height, 0,
+            RenderTextureFormat.ARGB32);
+        var readback = new Texture2D(source.width, source.height,
+            TextureFormat.RGBA32, false);
+        RenderTexture previous = RenderTexture.active;
+        try
+        {
+            target.Create();
+            Graphics.Blit(source, target);
+            RenderTexture.active = target;
+            readback.ReadPixels(new Rect(0f, 0f, source.width, source.height), 0, 0,
+                false);
+            readback.Apply(false, false);
+            readback.wrapMode = TextureWrapMode.Clamp;
+            readback.filterMode = FilterMode.Bilinear;
+            readback.hideFlags = HideFlags.HideAndDontSave |
+                                 HideFlags.DontUnloadUnusedAsset;
+            UnityEngine.Object.DontDestroyOnLoad(readback);
+            return readback;
+        }
+        finally
+        {
+            RenderTexture.active = previous;
+            target.Release();
+            UnityEngine.Object.Destroy(target);
+        }
+    }
+
+    private static void WriteTextureToPng(Texture2D texture, string path)
+    {
+        Il2CppStructArray<byte> encoded = ImageConversion.EncodeToPNG(texture);
+        int encodedLength = checked((int)encoded.Length);
+        var bytes = new byte[encodedLength];
+        for (int i = 0; i < encodedLength; i++)
+            bytes[i] = encoded[i];
+        File.WriteAllBytes(path, bytes);
+    }
+
+    private static void AppendTransformDiagnostics(Transform transform, string parentPath,
+        StringBuilder output)
+    {
+        string currentPath = string.IsNullOrEmpty(parentPath)
+            ? transform.name
+            : parentPath + "/" + transform.name;
+        output.Append(currentPath)
+            .Append(" | activeSelf=").Append(transform.gameObject.activeSelf)
+            .Append(" activeInHierarchy=").Append(transform.gameObject.activeInHierarchy)
+            .Append(" localPosition=").Append(transform.localPosition)
+            .Append(" localScale=").Append(transform.localScale)
+            .Append(" | components=");
+
+        Component[] components = transform.GetComponents<Component>();
+        for (int i = 0; i < components.Length; i++)
+        {
+            if (i > 0)
+                output.Append(';');
+            Component component = components[i];
+            output.Append(component == null ? "<null>" : component.GetType().FullName);
+        }
+
+        UITexture uiTexture = transform.GetComponent<UITexture>();
+        if (uiTexture != null && uiTexture.mainTexture != null)
+        {
+            Texture texture = uiTexture.mainTexture;
+            output.Append(" | UITexture=").Append(texture.name)
+                .Append(' ').Append(texture.width).Append('x').Append(texture.height);
+        }
+
+        Renderer renderer = transform.GetComponent<Renderer>();
+        if (renderer != null && renderer.sharedMaterial != null &&
+            renderer.sharedMaterial.mainTexture != null)
+        {
+            Texture texture = renderer.sharedMaterial.mainTexture;
+            output.Append(" | RendererTexture=").Append(texture.name)
+                .Append(' ').Append(texture.width).Append('x').Append(texture.height);
+        }
+
+        Camera camera = transform.GetComponent<Camera>();
+        if (camera != null)
+        {
+            output.Append(" | Camera orthographic=").Append(camera.orthographic)
+                .Append(" size=").Append(camera.orthographicSize)
+                .Append(" target=")
+                .Append(camera.targetTexture == null ? "<screen>" : camera.targetTexture.name);
+        }
+
+        output.AppendLine();
+        for (int i = 0; i < transform.childCount; i++)
+            AppendTransformDiagnostics(transform.GetChild(i), currentPath, output);
     }
 
     private void TryExportSceneCatalog()
