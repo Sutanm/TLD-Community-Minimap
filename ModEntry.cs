@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using Il2Cpp;
@@ -45,7 +44,8 @@ public sealed class ModEntry : MelonMod
     private RawImage _mapImage;
     private GameObject _markerRoot;
     private RectTransform _markerRect;
-    private readonly List<Image> _arrowImages = new();
+    private RawImage _markerImage;
+    private Texture2D _markerTexture;
 
     public override void OnInitializeMelon()
     {
@@ -54,7 +54,7 @@ public sealed class ModEntry : MelonMod
         _modDirectory = Path.Combine(MelonEnvironment.ModsDirectory, "CommunityMinimap");
         _mapsDirectory = Path.Combine(_modDirectory, "maps");
         Directory.CreateDirectory(_mapsDirectory);
-        LoggerInstance.Msg("社区HUD地图 0.4.4 initialized.");
+        LoggerInstance.Msg("社区HUD地图 0.4.5 initialized.");
         LoggerInstance.Msg($"Map directory: {_mapsDirectory}");
     }
 
@@ -235,19 +235,18 @@ public sealed class ModEntry : MelonMod
         _mapImage = mapObject.GetComponent<RawImage>();
         _mapImage.raycastTarget = false;
 
-        _markerRoot = CreateUiObject("PlayerArrow", typeof(RectTransform));
+        _markerRoot = CreateUiObject("PlayerPointer",
+            typeof(RectTransform), typeof(CanvasRenderer), typeof(RawImage));
         _markerRoot.transform.SetParent(mapObject.transform, false);
         _markerRect = _markerRoot.GetComponent<RectTransform>();
         _markerRect.anchorMin = new Vector2(0.5f, 0.5f);
         _markerRect.anchorMax = new Vector2(0.5f, 0.5f);
         _markerRect.pivot = new Vector2(0.5f, 0.5f);
-
-        CreateArrowPart("Shaft", _markerRoot.transform,
-            new Vector2(0f, -5f), new Vector2(8f, 21f), 0f);
-        CreateArrowPart("HeadLeft", _markerRoot.transform,
-            new Vector2(-6f, 6f), new Vector2(10f, 23f), -45f);
-        CreateArrowPart("HeadRight", _markerRoot.transform,
-            new Vector2(6f, 6f), new Vector2(10f, 23f), 45f);
+        _markerImage = _markerRoot.GetComponent<RawImage>();
+        _markerImage.raycastTarget = false;
+        _markerImage.color = Color.white;
+        _markerTexture = CreatePointerTexture();
+        _markerImage.texture = _markerTexture;
 
         _backgroundObject.SetActive(false);
         _uiRoot.SetActive(false);
@@ -262,26 +261,88 @@ public sealed class ModEntry : MelonMod
         return new GameObject(name, il2CppTypes);
     }
 
-    private void CreateArrowPart(
-        string name, Transform parent, Vector2 position, Vector2 size, float rotation)
+    private static Texture2D CreatePointerTexture()
     {
-        GameObject part = CreateUiObject(name,
-            typeof(RectTransform), typeof(CanvasRenderer), typeof(Image), typeof(Shadow));
-        part.transform.SetParent(parent, false);
-        RectTransform rect = part.GetComponent<RectTransform>();
-        rect.anchorMin = new Vector2(0.5f, 0.5f);
-        rect.anchorMax = new Vector2(0.5f, 0.5f);
-        rect.pivot = new Vector2(0.5f, 0.5f);
-        rect.anchoredPosition = position;
-        rect.sizeDelta = size;
-        rect.localEulerAngles = new Vector3(0f, 0f, rotation);
-        Image image = part.GetComponent<Image>();
-        image.raycastTarget = false;
-        Shadow shadow = part.GetComponent<Shadow>();
-        shadow.effectColor = new Color(0.01f, 0.015f, 0.02f, 0.82f);
-        shadow.effectDistance = new Vector2(2f, -2f);
-        shadow.useGraphicAlpha = true;
-        _arrowImages.Add(image);
+        const int size = 128;
+        var pixels = new Color32[size * size];
+        for (int y = 0; y < size; y++)
+        {
+            for (int x = 0; x < size; x++)
+            {
+                Color accumulated = Color.clear;
+                for (int sy = 0; sy < 2; sy++)
+                {
+                    for (int sx = 0; sx < 2; sx++)
+                    {
+                        Vector2 point = new(x + (sx + 0.5f) * 0.5f,
+                            y + (sy + 0.5f) * 0.5f);
+                        accumulated += SamplePointer(point) * 0.25f;
+                    }
+                }
+                pixels[y * size + x] = accumulated;
+            }
+        }
+
+        var texture = new Texture2D(size, size, TextureFormat.RGBA32, false);
+        texture.SetPixels32(new Il2CppStructArray<Color32>(pixels));
+        texture.Apply(false, true);
+        texture.wrapMode = TextureWrapMode.Clamp;
+        texture.filterMode = FilterMode.Bilinear;
+        texture.hideFlags = HideFlags.HideAndDontSave | HideFlags.DontUnloadUnusedAsset;
+        UnityEngine.Object.DontDestroyOnLoad(texture);
+        return texture;
+    }
+
+    private static Color SamplePointer(Vector2 point)
+    {
+        Vector2 center = new(64f, 42f);
+        Color result = Color.clear;
+
+        if (PointInTriangle(point, new Vector2(67f, 115f),
+                new Vector2(52f, 43f), new Vector2(80f, 43f)))
+            result = AlphaOver(result, new Color(0.02f, 0.025f, 0.03f, 0.58f));
+
+        float distance = Vector2.Distance(point, center);
+        if (distance >= 22f && distance <= 31f)
+            result = AlphaOver(result, new Color(0.02f, 0.025f, 0.03f, 0.78f));
+        if (distance >= 24.5f && distance <= 28.5f)
+            result = AlphaOver(result, new Color(0.88f, 0.85f, 0.77f, 0.88f));
+
+        if (PointInTriangle(point, new Vector2(64f, 112f),
+                new Vector2(54f, 43f), new Vector2(74f, 43f)))
+            result = AlphaOver(result, new Color(0.90f, 0.87f, 0.79f, 0.94f));
+
+        if (distance <= 8f)
+            result = AlphaOver(result, new Color(0.02f, 0.025f, 0.03f, 0.90f));
+        if (distance <= 4.5f)
+            result = AlphaOver(result, new Color(0.91f, 0.88f, 0.80f, 0.96f));
+        return result;
+    }
+
+    private static bool PointInTriangle(Vector2 point, Vector2 a, Vector2 b, Vector2 c)
+    {
+        float d1 = Sign(point, a, b);
+        float d2 = Sign(point, b, c);
+        float d3 = Sign(point, c, a);
+        bool hasNegative = d1 < 0f || d2 < 0f || d3 < 0f;
+        bool hasPositive = d1 > 0f || d2 > 0f || d3 > 0f;
+        return !(hasNegative && hasPositive);
+    }
+
+    private static float Sign(Vector2 p1, Vector2 p2, Vector2 p3) =>
+        (p1.x - p3.x) * (p2.y - p3.y) -
+        (p2.x - p3.x) * (p1.y - p3.y);
+
+    private static Color AlphaOver(Color background, Color foreground)
+    {
+        float alpha = foreground.a + background.a * (1f - foreground.a);
+        if (alpha <= 0f)
+            return Color.clear;
+        return new Color(
+            (foreground.r * foreground.a + background.r * background.a * (1f - foreground.a)) / alpha,
+            (foreground.g * foreground.a + background.g * background.a * (1f - foreground.a)) / alpha,
+            (foreground.b * foreground.a + background.b * background.a * (1f - foreground.a)) / alpha,
+            alpha);
     }
 
     private void SetUiVisible(bool visible)
@@ -339,28 +400,13 @@ public sealed class ModEntry : MelonMod
         _markerRect.anchoredPosition = new Vector2(
             ((uv.x - visibleUv.x) / visibleUv.width - 0.5f) * mapSize.x,
             ((uv.y - visibleUv.y) / visibleUv.height - 0.5f) * mapSize.y);
-        float markerSize = _settings.MarkerSize * (fullMap ? 1.2f : 1f);
-        float markerScale = markerSize / 20f;
-        _markerRect.localScale = new Vector3(markerScale, markerScale, 1f);
-        ApplyMarkerColor();
+        float markerSize = Mathf.Max(32f, _settings.MarkerSize) * (fullMap ? 1.15f : 1f);
+        _markerRect.sizeDelta = new Vector2(markerSize, markerSize);
 
         _currentDefinition.TryWorldToMap(player.position + player.forward * 2f, out Vector2 aheadUv);
         float angle = Mathf.Atan2(aheadUv.x - uv.x, aheadUv.y - uv.y) * Mathf.Rad2Deg;
         _markerRect.localEulerAngles = new Vector3(0f, 0f, -angle);
         _markerRoot.SetActive(true);
-    }
-
-    private void ApplyMarkerColor()
-    {
-        Color color = _settings.MarkerColor switch
-        {
-            1 => new Color(0.05f, 0.95f, 1f, 1f),
-            2 => new Color(1f, 0.92f, 0.05f, 1f),
-            3 => new Color(0.82f, 0.12f, 1f, 1f),
-            _ => Color.white
-        };
-        foreach (Image image in _arrowImages)
-            image.color = color;
     }
 
     private Vector2 ApplyMiniMapLayout()

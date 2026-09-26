@@ -41,15 +41,10 @@ internal sealed class MinimapSettings : JsonModSettings
     [Slider(1.5f, 12f, 22, NumberFormat = "{0:F1}x")]
     public float Zoom = 5f;
 
-    [Name("玩家箭头尺寸")]
-    [Description("原版风格实心方向指针的显示尺寸。")]
-    [Slider(20, 56, 19)]
-    public int MarkerSize = 30;
-
-    [Name("玩家箭头颜色")]
-    [Description("实心指针使用深色投影与地图标记分离。")]
-    [Choice("白色", "亮青", "亮黄", "紫色")]
-    public int MarkerColor = 0;
+    [Name("玩家指针尺寸")]
+    [Description("圆环位置标记与方向短针的显示尺寸。")]
+    [Slider(32, 64, 17)]
+    public int MarkerSize = 42;
 
     [Name("显示坐标诊断")]
     [Description("在小地图下方显示场景名、玩家世界坐标和朝向，供地图配准使用。")]
