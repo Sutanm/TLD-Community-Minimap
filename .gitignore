@@ -6,5 +6,5 @@ obj/
 *.suo
 *.dll
 maps/
+prepared-maps/
 calibration_points.csv
-
