@@ -40,6 +40,11 @@ public sealed class ModEntry : MelonMod
     private DateTime _sceneCatalogAfterUtc = DateTime.MaxValue;
     private int _sceneCatalogAttempts;
     private bool _sceneCatalogExported;
+    private int _observedMapSource = -1;
+    private bool _observedPreferCommunity;
+    private bool _capturedThisVanillaMapOpen;
+    private bool _vanillaMapWasOpen;
+    private DateTime _vanillaCaptureAfterUtc = DateTime.MaxValue;
     private DisplayMode _displayMode = DisplayMode.MiniMap;
     private MapDefinition _currentDefinition;
     private string _loadedMapId = "";
@@ -81,7 +86,7 @@ public sealed class ModEntry : MelonMod
             message => LoggerInstance.Warning(message));
         _calibrationLastWriteUtc = File.GetLastWriteTimeUtc(_calibrationPath);
         _sceneCatalogAfterUtc = DateTime.UtcNow.AddSeconds(5);
-        LoggerInstance.Msg("社区HUD地图 0.5.6 initialized.");
+        LoggerInstance.Msg("社区HUD地图 0.6.1 initialized.");
         LoggerInstance.Msg($"Map directory: {_mapsDirectory}");
     }
 
@@ -105,11 +110,41 @@ public sealed class ModEntry : MelonMod
         if (scene.handle != _observedSceneHandle)
             ObserveScene(scene.handle, scene.name);
 
+        bool preferCommunity = ShouldUseCommunityMap();
+        if (_settings.MapSource != _observedMapSource ||
+            preferCommunity != _observedPreferCommunity)
+        {
+            ApplyMapSourceSelection(scene.name, preferCommunity);
+        }
+
+        Panel_Map vanillaPanel = null;
+        bool vanillaMapOpen = TryGetOpenVanillaMap(out vanillaPanel);
+        if (!vanillaMapOpen)
+        {
+            _vanillaMapWasOpen = false;
+            _capturedThisVanillaMapOpen = false;
+            _vanillaCaptureAfterUtc = DateTime.MaxValue;
+        }
+        else if (!_vanillaMapWasOpen)
+        {
+            _vanillaMapWasOpen = true;
+            _capturedThisVanillaMapOpen = false;
+            _vanillaCaptureAfterUtc = DateTime.UtcNow.AddSeconds(1);
+        }
+        else if (!preferCommunity && !_capturedThisVanillaMapOpen &&
+                 DateTime.UtcNow >= _vanillaCaptureAfterUtc)
+        {
+            if (CaptureVanillaMap(vanillaPanel, scene.name))
+                _capturedThisVanillaMapOpen = true;
+            else
+                _vanillaCaptureAfterUtc = DateTime.UtcNow.AddMilliseconds(250);
+        }
+
         bool playerReady = GameManager.m_Instance != null &&
                            !GameManager.IsMainMenuActive() &&
                            GameManager.GetPlayerTransform() != null;
 
-        if (!_textureReady && _currentDefinition != null && playerReady &&
+        if (preferCommunity && !_textureReady && _currentDefinition != null && playerReady &&
             DateTime.UtcNow >= _loadAfterUtc)
         {
             if (LoadCurrentMapIntoUnityUi())
@@ -119,7 +154,7 @@ public sealed class ModEntry : MelonMod
         }
 
         bool shouldShow = _textureReady && _currentDefinition != null && playerReady &&
-                          _settings.Enabled && !_temporarilyHidden;
+                          _settings.Enabled && !_temporarilyHidden && !vanillaMapOpen;
         SetUiVisible(shouldShow);
         if (!shouldShow)
             return;
@@ -169,20 +204,85 @@ public sealed class ModEntry : MelonMod
             return;
         }
 
-        if (_loadedMapId == _currentDefinition.Id && !ReferenceEquals(_currentTexture, null))
+        bool preferCommunity = ShouldUseCommunityMap();
+        _observedMapSource = _settings.MapSource;
+        _observedPreferCommunity = preferCommunity;
+        if (preferCommunity && _loadedMapId == _currentDefinition.Id &&
+            !ReferenceEquals(_currentTexture, null))
         {
             _textureReady = true;
             _loadAfterUtc = DateTime.MaxValue;
         }
-        else
+        else if (preferCommunity)
         {
             _textureReady = false;
             _loadAfterUtc = DateTime.UtcNow.AddSeconds(1);
+        }
+        else
+        {
+            _textureReady = false;
+            _loadAfterUtc = DateTime.MaxValue;
         }
 
         LoggerInstance.Msg(
             $"Active scene mapped: {sceneName} -> {_currentDefinition.DisplayName} " +
             $"({_currentDefinition.FileName}, calibrated={_currentDefinition.IsCalibrated}).");
+    }
+
+    private bool ShouldUseCommunityMap()
+    {
+        if (_settings.MapSource == 1)
+            return true;
+        if (_settings.MapSource == 2 || _currentDefinition == null)
+            return false;
+        return File.Exists(Path.Combine(_mapsDirectory, _currentDefinition.FileName));
+    }
+
+    private void ApplyMapSourceSelection(string sceneName, bool preferCommunity)
+    {
+        _observedMapSource = _settings.MapSource;
+        _observedPreferCommunity = preferCommunity;
+        if (preferCommunity)
+        {
+            ClearVanillaIcons();
+            _usingVanillaMap = false;
+            _vanillaProjectionScene = "";
+            bool alreadyLoaded = _currentDefinition != null &&
+                                 _loadedMapId == _currentDefinition.Id &&
+                                 !ReferenceEquals(_currentTexture, null);
+            _textureReady = alreadyLoaded;
+            _loadAfterUtc = alreadyLoaded
+                ? DateTime.MaxValue
+                : DateTime.UtcNow;
+            LoggerInstance.Msg("Map source selected: community map.");
+        }
+        else
+        {
+            bool capturedForScene = _usingVanillaMap &&
+                                    string.Equals(_vanillaProjectionScene, sceneName,
+                                        StringComparison.Ordinal) &&
+                                    !ReferenceEquals(_currentTexture, null);
+            _textureReady = capturedForScene;
+            _loadAfterUtc = DateTime.MaxValue;
+            LoggerInstance.Msg(capturedForScene
+                ? "Map source selected: vanilla surveyed map."
+                : "Map source selected: vanilla surveyed map; open the game map once to refresh it.");
+        }
+    }
+
+    private static bool TryGetOpenVanillaMap(out Panel_Map panel)
+    {
+        panel = null;
+        try
+        {
+            panel = InterfaceManager.GetPanel<Panel_Map>();
+            return panel != null && panel.gameObject.activeInHierarchy;
+        }
+        catch
+        {
+            panel = null;
+            return false;
+        }
     }
 
     private void ToggleDisplayMode()
@@ -671,8 +771,6 @@ public sealed class ModEntry : MelonMod
             Quaternion mapRotation = panel.WorldRotationToMapRotation(sceneName, worldRotation);
             mapHeading = mapRotation.eulerAngles.z;
             available = true;
-            if (panel.gameObject.activeInHierarchy)
-                ExportVanillaMapTextures(panel, sceneName);
         }
         catch (Exception ex)
         {
@@ -737,61 +835,36 @@ public sealed class ModEntry : MelonMod
         }
     }
 
-    private void ExportVanillaMapTextures(Panel_Map panel, string sceneName)
+    private bool CaptureVanillaMap(Panel_Map panel, string sceneName)
     {
         try
         {
             Transform regionMap = FindActiveRegionMap(panel.transform);
             if (regionMap == null)
-            {
-                LoggerInstance.Warning(
-                    "Vanilla map is open, but no active *_RegionMap texture was found.");
-                return;
-            }
-
-            string exportDirectory = Path.Combine(_modDirectory, "vanilla_map_exports");
-            Directory.CreateDirectory(exportDirectory);
-            string prefix = SanitizeFileName(sceneName);
-            int exported = 0;
+                return false;
 
             UITexture main = regionMap.GetComponent<UITexture>();
-            if (main != null && main.mainTexture != null)
-            {
-                Vector4 drawing = main.drawingDimensions;
-                _vanillaMapLocalBounds = new Rect(drawing.x, drawing.y,
-                    drawing.z - drawing.x, drawing.w - drawing.y);
-                _vanillaTextureUv = main.uvRect;
-                CaptureVanillaIcons(regionMap.parent);
-                Texture2D capturedMain = CaptureTexture(main.mainTexture);
-                WriteTextureToPng(capturedMain,
-                    Path.Combine(exportDirectory, prefix + "_main.png"));
-                UseCapturedVanillaMap(capturedMain, sceneName);
-                LoggerInstance.Msg(
-                    $"Vanilla map widget bounds={_vanillaMapLocalBounds}, " +
-                    $"uv={_vanillaTextureUv}, widget={main.width}x{main.height}.");
-                exported++;
-            }
+            if (main == null || main.mainTexture == null)
+                return false;
 
-            Transform detailTransform = FindChildByName(regionMap, "RegionDetailMap");
-            UITexture detail = detailTransform == null
-                ? null
-                : detailTransform.GetComponent<UITexture>();
-            if (detail != null && detail.mainTexture != null)
-            {
-                Texture2D capturedDetail = CaptureTexture(detail.mainTexture);
-                WriteTextureToPng(capturedDetail,
-                    Path.Combine(exportDirectory, prefix + "_detail.png"));
-                UnityEngine.Object.Destroy(capturedDetail);
-                exported++;
-            }
-
+            Vector4 drawing = main.drawingDimensions;
+            _vanillaMapLocalBounds = new Rect(drawing.x, drawing.y,
+                drawing.z - drawing.x, drawing.w - drawing.y);
+            _vanillaTextureUv = main.uvRect;
+            EnsureUnityUi();
+            CaptureVanillaIcons(regionMap.parent);
+            Texture2D capturedMain = CaptureTexture(main.mainTexture);
+            UseCapturedVanillaMap(capturedMain, sceneName);
             LoggerInstance.Msg(
-                $"Exported {exported} vanilla map texture(s) from {regionMap.name}: " +
-                exportDirectory);
+                $"Vanilla map refreshed from {regionMap.name}; " +
+                $"bounds={_vanillaMapLocalBounds}, uv={_vanillaTextureUv}, " +
+                $"widget={main.width}x{main.height}.");
+            return true;
         }
         catch (Exception ex)
         {
-            LoggerInstance.Warning($"Failed exporting vanilla map textures: {ex}");
+            LoggerInstance.Warning($"Failed refreshing vanilla map: {ex}");
+            return false;
         }
     }
 

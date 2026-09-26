@@ -5,10 +5,17 @@ namespace CommunityMinimap;
 
 internal sealed class MinimapSettings : JsonModSettings
 {
+    [Section("地图来源")]
+
+    [Name("地图来源")]
+    [Description("自动模式优先使用已安装的民间高清地图；缺少图片时使用原版制图。原版模式会在正常打开游戏地图时自动刷新。")]
+    [Choice("自动", "民间高清", "原版制图")]
+    public int MapSource = 0;
+
     [Section("HUD")]
 
     [Name("启用小地图")]
-    [Description("显示或隐藏民间地图 HUD。")]
+    [Description("显示或隐藏地图 HUD。")]
     public bool Enabled = true;
 
     [Name("HUD 位置")]
