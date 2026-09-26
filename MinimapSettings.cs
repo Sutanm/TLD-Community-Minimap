@@ -16,10 +16,10 @@ internal sealed class MinimapSettings : JsonModSettings
     [Choice("右上", "左上", "右下", "左下")]
     public int Position = 0;
 
-    [Name("HUD 尺寸")]
-    [Description("小地图方框的像素尺寸。")]
-    [Slider(220, 600, 20)]
-    public int Size = 360;
+    [Name("小地图 UI 大小")]
+    [Description("小地图占屏幕短边的百分比，与地图局部缩放分开计算。")]
+    [Slider(15, 40, 26, NumberFormat = "{0}%")]
+    public int MiniMapSizePercent = 24;
 
     [Name("地图透明度")]
     [Description("调整地图图片的不透明度。")]
@@ -33,7 +33,7 @@ internal sealed class MinimapSettings : JsonModSettings
 
     [Name("局部缩放")]
     [Description("玩家处于已校准范围内时，小地图的放大倍数。")]
-    [Slider(2f, 10f, 17, NumberFormat = "{0:F1}x")]
+    [Slider(1.5f, 12f, 22, NumberFormat = "{0:F1}x")]
     public float Zoom = 5f;
 
     [Name("玩家箭头尺寸")]
@@ -46,6 +46,10 @@ internal sealed class MinimapSettings : JsonModSettings
     public bool ShowDiagnostics = true;
 
     [Section("快捷键与校准")]
+
+    [Name("切换小地图/完整地图")]
+    [Description("在角落小地图和不透明全屏完整地图之间切换。")]
+    public KeyCode MapModeKey = KeyCode.Tab;
 
     [Name("快速显示/隐藏")]
     [Description("不改变保存设置，仅临时显示或隐藏 HUD。")]
