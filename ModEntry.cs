@@ -36,9 +36,6 @@ public sealed class ModEntry : MelonMod
     private MapDefinition _currentDefinition;
     private string _loadedMapId = "";
     private Texture2D _currentTexture;
-    private Rect _fullMapUv = new(0f, 0f, 1f, 1f);
-    private bool _dragging;
-    private Vector3 _lastMousePosition;
 
     private GameObject _uiRoot;
     private GameObject _backgroundObject;
@@ -55,7 +52,7 @@ public sealed class ModEntry : MelonMod
         _modDirectory = Path.Combine(MelonEnvironment.ModsDirectory, "CommunityMinimap");
         _mapsDirectory = Path.Combine(_modDirectory, "maps");
         Directory.CreateDirectory(_mapsDirectory);
-        LoggerInstance.Msg("社区HUD地图 0.4.1 initialized.");
+        LoggerInstance.Msg("社区HUD地图 0.4.2 initialized.");
         LoggerInstance.Msg($"Map directory: {_mapsDirectory}");
     }
 
@@ -95,8 +92,6 @@ public sealed class ModEntry : MelonMod
         if (!shouldShow)
             return;
 
-        if (_displayMode == DisplayMode.FullMap)
-            UpdateFullMapInput();
         UpdateUnityUi(GameManager.GetPlayerTransform());
     }
 
@@ -112,8 +107,6 @@ public sealed class ModEntry : MelonMod
         _observedSceneHandle = handle;
         SetUiVisible(false);
         _currentDefinition = MapCatalog.Find(sceneName);
-        _fullMapUv = new Rect(0f, 0f, 1f, 1f);
-        _dragging = false;
 
         if (_currentDefinition == null)
         {
@@ -145,8 +138,6 @@ public sealed class ModEntry : MelonMod
             ? DisplayMode.FullMap
             : DisplayMode.MiniMap;
         s_fullMapActive = _displayMode == DisplayMode.FullMap;
-        _fullMapUv = new Rect(0f, 0f, 1f, 1f);
-        _dragging = false;
         LoggerInstance.Msg($"Map display mode: {_displayMode}.");
     }
 
@@ -155,8 +146,6 @@ public sealed class ModEntry : MelonMod
         _displayMode = DisplayMode.MiniMap;
         s_fullMapActive = false;
         s_suppressEscapeThroughFrame = Time.frameCount + 1;
-        _fullMapUv = new Rect(0f, 0f, 1f, 1f);
-        _dragging = false;
         LoggerInstance.Msg("Full map closed with Escape.");
     }
 
@@ -194,7 +183,6 @@ public sealed class ModEntry : MelonMod
             _mapImage.texture = texture;
             _loadedMapId = _currentDefinition.Id;
             _textureReady = true;
-            _fullMapUv = new Rect(0f, 0f, 1f, 1f);
 
             if (!ReferenceEquals(previousTexture, null))
                 UnityEngine.Object.Destroy(previousTexture);
@@ -308,7 +296,7 @@ public sealed class ModEntry : MelonMod
 
         Vector2 mapSize = fullMap ? ApplyFullMapLayout() : ApplyMiniMapLayout();
         if (fullMap)
-            _mapImage.uvRect = _fullMapUv;
+            _mapImage.uvRect = new Rect(0f, 0f, 1f, 1f);
 
         bool hasPosition = _currentDefinition.TryWorldToMap(player.position, out Vector2 uv);
         if (!hasPosition)
@@ -322,7 +310,7 @@ public sealed class ModEntry : MelonMod
         Rect visibleUv;
         if (fullMap)
         {
-            visibleUv = _fullMapUv;
+            visibleUv = new Rect(0f, 0f, 1f, 1f);
         }
         else
         {
@@ -411,46 +399,6 @@ public sealed class ModEntry : MelonMod
         if (ReferenceEquals(_currentTexture, null) || _currentTexture.height <= 0)
             return 1f;
         return (float)_currentTexture.width / _currentTexture.height;
-    }
-
-    private void UpdateFullMapInput()
-    {
-        float scroll = Input.mouseScrollDelta.y;
-        if (Mathf.Abs(scroll) > 0.01f)
-        {
-            float oldSpan = _fullMapUv.width;
-            float newSpan = Mathf.Clamp(oldSpan * Mathf.Pow(0.82f, scroll), 0.10f, 1f);
-            Vector2 center = _fullMapUv.center;
-            _fullMapUv.width = newSpan;
-            _fullMapUv.height = newSpan;
-            _fullMapUv.center = center;
-            ClampFullMapUv();
-        }
-
-        if (Input.GetMouseButtonDown(0))
-        {
-            _dragging = true;
-            _lastMousePosition = Input.mousePosition;
-        }
-        if (Input.GetMouseButtonUp(0))
-            _dragging = false;
-        if (!_dragging || !Input.GetMouseButton(0))
-            return;
-
-        Vector3 mousePosition = Input.mousePosition;
-        Vector3 delta = mousePosition - _lastMousePosition;
-        _lastMousePosition = mousePosition;
-        float width = Mathf.Max(1f, _mapRect.rect.width);
-        float height = Mathf.Max(1f, _mapRect.rect.height);
-        _fullMapUv.x -= delta.x / width * _fullMapUv.width;
-        _fullMapUv.y -= delta.y / height * _fullMapUv.height;
-        ClampFullMapUv();
-    }
-
-    private void ClampFullMapUv()
-    {
-        _fullMapUv.x = Mathf.Clamp(_fullMapUv.x, 0f, 1f - _fullMapUv.width);
-        _fullMapUv.y = Mathf.Clamp(_fullMapUv.y, 0f, 1f - _fullMapUv.height);
     }
 
     private void RecordCalibrationPoint()

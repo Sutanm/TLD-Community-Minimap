@@ -8,9 +8,9 @@ and ModSettings 2.2.5.
 
 ## Current status
 
-- Version 0.4.1 adds a multi-region map catalog and automatic scene switching.
+- Version 0.4.2 adds a multi-region map catalog and automatic scene switching.
 - `Tab` switches between the corner minimap and the opaque full-screen map.
-- The full-screen map supports mouse-wheel zoom and left-button dragging.
+- The full-screen map always fits the complete current-region image to the screen.
 - Minimap UI size and local map zoom are independent settings.
 - Mystery Lake (`LakeRegion`) retains its 0.3.3 player-position calibration.
 - Other mapped regions can display their complete map, but intentionally hide the
@@ -42,8 +42,6 @@ from the original cartographers before redistributing map artwork.
 - `F8`: temporarily show or hide the map UI.
 - `F9`: record the current scene, map ID, world position, and heading to
   `Mods/CommunityMinimap/calibration_points.csv`.
-- Mouse wheel: zoom the full-screen map.
-- Left mouse drag: pan the full-screen map.
 
 Size, position, minimap opacity, full-screen background opacity, local zoom, marker
 size, and key bindings are available through ModSettings.
