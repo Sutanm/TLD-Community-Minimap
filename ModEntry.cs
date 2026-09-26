@@ -32,6 +32,9 @@ public sealed class ModEntry : MelonMod
     private bool _uiVisible;
     private int _observedSceneHandle = int.MinValue;
     private DateTime _loadAfterUtc = DateTime.MaxValue;
+    private DateTime _sceneCatalogAfterUtc = DateTime.MaxValue;
+    private int _sceneCatalogAttempts;
+    private bool _sceneCatalogExported;
     private DisplayMode _displayMode = DisplayMode.MiniMap;
     private MapDefinition _currentDefinition;
     private string _loadedMapId = "";
@@ -54,12 +57,18 @@ public sealed class ModEntry : MelonMod
         _modDirectory = Path.Combine(MelonEnvironment.ModsDirectory, "CommunityMinimap");
         _mapsDirectory = Path.Combine(_modDirectory, "maps");
         Directory.CreateDirectory(_mapsDirectory);
-        LoggerInstance.Msg("社区HUD地图 0.4.8 initialized.");
+        CalibrationStore.Load(Path.Combine(_modDirectory, "calibrations.json"),
+            message => LoggerInstance.Msg(message),
+            message => LoggerInstance.Warning(message));
+        _sceneCatalogAfterUtc = DateTime.UtcNow.AddSeconds(5);
+        LoggerInstance.Msg("社区HUD地图 0.5.0 initialized.");
         LoggerInstance.Msg($"Map directory: {_mapsDirectory}");
     }
 
     public override void OnUpdate()
     {
+        TryExportSceneCatalog();
+
         if (Input.GetKeyDown(_settings.ToggleKey))
             _temporarilyHidden = !_temporarilyHidden;
         bool leaveFullMap = _displayMode == DisplayMode.FullMap &&
@@ -499,28 +508,81 @@ public sealed class ModEntry : MelonMod
             Transform player = GameManager.GetPlayerTransform();
             if (player == null)
                 return;
-            string sceneName = UnitySceneManager.GetActiveScene().name;
+            var scene = UnitySceneManager.GetActiveScene();
+            string sceneName = scene.name;
             Vector3 position = player.position;
             float heading = player.eulerAngles.y;
-            string path = Path.Combine(_modDirectory, "calibration_points.csv");
+            string captureId = DateTime.UtcNow.ToString("yyyyMMdd_HHmmss_fff",
+                CultureInfo.InvariantCulture) + "_" + Guid.NewGuid().ToString("N")[..8];
+            string screenshotDirectory = Path.Combine(_modDirectory, "calibration_screenshots");
+            Directory.CreateDirectory(screenshotDirectory);
+            string screenshotPath = Path.Combine(screenshotDirectory,
+                $"{captureId}_{SanitizeFileName(sceneName)}.png");
+            ScreenCapture.CaptureScreenshot(screenshotPath);
+
+            string path = Path.Combine(_modDirectory, "calibration_points_v2.csv");
             if (!File.Exists(path))
-                File.AppendAllText(path, "timestamp,scene,map_id,x,y,z,heading,note\r\n");
+            {
+                File.AppendAllText(path,
+                    "timestamp,capture_id,scene,scene_handle,map_id,map_file,is_calibrated," +
+                    "x,y,z,heading,screenshot,note\r\n");
+            }
             string line = string.Join(",",
                 DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture),
+                EscapeCsv(captureId),
                 EscapeCsv(sceneName),
+                scene.handle.ToString(CultureInfo.InvariantCulture),
                 EscapeCsv(_currentDefinition?.Id ?? "unmapped"),
+                EscapeCsv(_currentDefinition?.FileName ?? ""),
+                _currentDefinition?.IsCalibrated == true ? "true" : "false",
                 position.x.ToString("F3", CultureInfo.InvariantCulture),
                 position.y.ToString("F3", CultureInfo.InvariantCulture),
                 position.z.ToString("F3", CultureInfo.InvariantCulture),
                 heading.ToString("F2", CultureInfo.InvariantCulture),
+                EscapeCsv(screenshotPath),
                 "填写地标名称");
             File.AppendAllText(path, line + "\r\n");
-            LoggerInstance.Msg($"Calibration point recorded: {line}");
+            LoggerInstance.Msg(
+                $"Calibration point recorded: {sceneName} " +
+                $"({position.x:F3}, {position.y:F3}, {position.z:F3}), capture={captureId}.");
         }
         catch (Exception ex)
         {
             LoggerInstance.Error($"Failed recording calibration point: {ex}");
         }
+    }
+
+    private void TryExportSceneCatalog()
+    {
+        if (_sceneCatalogExported || DateTime.UtcNow < _sceneCatalogAfterUtc)
+            return;
+
+        string path = Path.Combine(_modDirectory, "scene_catalog.csv");
+        if (SceneCatalogExporter.TryExport(path, out int count, out string error))
+        {
+            _sceneCatalogExported = true;
+            LoggerInstance.Msg($"Exported {count} scene names: {path}");
+            return;
+        }
+
+        _sceneCatalogAttempts++;
+        if (_sceneCatalogAttempts >= 12)
+        {
+            _sceneCatalogExported = true;
+            LoggerInstance.Warning($"Scene catalog export abandoned after 12 attempts: {error}");
+            return;
+        }
+
+        _sceneCatalogAfterUtc = DateTime.UtcNow.AddSeconds(10);
+        if (_sceneCatalogAttempts == 1)
+            LoggerInstance.Warning($"Scene catalog is not ready; retrying. {error}");
+    }
+
+    private static string SanitizeFileName(string value)
+    {
+        foreach (char invalid in Path.GetInvalidFileNameChars())
+            value = value.Replace(invalid, '_');
+        return string.IsNullOrWhiteSpace(value) ? "unknown_scene" : value;
     }
 
     private static string EscapeCsv(string value) => '"' + value.Replace("\"", "\"\"") + '"';

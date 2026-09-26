@@ -1,0 +1,15 @@
+{
+  "formatVersion": 1,
+  "maps": [
+    {
+      "mapId": "example_map_id",
+      "imageWidth": 4000,
+      "imageHeight": 4000,
+      "points": [
+        { "worldX": 0.0, "worldZ": 0.0, "mapX": 500.0, "mapY": 3500.0, "label": "southwest landmark" },
+        { "worldX": 1000.0, "worldZ": 0.0, "mapX": 3500.0, "mapY": 3500.0, "label": "southeast landmark" },
+        { "worldX": 0.0, "worldZ": 1000.0, "mapX": 500.0, "mapY": 500.0, "label": "northwest landmark" }
+      ]
+    }
+  ]
+}

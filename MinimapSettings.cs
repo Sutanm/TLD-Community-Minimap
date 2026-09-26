@@ -66,6 +66,6 @@ internal sealed class MinimapSettings : JsonModSettings
     public KeyCode ToggleKey = KeyCode.F8;
 
     [Name("记录校准点")]
-    [Description("站在地图上易识别的地标后按此键，将世界坐标追加到 calibration_points.csv。")]
+    [Description("站在地图上易识别的地标后按此键，将坐标写入 calibration_points_v2.csv，并保存对应截图。")]
     public KeyCode RecordPointKey = KeyCode.F9;
 }

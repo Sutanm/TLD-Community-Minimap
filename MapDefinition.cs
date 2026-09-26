@@ -31,11 +31,14 @@ internal sealed class MapDefinition
     public string FileName { get; }
     public CalibrationProfile Calibration { get; }
     public IReadOnlyList<string> Scenes { get; }
-    public bool IsCalibrated => Calibration != CalibrationProfile.None;
+    public bool IsCalibrated => Calibration != CalibrationProfile.None ||
+                                CalibrationStore.IsCalibrated(Id);
 
     public bool TryWorldToMap(Vector3 position, out Vector2 uv)
     {
         uv = default;
+        if (CalibrationStore.TryWorldToMap(Id, position, out uv))
+            return true;
         if (Calibration != CalibrationProfile.MysteryLakeV033)
             return false;
 
