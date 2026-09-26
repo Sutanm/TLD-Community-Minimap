@@ -28,6 +28,34 @@
           "label": "老斯彭斯之家锻炉棚"
         }
       ]
+    },
+    {
+      "mapId": "broken_railroad",
+      "imageWidth": 4044,
+      "imageHeight": 3013,
+      "points": [
+        {
+          "worldX": 667.607,
+          "worldZ": 1657.442,
+          "mapX": 3687.0,
+          "mapY": 2263.0,
+          "label": "通往孤寂沼地的铁路过图口"
+        },
+        {
+          "worldX": 668.365,
+          "worldZ": 573.442,
+          "mapX": 1081.0,
+          "mapY": 2268.0,
+          "label": "维修场正门"
+        },
+        {
+          "worldX": 52.169,
+          "worldZ": 469.629,
+          "mapX": 848.0,
+          "mapY": 761.0,
+          "label": "猎人小屋正门"
+        }
+      ]
     }
   ]
 }
