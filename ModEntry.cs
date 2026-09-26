@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using Il2Cpp;
@@ -44,6 +45,7 @@ public sealed class ModEntry : MelonMod
     private RawImage _mapImage;
     private GameObject _markerRoot;
     private RectTransform _markerRect;
+    private readonly List<Image> _arrowImages = new();
 
     public override void OnInitializeMelon()
     {
@@ -52,7 +54,7 @@ public sealed class ModEntry : MelonMod
         _modDirectory = Path.Combine(MelonEnvironment.ModsDirectory, "CommunityMinimap");
         _mapsDirectory = Path.Combine(_modDirectory, "maps");
         Directory.CreateDirectory(_mapsDirectory);
-        LoggerInstance.Msg("社区HUD地图 0.4.2 initialized.");
+        LoggerInstance.Msg("社区HUD地图 0.4.3 initialized.");
         LoggerInstance.Msg($"Map directory: {_mapsDirectory}");
     }
 
@@ -260,11 +262,11 @@ public sealed class ModEntry : MelonMod
         return new GameObject(name, il2CppTypes);
     }
 
-    private static void CreateArrowPart(
+    private void CreateArrowPart(
         string name, Transform parent, Vector2 position, Vector2 size, float rotation)
     {
         GameObject part = CreateUiObject(name,
-            typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+            typeof(RectTransform), typeof(CanvasRenderer), typeof(Image), typeof(Outline));
         part.transform.SetParent(parent, false);
         RectTransform rect = part.GetComponent<RectTransform>();
         rect.anchorMin = new Vector2(0.5f, 0.5f);
@@ -274,8 +276,12 @@ public sealed class ModEntry : MelonMod
         rect.sizeDelta = size;
         rect.localEulerAngles = new Vector3(0f, 0f, rotation);
         Image image = part.GetComponent<Image>();
-        image.color = new Color(1f, 0.05f, 0.02f, 1f);
         image.raycastTarget = false;
+        Outline outline = part.GetComponent<Outline>();
+        outline.effectColor = new Color(0.01f, 0.015f, 0.02f, 0.98f);
+        outline.effectDistance = new Vector2(1.25f, -1.25f);
+        outline.useGraphicAlpha = true;
+        _arrowImages.Add(image);
     }
 
     private void SetUiVisible(bool visible)
@@ -334,12 +340,27 @@ public sealed class ModEntry : MelonMod
             ((uv.x - visibleUv.x) / visibleUv.width - 0.5f) * mapSize.x,
             ((uv.y - visibleUv.y) / visibleUv.height - 0.5f) * mapSize.y);
         float markerSize = _settings.MarkerSize * (fullMap ? 1.2f : 1f);
-        _markerRect.sizeDelta = new Vector2(markerSize * 1.2f, markerSize * 1.2f);
+        float markerScale = markerSize / 20f;
+        _markerRect.localScale = new Vector3(markerScale, markerScale, 1f);
+        ApplyMarkerColor();
 
         _currentDefinition.TryWorldToMap(player.position + player.forward * 2f, out Vector2 aheadUv);
         float angle = Mathf.Atan2(aheadUv.x - uv.x, aheadUv.y - uv.y) * Mathf.Rad2Deg;
         _markerRect.localEulerAngles = new Vector3(0f, 0f, -angle);
         _markerRoot.SetActive(true);
+    }
+
+    private void ApplyMarkerColor()
+    {
+        Color color = _settings.MarkerColor switch
+        {
+            1 => Color.white,
+            2 => new Color(1f, 0.92f, 0.05f, 1f),
+            3 => new Color(0.82f, 0.12f, 1f, 1f),
+            _ => new Color(0.05f, 0.95f, 1f, 1f)
+        };
+        foreach (Image image in _arrowImages)
+            image.color = color;
     }
 
     private Vector2 ApplyMiniMapLayout()

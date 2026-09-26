@@ -8,10 +8,11 @@ and ModSettings 2.2.5.
 
 ## Current status
 
-- Version 0.4.2 adds a multi-region map catalog and automatic scene switching.
+- Version 0.4.3 adds a multi-region map catalog and automatic scene switching.
 - `Tab` switches between the corner minimap and the opaque full-screen map.
 - The full-screen map always fits the complete current-region image to the screen.
 - Minimap UI size and local map zoom are independent settings.
+- The player arrow uses a black outline and a configurable high-contrast color.
 - Mystery Lake (`LakeRegion`) retains its 0.3.3 player-position calibration.
 - Other mapped regions can display their complete map, but intentionally hide the
   player marker until region-specific calibration data is available.

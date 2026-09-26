@@ -46,6 +46,11 @@ internal sealed class MinimapSettings : JsonModSettings
     [Slider(12, 36, 13)]
     public int MarkerSize = 20;
 
+    [Name("玩家箭头颜色")]
+    [Description("使用黑色描边的高对比色，避免与地图上的红色建筑标记混在一起。")]
+    [Choice("亮青", "白色", "亮黄", "紫色")]
+    public int MarkerColor = 0;
+
     [Name("显示坐标诊断")]
     [Description("在小地图下方显示场景名、玩家世界坐标和朝向，供地图配准使用。")]
     public bool ShowDiagnostics = true;
