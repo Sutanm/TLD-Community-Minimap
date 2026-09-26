@@ -8,8 +8,9 @@
 ## 给接手 AI 的第一句话
 
 请先完整阅读本文件，再检查 `git status`、`calibrations.json` 和游戏的
-`MelonLoader\Latest.log`。不要重新设计已经稳定的 HUD，也不要修改 README。
-当前阶段的唯一主线任务是：**让所有室外地图先完成三点仿射粗校准并可用**。
+`MelonLoader\Latest.log`。不要重新设计已经稳定的 HUD。当前阶段的主线任务是：
+**让所有室外地图先完成三点仿射粗校准并可用，然后发布一个不含地图图片的预发行测试包。**
+粗校准完成前不要修改 README；制作首个测试包时可以统一更新。
 
 ## 1. 项目目标与已经确定的产品方案
 
@@ -37,9 +38,10 @@
 3. 地图作者明确说明，为提高观感曾主观拓宽或收缩部分地形，因此个别局部偏差不是代码错误。
 4. 洞穴和建筑内部由游戏划为独立室内场景，目前一律隐藏地图，不做室内校准。
 5. 不替换游戏官方内置地图界面；继续使用独立 HUD。
-6. **README 暂时不要更新**，等第一个发行版再统一编写。
+6. **README 在全部室外粗校准完成前不要更新**；制作首个预发行测试包时再统一编写。
 7. 民间地图图片不进入仓库，也不捆绑进发行包。未来让玩家自行准备图片，模组只提供放置规则/来源地址。
 8. `00 全图拼接 .jpg` 仅供查看，运行时完全不用。
+9. 用户明确授权：全部室外地图粗校准完成并通过基本稳定性检查后，接手 AI 可以发布 GitHub 预发行测试包，用户会邀请其他玩家测试。
 
 ## 3. 版权和地图文件边界
 
@@ -301,6 +303,7 @@ dotnet build .\CommunityMinimap.csproj -c Release `
 3. 核验所有真实场景名，并在必要时只修改 `MapDefinition.cs` 的场景绑定。
 4. 记录地图画法与游戏实景不一致的位置，但不要立即实现局部扭曲。
 5. 定期提交 `calibrations.json`，网络恢复后推送 GitHub。
+6. 全部室外粗校准完成后，执行一次基本回归测试并发布 GitHub **Pre-release** 测试包。
 
 建议下一张从沿海公路 (`CoastalRegion`) 开始。可选三个点：
 
@@ -310,6 +313,33 @@ dotnet build .\CommunityMinimap.csproj -c Release `
 
 若用户更愿意按区域相邻顺序，也可以先做远境支路和中转通道；原则是三点清晰且不共线。
 
+### 11.1 预发行测试包授权与要求
+
+接手 AI 在完成全部室外粗校准后，不必等待本对话额度恢复，可以制作并发布测试包。建议使用
+`0.x.y-beta.1` 或类似预发行版本号，不要直接标记为稳定版或 `1.0`。
+
+测试包至少包含：
+
+- `CommunityMinimap.dll`
+- `calibrations.json`
+- 简明安装说明、依赖版本、地图文件名/放置目录说明
+- 已知限制和反馈方法
+- 文件哈希或至少记录构建提交 SHA
+
+测试包不得包含任何 JPG 地图。README 可以在这个阶段更新，说明玩家需要自行准备地图，并指向合法来源或用户提供的地址；
+在来源/授权文字没有最终确认前，应使用克制、事实性的表述，不代替地图作者作许可承诺。
+
+发布前最低检查：
+
+1. Release 构建为 0 警告、0 错误。
+2. 从主菜单载入室外存档、进入室内、返回室外、跨地图切换均不崩溃。
+3. Tab、Esc、F8、F9 和 ModSettings 仍正常。
+4. `calibrations.json` 能从空白/缺失状态创建，也能读取发行包版本。
+5. 至少抽查神秘湖、孤寂沼地、断开的铁路和一个合成图场景。
+6. Git 工作区干净，发布产物对应明确提交，GitHub Release 必须勾选为 Pre-release。
+
+给测试玩家的反馈模板应要求：游戏版本、场景名、地标名称、误差方向/大致距离，以及最好附 F9 生成的 CSV 行和截图。
+
 ## 12. 建议留到本对话额度恢复后再做的工作
 
 以下任务需要更多整体设计判断，暂时不要让接手 AI 擅自展开：
@@ -317,7 +347,7 @@ dotnet build .\CommunityMinimap.csproj -c Release `
 1. **局部非线性精修方案**：例如分区仿射、残差控制点、薄板样条或局部偏移场。
 2. 神秘湖铁路桥、偷猎营地车厢等艺术性失真区域的单独修正。
 3. 洞穴/室内地图支持及室内外坐标关联。
-4. 第一个正式发行版的打包、安装器、地图准备向导和完整 README。
+4. 稳定版的正式打包、安装器和自动地图准备向导；预发行测试包已授权接手 AI 制作。
 5. 地图来源/授权说明的最终文案。
 6. 是否与游戏原生地图界面整合；当前明确不做替换。
 
@@ -325,23 +355,17 @@ dotnet build .\CommunityMinimap.csproj -c Release `
 
 ## 13. 当前 Git 状态（交接时）
 
-创建本文件前：
-
-- 本地 `HEAD`：`3c1f82e Calibrate Broken Railroad`
-- 远端 `origin/main`：`6cc7a6c Split composite map scene calibrations`
-- 因 GitHub 连接超时，至少以下两个本地提交尚未确认推送：
-  - `43863fe Add hot-reloadable Forlorn Muskeg calibration`
-  - `3c1f82e Calibrate Broken Railroad`
-
-接手时请重新执行：
+初版交接手册提交后，本地 `main` 与 `origin/main` 已成功同步；孤寂沼地、断开的铁路、热重载和交接手册均已上传。
+后续工作仍应以命令输出为准。接手时先执行：
 
 ```powershell
 git status --short
 git log --oneline --decorate -8
-git push origin main
+git rev-parse HEAD
+git rev-parse origin/main
 ```
 
-不要 reset、rebase 或丢弃这些提交。
+如果两个 SHA 不同，先检查本地提交内容，再正常执行 `git push origin main`。不要 reset、rebase 或丢弃已有提交。
 
 ## 14. 当前运行状态与最后一次用户反馈
 
