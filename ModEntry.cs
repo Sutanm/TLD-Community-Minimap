@@ -27,6 +27,9 @@ public sealed class ModEntry : MelonMod
     private readonly MinimapSettings _settings = new();
     private string _modDirectory = "";
     private string _mapsDirectory = "";
+    private string _calibrationPath = "";
+    private DateTime _calibrationLastWriteUtc = DateTime.MinValue;
+    private DateTime _nextCalibrationCheckUtc = DateTime.MinValue;
     private bool _temporarilyHidden;
     private bool _textureReady;
     private bool _uiVisible;
@@ -56,18 +59,21 @@ public sealed class ModEntry : MelonMod
         _settings.AddToModSettings("社区HUD地图", MenuType.Both);
         _modDirectory = Path.Combine(MelonEnvironment.ModsDirectory, "CommunityMinimap");
         _mapsDirectory = Path.Combine(_modDirectory, "maps");
+        _calibrationPath = Path.Combine(_modDirectory, "calibrations.json");
         Directory.CreateDirectory(_mapsDirectory);
-        CalibrationStore.Load(Path.Combine(_modDirectory, "calibrations.json"),
+        CalibrationStore.Load(_calibrationPath,
             message => LoggerInstance.Msg(message),
             message => LoggerInstance.Warning(message));
+        _calibrationLastWriteUtc = File.GetLastWriteTimeUtc(_calibrationPath);
         _sceneCatalogAfterUtc = DateTime.UtcNow.AddSeconds(5);
-        LoggerInstance.Msg("社区HUD地图 0.5.1 initialized.");
+        LoggerInstance.Msg("社区HUD地图 0.5.2 initialized.");
         LoggerInstance.Msg($"Map directory: {_mapsDirectory}");
     }
 
     public override void OnUpdate()
     {
         TryExportSceneCatalog();
+        TryReloadCalibrations();
 
         if (Input.GetKeyDown(_settings.ToggleKey))
             _temporarilyHidden = !_temporarilyHidden;
@@ -104,6 +110,24 @@ public sealed class ModEntry : MelonMod
             return;
 
         UpdateUnityUi(GameManager.GetPlayerTransform());
+    }
+
+    private void TryReloadCalibrations()
+    {
+        DateTime now = DateTime.UtcNow;
+        if (now < _nextCalibrationCheckUtc)
+            return;
+
+        _nextCalibrationCheckUtc = now.AddSeconds(1);
+        DateTime writeUtc = File.GetLastWriteTimeUtc(_calibrationPath);
+        if (writeUtc == _calibrationLastWriteUtc)
+            return;
+
+        CalibrationStore.Load(_calibrationPath,
+            message => LoggerInstance.Msg(message),
+            message => LoggerInstance.Warning(message));
+        _calibrationLastWriteUtc = writeUtc;
+        LoggerInstance.Msg("Reloaded calibrations.json after file change.");
     }
 
     public override void OnSceneWasInitialized(int buildIndex, string sceneName)

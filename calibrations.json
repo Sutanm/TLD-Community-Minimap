@@ -1,0 +1,33 @@
+{
+  "formatVersion": 1,
+  "maps": [
+    {
+      "mapId": "forlorn_muskeg",
+      "imageWidth": 4530,
+      "imageHeight": 4589,
+      "points": [
+        {
+          "worldX": -80.295,
+          "worldZ": 842.497,
+          "mapX": 141.0,
+          "mapY": 2094.0,
+          "label": "通往断开的铁路隧道口"
+        },
+        {
+          "worldX": 1113.885,
+          "worldZ": 976.624,
+          "mapX": 2890.0,
+          "mapY": 1777.0,
+          "label": "偷猎营地车厢"
+        },
+        {
+          "worldX": 466.988,
+          "worldZ": 60.325,
+          "mapX": 1380.0,
+          "mapY": 3833.0,
+          "label": "老斯彭斯之家锻炉棚"
+        }
+      ]
+    }
+  ]
+}
