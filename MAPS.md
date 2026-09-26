@@ -20,8 +20,9 @@ while retaining Chinese display names in the UI and source artwork.
 | 废弃机场 | `forsaken_airfield.jpg` | `AirfieldRegion` |
 | 公路废墟 | `crumbling_highway.jpg` | `HighwayTransitionZone` |
 | 深谷 | `ravine.jpg` | `RavineTransitionZone` |
-| 守山人山隘 | `keepers_pass.jpg` | `BlackrockTransitionZone` |
-| 蜿蜒河流/卡特大坝 | `winding_river_dam.jpg` | Dam transition scenes |
+| 守山人山隘北侧 | `keepers_pass.jpg` | `BlackrockTransitionZone` |
+| 守山人山隘南侧 | `keepers_pass.jpg` | `CanyonRoadTransitionZone` |
+| 蜿蜒河流 | `winding_river_dam.jpg` | `DamRiverTransitionZoneB` |
 | 污染区 | `zone_of_contamination.jpg` | provisional aliases |
 | 破碎山道 | `sundered_pass.jpg` | provisional aliases |
 | 远境支路 | `far_range_branch_line.jpg` | provisional aliases |

@@ -103,16 +103,20 @@ internal static class MapCatalog
             CalibrationProfile.None, "HighwayTransitionZone"));
         Add(new MapDefinition("ravine", "深谷", "ravine.jpg",
             CalibrationProfile.None, "RavineTransitionZone"));
-        Add(new MapDefinition("keepers_pass", "守山人山隘", "keepers_pass.jpg",
+        // Composite source images contain multiple independent Unity scenes. Give each
+        // scene its own calibration id even though it shares the same texture file.
+        Add(new MapDefinition("keepers_pass_north", "守山人山隘北侧", "keepers_pass.jpg",
             CalibrationProfile.None, "BlackrockTransitionZone"));
-        Add(new MapDefinition("winding_river_dam", "蜿蜒河流/卡特大坝", "winding_river_dam.jpg",
-            CalibrationProfile.None, "Dam", "DamTransitionZone", "DamRiverTransitionZoneB"));
+        Add(new MapDefinition("keepers_pass_south", "守山人山隘南侧", "keepers_pass.jpg",
+            CalibrationProfile.None, "CanyonRoadTransitionZone"));
+        Add(new MapDefinition("winding_river", "蜿蜒河流", "winding_river_dam.jpg",
+            CalibrationProfile.None, "DamRiverTransitionZoneB"));
         Add(new MapDefinition("zone_of_contamination", "污染区", "zone_of_contamination.jpg",
             CalibrationProfile.None, "ZoneOfContaminationRegion", "MiningRegion"));
         Add(new MapDefinition("sundered_pass", "破碎山道", "sundered_pass.jpg",
             CalibrationProfile.None, "SunderedPassRegion", "MountainPassRegion"));
         Add(new MapDefinition("far_range_branch_line", "远境支路", "far_range_branch_line.jpg",
-            CalibrationProfile.None, "FarRangeBranchLine", "FarRangeBranchLineRegion"));
+            CalibrationProfile.None, "LongRailTransitionZone"));
         Add(new MapDefinition("transfer_pass", "中转通道", "transfer_pass.jpg",
             CalibrationProfile.None, "TransferPass", "TransferPassRegion", "HubRegion"));
     }

@@ -61,7 +61,7 @@ public sealed class ModEntry : MelonMod
             message => LoggerInstance.Msg(message),
             message => LoggerInstance.Warning(message));
         _sceneCatalogAfterUtc = DateTime.UtcNow.AddSeconds(5);
-        LoggerInstance.Msg("社区HUD地图 0.5.0 initialized.");
+        LoggerInstance.Msg("社区HUD地图 0.5.1 initialized.");
         LoggerInstance.Msg($"Map directory: {_mapsDirectory}");
     }
 
