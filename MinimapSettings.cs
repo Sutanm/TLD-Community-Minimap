@@ -42,13 +42,13 @@ internal sealed class MinimapSettings : JsonModSettings
     public float Zoom = 5f;
 
     [Name("玩家箭头尺寸")]
-    [Description("带尾部玩家箭头的像素高度。")]
-    [Slider(12, 36, 13)]
-    public int MarkerSize = 20;
+    [Description("原版风格实心方向指针的显示尺寸。")]
+    [Slider(20, 56, 19)]
+    public int MarkerSize = 30;
 
     [Name("玩家箭头颜色")]
-    [Description("使用黑色描边的高对比色，避免与地图上的红色建筑标记混在一起。")]
-    [Choice("亮青", "白色", "亮黄", "紫色")]
+    [Description("实心指针使用深色投影与地图标记分离。")]
+    [Choice("白色", "亮青", "亮黄", "紫色")]
     public int MarkerColor = 0;
 
     [Name("显示坐标诊断")]

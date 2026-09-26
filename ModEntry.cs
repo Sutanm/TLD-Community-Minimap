@@ -54,7 +54,7 @@ public sealed class ModEntry : MelonMod
         _modDirectory = Path.Combine(MelonEnvironment.ModsDirectory, "CommunityMinimap");
         _mapsDirectory = Path.Combine(_modDirectory, "maps");
         Directory.CreateDirectory(_mapsDirectory);
-        LoggerInstance.Msg("社区HUD地图 0.4.3 initialized.");
+        LoggerInstance.Msg("社区HUD地图 0.4.4 initialized.");
         LoggerInstance.Msg($"Map directory: {_mapsDirectory}");
     }
 
@@ -243,11 +243,11 @@ public sealed class ModEntry : MelonMod
         _markerRect.pivot = new Vector2(0.5f, 0.5f);
 
         CreateArrowPart("Shaft", _markerRoot.transform,
-            new Vector2(0f, -2f), new Vector2(3f, 13f), 0f);
+            new Vector2(0f, -5f), new Vector2(8f, 21f), 0f);
         CreateArrowPart("HeadLeft", _markerRoot.transform,
-            new Vector2(-3.5f, 4.5f), new Vector2(3f, 10f), -45f);
+            new Vector2(-6f, 6f), new Vector2(10f, 23f), -45f);
         CreateArrowPart("HeadRight", _markerRoot.transform,
-            new Vector2(3.5f, 4.5f), new Vector2(3f, 10f), 45f);
+            new Vector2(6f, 6f), new Vector2(10f, 23f), 45f);
 
         _backgroundObject.SetActive(false);
         _uiRoot.SetActive(false);
@@ -266,7 +266,7 @@ public sealed class ModEntry : MelonMod
         string name, Transform parent, Vector2 position, Vector2 size, float rotation)
     {
         GameObject part = CreateUiObject(name,
-            typeof(RectTransform), typeof(CanvasRenderer), typeof(Image), typeof(Outline));
+            typeof(RectTransform), typeof(CanvasRenderer), typeof(Image), typeof(Shadow));
         part.transform.SetParent(parent, false);
         RectTransform rect = part.GetComponent<RectTransform>();
         rect.anchorMin = new Vector2(0.5f, 0.5f);
@@ -277,10 +277,10 @@ public sealed class ModEntry : MelonMod
         rect.localEulerAngles = new Vector3(0f, 0f, rotation);
         Image image = part.GetComponent<Image>();
         image.raycastTarget = false;
-        Outline outline = part.GetComponent<Outline>();
-        outline.effectColor = new Color(0.01f, 0.015f, 0.02f, 0.98f);
-        outline.effectDistance = new Vector2(1.25f, -1.25f);
-        outline.useGraphicAlpha = true;
+        Shadow shadow = part.GetComponent<Shadow>();
+        shadow.effectColor = new Color(0.01f, 0.015f, 0.02f, 0.82f);
+        shadow.effectDistance = new Vector2(2f, -2f);
+        shadow.useGraphicAlpha = true;
         _arrowImages.Add(image);
     }
 
@@ -354,10 +354,10 @@ public sealed class ModEntry : MelonMod
     {
         Color color = _settings.MarkerColor switch
         {
-            1 => Color.white,
+            1 => new Color(0.05f, 0.95f, 1f, 1f),
             2 => new Color(1f, 0.92f, 0.05f, 1f),
             3 => new Color(0.82f, 0.12f, 1f, 1f),
-            _ => new Color(0.05f, 0.95f, 1f, 1f)
+            _ => Color.white
         };
         foreach (Image image in _arrowImages)
             image.color = color;
