@@ -66,7 +66,7 @@ public sealed class ModEntry : MelonMod
             message => LoggerInstance.Warning(message));
         _calibrationLastWriteUtc = File.GetLastWriteTimeUtc(_calibrationPath);
         _sceneCatalogAfterUtc = DateTime.UtcNow.AddSeconds(5);
-        LoggerInstance.Msg("社区HUD地图 0.5.2 initialized.");
+        LoggerInstance.Msg("社区HUD地图 0.5.3 initialized.");
         LoggerInstance.Msg($"Map directory: {_mapsDirectory}");
     }
 
@@ -566,6 +566,8 @@ public sealed class ModEntry : MelonMod
                 EscapeCsv(screenshotPath),
                 "填写地标名称");
             File.AppendAllText(path, line + "\r\n");
+            RecordVanillaMapCoordinate(captureId, sceneName, position, player.rotation,
+                heading);
             LoggerInstance.Msg(
                 $"Calibration point recorded: {sceneName} " +
                 $"({position.x:F3}, {position.y:F3}, {position.z:F3}), capture={captureId}.");
@@ -573,6 +575,72 @@ public sealed class ModEntry : MelonMod
         catch (Exception ex)
         {
             LoggerInstance.Error($"Failed recording calibration point: {ex}");
+        }
+    }
+
+    private void RecordVanillaMapCoordinate(string captureId, string sceneName,
+        Vector3 worldPosition, Quaternion worldRotation, float worldHeading)
+    {
+        string mapName = "";
+        Vector3 mapPosition = default;
+        float mapHeading = 0f;
+        bool available = false;
+        string error = "";
+
+        try
+        {
+            Panel_Map panel = InterfaceManager.GetPanel<Panel_Map>();
+            if (panel == null)
+                throw new InvalidOperationException("Panel_Map is unavailable.");
+
+            mapName = panel.GetMapNameOfScene(sceneName) ?? "";
+            mapPosition = panel.WorldPositionToMapPosition(sceneName, worldPosition);
+            Quaternion mapRotation = panel.WorldRotationToMapRotation(sceneName, worldRotation);
+            mapHeading = mapRotation.eulerAngles.z;
+            available = true;
+        }
+        catch (Exception ex)
+        {
+            error = ex.GetType().Name + ": " + ex.Message;
+        }
+
+        string path = Path.Combine(_modDirectory, "vanilla_map_coordinates.csv");
+        if (!File.Exists(path))
+        {
+            File.AppendAllText(path,
+                "timestamp,capture_id,scene,map_name,available," +
+                "world_x,world_y,world_z,world_heading," +
+                "map_x,map_y,map_z,map_heading,error\r\n");
+        }
+
+        string line = string.Join(",",
+            DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture),
+            EscapeCsv(captureId),
+            EscapeCsv(sceneName),
+            EscapeCsv(mapName),
+            available ? "true" : "false",
+            worldPosition.x.ToString("F3", CultureInfo.InvariantCulture),
+            worldPosition.y.ToString("F3", CultureInfo.InvariantCulture),
+            worldPosition.z.ToString("F3", CultureInfo.InvariantCulture),
+            worldHeading.ToString("F2", CultureInfo.InvariantCulture),
+            available ? mapPosition.x.ToString("F3", CultureInfo.InvariantCulture) : "",
+            available ? mapPosition.y.ToString("F3", CultureInfo.InvariantCulture) : "",
+            available ? mapPosition.z.ToString("F3", CultureInfo.InvariantCulture) : "",
+            available ? mapHeading.ToString("F2", CultureInfo.InvariantCulture) : "",
+            EscapeCsv(error));
+        File.AppendAllText(path, line + "\r\n");
+
+        if (available)
+        {
+            LoggerInstance.Msg(
+                $"Vanilla map projection: {sceneName} -> {mapName} " +
+                $"({mapPosition.x:F3}, {mapPosition.y:F3}, {mapPosition.z:F3}), " +
+                $"heading={mapHeading:F2}.");
+        }
+        else
+        {
+            LoggerInstance.Warning(
+                $"Vanilla map projection unavailable for {sceneName}: {error}");
         }
     }
 

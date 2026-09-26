@@ -3,7 +3,7 @@
 > 更新日期：2026-09-26（Asia/Shanghai）  
 > 工作区：`D:\CommunityMinimap-Workspace`  
 > 仓库：<https://github.com/Sutanm/TLD-Community-Minimap>  
-> 当前本地版本：`0.5.2`
+> 当前本地版本：`0.5.3`
 
 ## 给接手 AI 的第一句话
 
@@ -30,6 +30,8 @@
 - `F9`：记录校准点并截图。
 
 玩家标记已经改成圆环加方向短针，并有六种配色预设。默认 HUD 在左上角。
+
+从 v0.5.3 起，F9 还会把游戏原版地图坐标写入 `vanilla_map_coordinates.csv`。
 
 ## 2. 用户已经确认的原则
 
@@ -199,6 +201,12 @@ F9 CSV 字段：
 
 旧的 `calibration_points.csv` 要保留，不要删除；新工作使用 v2 文件。
 
+原版地图坐标诊断：
+
+`D:\Program Files (x86)\Steam\steamapps\common\TheLongDark\Mods\CommunityMinimap\vanilla_map_coordinates.csv`
+
+该文件通过 `capture_id` 与 v2 记录对应，包含原版地图名称、地图坐标和地图朝向。
+
 ## 9. 标准校准工作流（接手 AI 应照此重复）
 
 ### 9.1 让用户取点
@@ -367,13 +375,58 @@ git rev-parse origin/main
 
 如果两个 SHA 不同，先检查本地提交内容，再正常执行 `git push origin main`。不要 reset、rebase 或丢弃已有提交。
 
-## 14. 当前运行状态与最后一次用户反馈
+## 14. 原版地图小地图：已验证结论与后续方案
 
-- v0.5.2 已安装到游戏目录。
+用户提出将游戏原版地图作为另一种小地图来源，以便不准备民间 JPG 也能使用。这个方向已经完成第一阶段验证。
+
+游戏 IL2CPP 程序集中的 `Il2Cpp.Panel_Map` 公开包装了以下方法：
+
+- `WorldPositionToMapPosition(string sceneName, Vector3 worldPosition)`
+- `MapPositionToWorldPosition(...)`
+- `WorldRotationToMapRotation(string sceneName, Quaternion worldRotation)`
+- `GetMapNameOfScene(string sceneName)`
+
+v0.5.3 已让 F9 同时调用这些方法。2026-09-26 在未打开原版地图界面的情况下实测成功：
+
+```text
+scene=TracksRegion
+world=(53.563, 244.785, 472.534), heading=267.21
+vanillaMap=(-130.577, 160.787, 0.000), heading=2.79
+available=true, error=""
+```
+
+日志：
+
+```text
+Vanilla map projection: TracksRegion -> TracksRegion (-130.577, 160.787, 0.000), heading=2.79.
+```
+
+结论：
+
+1. 原版地图模式的玩家位置和方向可直接使用游戏官方转换，无需逐图手动校准。
+2. 该转换不能直接消除民间 JPG 的校准，因为民间图片有独立像素坐标和人为地形拉伸。
+3. 可以在 ModSettings 增加“地图来源：民间高清 / 原版制图”选项，两种模式并存。
+4. 原版地图是动态拼装的区域地图对象，并非保证存在一张可直接复制的静态 JPG。
+
+推荐实现路径：
+
+1. 不要每帧强制打开或劫持整个 `Panel_Map`，以免影响暂停、输入和存档状态。
+2. 找到 `Panel_Map` 通过 Addressables 实例化的 RegionMap 对象或其渲染纹理。
+3. 将原版区域地图克隆到独立层，或用单独相机渲染到 `RenderTexture`，再交给现有 HUD 的 `RawImage`。
+4. 玩家指针始终使用官方 `WorldPositionToMapPosition` 与 `WorldRotationToMapRotation`。
+5. 优先支持“遵循当前存档炭笔勘测进度”；“显示完整未探索底图”只做可选实验，且不得修改存档解锁状态。
+6. 原版模式未稳定前不能阻塞民间地图粗校准或预发行测试包。
+
+下一步诊断应检查原版地图界面打开前后 `Panel_Map` 的子对象、RegionMap 实例和纹理来源，确认最安全的离屏渲染入口。
+
+## 15. 当前运行状态与最后一次用户反馈
+
+- v0.5.3 已安装到游戏目录。
 - 运行时 `calibrations.json` 与工作区版本一致。
 - 热重载已在日志中确认成功。
 - 用户已验证孤寂沼地和断开的铁路，评价均为“准确度够用”。
 - 最新已知室外场景为 `TracksRegion`；猎人小屋内部场景 `HuntingLodgeA` 会正确隐藏地图。
 - 当前没有崩溃或 AccessViolation。
+- 原版地图坐标与朝向接口已在地图界面关闭时验证成功。
 
 交接后的首要动作不是写代码，而是确认用户想继续哪张室外地图，然后重复第 9 节流程。
