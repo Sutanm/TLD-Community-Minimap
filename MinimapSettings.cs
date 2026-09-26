@@ -43,8 +43,8 @@ internal sealed class MinimapSettings : JsonModSettings
 
     [Name("玩家指针尺寸")]
     [Description("圆环位置标记与方向短针的显示尺寸。")]
-    [Slider(32, 64, 17)]
-    public int MarkerSize = 42;
+    [Slider(40, 80, 21)]
+    public int MarkerSize = 54;
 
     [Name("显示坐标诊断")]
     [Description("在小地图下方显示场景名、玩家世界坐标和朝向，供地图配准使用。")]

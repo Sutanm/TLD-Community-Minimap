@@ -54,7 +54,7 @@ public sealed class ModEntry : MelonMod
         _modDirectory = Path.Combine(MelonEnvironment.ModsDirectory, "CommunityMinimap");
         _mapsDirectory = Path.Combine(_modDirectory, "maps");
         Directory.CreateDirectory(_mapsDirectory);
-        LoggerInstance.Msg("社区HUD地图 0.4.5 initialized.");
+        LoggerInstance.Msg("社区HUD地图 0.4.6 initialized.");
         LoggerInstance.Msg($"Map directory: {_mapsDirectory}");
     }
 
@@ -306,16 +306,16 @@ public sealed class ModEntry : MelonMod
         if (distance >= 22f && distance <= 31f)
             result = AlphaOver(result, new Color(0.02f, 0.025f, 0.03f, 0.78f));
         if (distance >= 24.5f && distance <= 28.5f)
-            result = AlphaOver(result, new Color(0.88f, 0.85f, 0.77f, 0.88f));
+            result = AlphaOver(result, new Color(0.92f, 0.08f, 0.055f, 0.90f));
 
         if (PointInTriangle(point, new Vector2(64f, 112f),
                 new Vector2(54f, 43f), new Vector2(74f, 43f)))
-            result = AlphaOver(result, new Color(0.90f, 0.87f, 0.79f, 0.94f));
+            result = AlphaOver(result, new Color(0.94f, 0.075f, 0.05f, 0.96f));
 
         if (distance <= 8f)
             result = AlphaOver(result, new Color(0.02f, 0.025f, 0.03f, 0.90f));
         if (distance <= 4.5f)
-            result = AlphaOver(result, new Color(0.91f, 0.88f, 0.80f, 0.96f));
+            result = AlphaOver(result, new Color(0.95f, 0.08f, 0.055f, 0.98f));
         return result;
     }
 
@@ -400,7 +400,7 @@ public sealed class ModEntry : MelonMod
         _markerRect.anchoredPosition = new Vector2(
             ((uv.x - visibleUv.x) / visibleUv.width - 0.5f) * mapSize.x,
             ((uv.y - visibleUv.y) / visibleUv.height - 0.5f) * mapSize.y);
-        float markerSize = Mathf.Max(32f, _settings.MarkerSize) * (fullMap ? 1.15f : 1f);
+        float markerSize = Mathf.Max(44f, _settings.MarkerSize) * (fullMap ? 1.15f : 1f);
         _markerRect.sizeDelta = new Vector2(markerSize, markerSize);
 
         _currentDefinition.TryWorldToMap(player.position + player.forward * 2f, out Vector2 aheadUv);
