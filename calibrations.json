@@ -2,34 +2,6 @@
   "formatVersion": 1,
   "maps": [
     {
-      "mapId": "forlorn_muskeg",
-      "imageWidth": 4530,
-      "imageHeight": 4589,
-      "points": [
-        {
-          "worldX": -80.295,
-          "worldZ": 842.497,
-          "mapX": 141.0,
-          "mapY": 2094.0,
-          "label": "通往断开的铁路隧道口"
-        },
-        {
-          "worldX": 1113.885,
-          "worldZ": 976.624,
-          "mapX": 2890.0,
-          "mapY": 1777.0,
-          "label": "偷猎营地车厢"
-        },
-        {
-          "worldX": 466.988,
-          "worldZ": 60.325,
-          "mapX": 1380.0,
-          "mapY": 3833.0,
-          "label": "老斯彭斯之家锻炉棚"
-        }
-      ]
-    },
-    {
       "mapId": "broken_railroad",
       "imageWidth": 4044,
       "imageHeight": 3013,
@@ -54,6 +26,90 @@
           "mapX": 848.0,
           "mapY": 761.0,
           "label": "猎人小屋正门"
+        }
+      ]
+    },
+    {
+      "mapId": "coastal_highway",
+      "imageWidth": 4474,
+      "imageHeight": 4473,
+      "points": [
+        {
+          "worldX": -1165.201,
+          "worldZ": 1205.063,
+          "mapX": 486.0,
+          "mapY": 293.3,
+          "label": "前往深谷的过图口（乌鸦瀑布铁路）"
+        },
+        {
+          "worldX": 757.335,
+          "worldZ": 641.74,
+          "mapX": 3730.0,
+          "mapY": 1300.0,
+          "label": "匡西特修理站（加油站）"
+        },
+        {
+          "worldX": 719.219,
+          "worldZ": -509.553,
+          "mapX": 3665.7,
+          "mapY": 3357.5,
+          "label": "前往公路废墟的过图口（古老小岛连接处）"
+        },
+        {
+          "worldX": 357.182,
+          "worldZ": 1158.51,
+          "mapX": 3054.8,
+          "mapY": 376.5,
+          "label": "废弃瞭望台"
+        },
+        {
+          "worldX": -880.233,
+          "worldZ": 1227.73,
+          "mapX": 966.9,
+          "mapY": 252.8,
+          "label": "火车卸货区"
+        },
+        {
+          "worldX": -271.92,
+          "worldZ": 291.674,
+          "mapX": 1993.3,
+          "mapY": 1925.6,
+          "label": "野兔岛"
+        },
+        {
+          "worldX": 705.592,
+          "worldZ": -97.591,
+          "mapX": 3642.7,
+          "mapY": 2621.3,
+          "label": "临水屋群"
+        }
+      ]
+    },
+    {
+      "mapId": "forlorn_muskeg",
+      "imageWidth": 4530,
+      "imageHeight": 4589,
+      "points": [
+        {
+          "worldX": -80.295,
+          "worldZ": 842.497,
+          "mapX": 141.0,
+          "mapY": 2094.0,
+          "label": "通往断开的铁路隧道口"
+        },
+        {
+          "worldX": 1113.885,
+          "worldZ": 976.624,
+          "mapX": 2890.0,
+          "mapY": 1777.0,
+          "label": "偷猎营地车厢"
+        },
+        {
+          "worldX": 466.988,
+          "worldZ": 60.325,
+          "mapX": 1380.0,
+          "mapY": 3833.0,
+          "label": "老斯彭斯之家锻炉棚"
         }
       ]
     }

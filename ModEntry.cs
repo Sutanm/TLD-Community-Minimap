@@ -1297,6 +1297,23 @@ public sealed class ModEntry : MelonMod
             LoggerInstance.Msg(
                 $"Vanilla base map active for {sceneName}: {owned.width}x{owned.height} " +
                 "(no map panel needed).");
+
+            // Calibration aid: keep one PNG of each region's base map on disk so the community
+            // map can be registered against it instead of picking pixels by eye.
+            try
+            {
+                string baseMapPath = Path.Combine(_modDirectory,
+                    $"basemap_{SanitizeFileName(sceneName)}.png");
+                if (!File.Exists(baseMapPath))
+                {
+                    WriteTextureToPng(owned, baseMapPath);
+                    LoggerInstance.Msg($"Exported region base map: {baseMapPath}");
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggerInstance.Warning($"Base map export failed: {ex.Message}");
+            }
         }
         catch (Exception ex)
         {
