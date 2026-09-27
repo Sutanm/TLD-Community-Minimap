@@ -13,6 +13,11 @@
   #side { width:340px; flex:0 0 340px; background:var(--panel); border-right:1px solid var(--line);
           overflow-y:auto; padding:14px; }
   #stage { flex:1; position:relative; overflow:hidden; background:#0d0f12; }
+  #banner { position:absolute; top:14px; left:50%; transform:translateX(-50%);
+            background:#1d4b7d; border:1px solid #2b6cb0; color:#dbeafe; padding:7px 16px;
+            border-radius:8px; font-size:12.5px; font-weight:600; display:none;
+            box-shadow:0 4px 14px rgba(0,0,0,.45); pointer-events:none; }
+  #banner.on { display:block; }
   canvas { display:block; touch-action:none; }
   canvas.grab { cursor:grab; } canvas.grabbing { cursor:grabbing; }
   canvas.rotate { cursor:crosshair; } canvas.pick { cursor:crosshair; }
@@ -143,7 +148,7 @@
 
     <div class="warnbox" id="warn"></div>
   </div>
-  <div id="stage"><canvas id="cv"></canvas></div>
+  <div id="stage"><canvas id="cv"></canvas><div id="banner"></div></div>
 </div>
 
 <script>
@@ -260,11 +265,13 @@
     ctx.save();
     ctx.translate(view.x, view.y); ctx.scale(view.s, view.s);
 
-    if (base && mode !== "overOnly") { ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over";
+    const effMode = pickTarget === "base" ? "baseOnly"
+                  : pickTarget === "over" ? "overOnly" : mode;
+    if (base && effMode !== "overOnly") { ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over";
                                        ctx.drawImage(base, 0, 0); }
-    if (over && mode !== "baseOnly") {
-      ctx.globalAlpha = (mode === "normal") ? opacity : 1;
-      ctx.globalCompositeOperation = (mode === "difference") ? "difference" : "source-over";
+    if (over && effMode !== "baseOnly") {
+      ctx.globalAlpha = (effMode === "normal") ? opacity : 1;
+      ctx.globalCompositeOperation = (effMode === "difference") ? "difference" : "source-over";
       ctx.save();
       ctx.transform(A[0], A[1], A[2], A[3], T[0], T[1]);
       ctx.drawImage(over, 0, 0);
@@ -331,8 +338,8 @@
     const bp = toBase(e);
 
     if (pickTarget) {                                       // correspondence picking
-      if (pickTarget === "base") { pendingBase = bp; pickTarget = null; }
-      else { pendingOver = apply(inv(A), T, bp); pickTarget = null; }
+      if (pickTarget === "base") { pendingBase = bp; pickTarget = pendingOver ? null : "over"; }
+      else { pendingOver = apply(inv(A), T, bp); pickTarget = pendingBase ? null : "base"; }
       if (pendingBase && pendingOver) {
         pairs.push({ b: pendingBase, o: pendingOver });
         pendingBase = pendingOver = null;
@@ -579,6 +586,12 @@
 
     $("pickBase").className = pickTarget === "base" ? "on" : "";
     $("pickOver").className = pickTarget === "over" ? "on" : "";
+    const bn = $("banner");
+    if (pickTarget === "base") { bn.className = "on"; bn.textContent = "正在图①上点 —— 当前只显示图①，点你要的那个地物"; }
+    else if (pickTarget === "over") { bn.className = "on"; bn.textContent = "正在图②上点 —— 当前只显示图②，点同一个地物"; }
+    else if (pendingBase) { bn.className = "on"; bn.textContent = "图①已点，接着点图②上的同一地物"; }
+    else if (pendingOver) { bn.className = "on"; bn.textContent = "图②已点，接着点图①上的同一地物"; }
+    else bn.className = "";
     $("solve").disabled = pairs.length < 3;
 
     const lines = [];
