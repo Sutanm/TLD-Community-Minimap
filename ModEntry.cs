@@ -51,6 +51,12 @@ public sealed class ModEntry : MelonMod
     private bool _baseMapPending;
     private string _baseMapRequestedScene = "";
     private DateTime _baseMapRequestUtc = DateTime.MinValue;
+
+    // Some scenes get no base map at all. We cannot tell "the game has no region here" from
+    // "the region just is not ready yet" without saying so out loud, so track how long the
+    // lookup has been failing and report it once.
+    private string _baseMapNullScene = "";
+    private DateTime _baseMapNullSinceUtc = DateTime.MinValue;
     private DateTime _elementLoadAfterUtc = DateTime.MinValue;
     private string _elementsLoadedForScene = "";
     private string _observedSceneName = "";
@@ -1239,7 +1245,25 @@ public sealed class ModEntry : MelonMod
         {
             RegionSpecification region = GameManager.TryGetCurrentRegion();
             if (region == null)
-                return;   // transient during scene load; try again next frame
+            {
+                // Retried every frame because the region is briefly unavailable during a scene
+                // load. If it stays unavailable, say so once: that is the difference between a
+                // slow load and a scene the game simply has no map for.
+                if (!string.Equals(_baseMapNullScene, sceneName, StringComparison.Ordinal))
+                {
+                    _baseMapNullScene = sceneName;
+                    _baseMapNullSinceUtc = DateTime.UtcNow;
+                }
+                else if ((DateTime.UtcNow - _baseMapNullSinceUtc).TotalSeconds > 3.0)
+                {
+                    _baseMapNullScene = "";
+                    LoggerInstance.Warning(
+                        $"No region spec for {sceneName}: GameManager.TryGetCurrentRegion() " +
+                        "stayed null for 3s, so there is no vanilla base map here.");
+                }
+                return;
+            }
+            _baseMapNullScene = "";
 
             if (!region.HasMiniMapTexture)
             {
