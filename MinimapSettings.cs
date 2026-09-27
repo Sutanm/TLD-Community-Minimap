@@ -44,8 +44,8 @@ internal sealed class MinimapSettings : JsonModSettings
     public int Margin = 24;
 
     [Name("局部缩放")]
-    [Description("玩家处于已校准范围内时，小地图的放大倍数。")]
-    [Slider(1.5f, 12f, 22, NumberFormat = "{0:F1}x")]
+    [Description("玩家处于已校准范围内时，小地图的放大倍数。原版地图标记较密集时可调高。")]
+    [Slider(1.5f, 30f, 58, NumberFormat = "{0:F1}x")]
     public float Zoom = 5f;
 
     [Name("玩家指针尺寸")]

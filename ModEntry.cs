@@ -6,10 +6,12 @@ using System.Text;
 using Il2Cpp;
 using Il2CppInterop.Runtime;
 using Il2CppInterop.Runtime.InteropTypes.Arrays;
+using Il2CppTLD.Scenes;
 using MelonLoader;
 using MelonLoader.Utils;
 using ModSettings;
 using UnityEngine;
+using UnityEngine.ResourceManagement.AsyncOperations;
 using UnityEngine.UI;
 using UnitySceneManager = UnityEngine.SceneManagement.SceneManager;
 
@@ -45,6 +47,17 @@ public sealed class ModEntry : MelonMod
     private bool _capturedThisVanillaMapOpen;
     private bool _vanillaMapWasOpen;
     private DateTime _vanillaCaptureAfterUtc = DateTime.MaxValue;
+    private AsyncOperationHandle<Texture2D> _baseMapHandle;
+    private bool _baseMapPending;
+    private string _baseMapRequestedScene = "";
+    private DateTime _baseMapRequestUtc = DateTime.MinValue;
+    private DateTime _elementLoadAfterUtc = DateTime.MinValue;
+    private string _elementsLoadedForScene = "";
+    private string _observedSceneName = "";
+    // Panel_Map lays its marker objects out at a hard-coded 0.33 root scale. Elements created
+    // through LoadMapElementsForScene never go through that layout, so their measured bounds
+    // come out exactly 3x too large; measured 52.0 vs 17.3, 32.0 vs 10.7, 47.8 vs 15.9.
+    private const float PanelFreeIconScale = 1f / 3f;
     private DisplayMode _displayMode = DisplayMode.MiniMap;
     private MapDefinition _currentDefinition;
     private string _loadedMapId = "";
@@ -64,6 +77,9 @@ public sealed class ModEntry : MelonMod
     private RawImage _markerImage;
     private readonly Texture2D[] _markerTextures = new Texture2D[6];
     private readonly List<VanillaIcon> _vanillaIcons = new();
+    private readonly List<VanillaIcon> _pendingVanillaIcons = new();
+    private DateTime _nextVanillaIconRefreshUtc = DateTime.MinValue;
+    private long _vanillaIconSignature;
 
     private sealed class VanillaIcon
     {
@@ -86,7 +102,7 @@ public sealed class ModEntry : MelonMod
             message => LoggerInstance.Warning(message));
         _calibrationLastWriteUtc = File.GetLastWriteTimeUtc(_calibrationPath);
         _sceneCatalogAfterUtc = DateTime.UtcNow.AddSeconds(5);
-        LoggerInstance.Msg("社区HUD地图 0.6.1 initialized.");
+        LoggerInstance.Msg("社区HUD地图 0.6.2 initialized.");
         LoggerInstance.Msg($"Map directory: {_mapsDirectory}");
     }
 
@@ -117,6 +133,10 @@ public sealed class ModEntry : MelonMod
             ApplyMapSourceSelection(scene.name, preferCommunity);
         }
 
+        bool playerReady = GameManager.m_Instance != null &&
+                           !GameManager.IsMainMenuActive() &&
+                           GameManager.GetPlayerTransform() != null;
+
         Panel_Map vanillaPanel = null;
         bool vanillaMapOpen = TryGetOpenVanillaMap(out vanillaPanel);
         if (!vanillaMapOpen)
@@ -140,9 +160,17 @@ public sealed class ModEntry : MelonMod
                 _vanillaCaptureAfterUtc = DateTime.UtcNow.AddMilliseconds(250);
         }
 
-        bool playerReady = GameManager.m_Instance != null &&
-                           !GameManager.IsMainMenuActive() &&
-                           GameManager.GetPlayerTransform() != null;
+        // The region's own base map is available without opening the game map panel, so the
+        // HUD appears on scene load exactly like the community-map source.
+        if (!preferCommunity && _currentDefinition != null && playerReady)
+        {
+            TryRequestVanillaBaseMap(scene.name);
+            PollVanillaBaseMap(scene.name);
+            if (!vanillaMapOpen && _textureReady)
+                TryLoadVanillaElementsWithoutPanel(scene.name);
+        }
+
+        TryRefreshVanillaIcons();
 
         if (preferCommunity && !_textureReady && _currentDefinition != null && playerReady &&
             DateTime.UtcNow >= _loadAfterUtc)
@@ -189,8 +217,17 @@ public sealed class ModEntry : MelonMod
 
     private void ObserveScene(int handle, string sceneName)
     {
+        bool sceneChanged = !string.Equals(_observedSceneName, sceneName, StringComparison.Ordinal);
         _observedSceneHandle = handle;
+        _observedSceneName = sceneName;
         SetUiVisible(false);
+
+        // Additive scene loads (TracksRegion_WILDLIFE, _SANDBOX, ...) re-fire scene
+        // initialisation for the same region. Rebuilding the map there would drop the loaded
+        // texture and markers, so only a genuine scene change resets state.
+        if (!sceneChanged && _currentDefinition != null)
+            return;
+
         ClearVanillaIcons();
         _usingVanillaMap = false;
         _vanillaProjectionScene = "";
@@ -200,6 +237,7 @@ public sealed class ModEntry : MelonMod
         {
             _textureReady = false;
             _loadAfterUtc = DateTime.MaxValue;
+            _baseMapRequestedScene = "";
             LoggerInstance.Msg($"Active scene has no map definition: {sceneName} (handle {handle}).");
             return;
         }
@@ -223,6 +261,12 @@ public sealed class ModEntry : MelonMod
             _textureReady = false;
             _loadAfterUtc = DateTime.MaxValue;
         }
+
+        _baseMapRequestedScene = "";
+        _elementsLoadedForScene = "";
+        _elementLoadAfterUtc = DateTime.UtcNow;
+        _vanillaIconSignature = 0;
+        _nextVanillaIconRefreshUtc = DateTime.MinValue;
 
         LoggerInstance.Msg(
             $"Active scene mapped: {sceneName} -> {_currentDefinition.DisplayName} " +
@@ -380,7 +424,8 @@ public sealed class ModEntry : MelonMod
         _backgroundImage.raycastTarget = false;
 
         GameObject mapObject = CreateUiObject("Map",
-            typeof(RectTransform), typeof(CanvasRenderer), typeof(RawImage));
+            typeof(RectTransform), typeof(CanvasRenderer), typeof(RawImage),
+            typeof(RectMask2D));
         mapObject.transform.SetParent(_uiRoot.transform, false);
         _mapRect = mapObject.GetComponent<RectTransform>();
         _mapImage = mapObject.GetComponent<RawImage>();
@@ -844,7 +889,7 @@ public sealed class ModEntry : MelonMod
                 return false;
 
             UITexture main = regionMap.GetComponent<UITexture>();
-            if (main == null || main.mainTexture == null)
+            if (main == null)
                 return false;
 
             Vector4 drawing = main.drawingDimensions;
@@ -852,11 +897,20 @@ public sealed class ModEntry : MelonMod
                 drawing.z - drawing.x, drawing.w - drawing.y);
             _vanillaTextureUv = main.uvRect;
             EnsureUnityUi();
-            CaptureVanillaIcons(regionMap.parent);
-            Texture2D capturedMain = CaptureTexture(main.mainTexture);
-            UseCapturedVanillaMap(capturedMain, sceneName);
+            _vanillaIconSignature = 0;
+            _nextVanillaIconRefreshUtc = DateTime.MinValue;
+
+            // The region base map normally supplies the terrain on its own. Only when it could
+            // not be loaded do we fall back to this surveyed texture, which is the path that
+            // requires the player to have opened the panel.
+            if (!_textureReady && main.mainTexture != null)
+            {
+                Texture2D capturedMain = CaptureTexture(main.mainTexture);
+                UseCapturedVanillaMap(capturedMain, sceneName);
+            }
+
             LoggerInstance.Msg(
-                $"Vanilla map refreshed from {regionMap.name}; " +
+                $"Vanilla map panel refreshed from {regionMap.name}; " +
                 $"bounds={_vanillaMapLocalBounds}, uv={_vanillaTextureUv}, " +
                 $"widget={main.width}x{main.height}.");
             return true;
@@ -868,9 +922,12 @@ public sealed class ModEntry : MelonMod
         }
     }
 
-    private void CaptureVanillaIcons(Transform mapElements)
+    private void CaptureVanillaIcons(Transform mapElements, bool keepExistingWhenEmpty = false,
+        bool allowInactive = false)
     {
-        ClearVanillaIcons();
+        // The HUD objects must exist before icons are parented to them.
+        EnsureUnityUi();
+        _pendingVanillaIcons.Clear();
         string[] containerNames =
         {
             "ActiveElementsBigSprite",
@@ -881,71 +938,166 @@ public sealed class ModEntry : MelonMod
         {
             Transform container = FindChildByName(mapElements, containerNames[i]);
             if (container != null)
-                CaptureVanillaIconsRecursive(container, mapElements);
+                CaptureVanillaIconsRecursive(container, mapElements, allowInactive);
         }
 
-        _markerRoot.transform.SetAsLastSibling();
-        LoggerInstance.Msg($"Captured {_vanillaIcons.Count} visible vanilla map icon layers.");
-    }
-
-    private void CaptureVanillaIconsRecursive(Transform transform, Transform mapElements)
-    {
-        if (!transform.gameObject.activeInHierarchy)
+        // With the panel closed the sprite tree may report nothing visible even though
+        // the markers still exist. Keep what we have rather than blanking the HUD.
+        if (_pendingVanillaIcons.Count == 0 && keepExistingWhenEmpty)
             return;
 
-        UISprite sprite = transform.GetComponent<UISprite>();
-        if (sprite != null && sprite.mainTexture != null && sprite.isVisible)
-        {
-            float alpha = sprite.CalculateFinalAlpha(Time.frameCount);
-            Vector4 sourceUv = sprite.drawingUVs;
-            var corners = sprite.worldCorners;
-            if (alpha > 0.01f && corners != null && corners.Length >= 4 &&
-                sourceUv.z > sourceUv.x && sourceUv.w > sourceUv.y)
-            {
-                Vector3 first = mapElements.InverseTransformPoint(corners[0]);
-                float minX = first.x;
-                float maxX = first.x;
-                float minY = first.y;
-                float maxY = first.y;
-                for (int i = 1; i < corners.Length; i++)
-                {
-                    Vector3 point = mapElements.InverseTransformPoint(corners[i]);
-                    minX = Mathf.Min(minX, point.x);
-                    maxX = Mathf.Max(maxX, point.x);
-                    minY = Mathf.Min(minY, point.y);
-                    maxY = Mathf.Max(maxY, point.y);
-                }
+        ClearVanillaIcons();
+        _vanillaIcons.AddRange(_pendingVanillaIcons);
+        _pendingVanillaIcons.Clear();
+        _markerRoot.transform.SetAsLastSibling();
+        LoggerInstance.Msg(
+            $"Captured {_vanillaIcons.Count} vanilla map marker layers " +
+            $"({(allowInactive ? "panel-free" : "panel-open")}).");
+    }
 
-                Vector2 minUv = VanillaLocalToTextureUv(minX, minY);
-                Vector2 maxUv = VanillaLocalToTextureUv(maxX, maxY);
-                GameObject iconObject = CreateUiObject("VanillaMapIcon",
-                    typeof(RectTransform), typeof(CanvasRenderer), typeof(RawImage));
-                iconObject.transform.SetParent(_mapRect, false);
-                RectTransform rect = iconObject.GetComponent<RectTransform>();
-                rect.anchorMin = new Vector2(0.5f, 0.5f);
-                rect.anchorMax = new Vector2(0.5f, 0.5f);
-                rect.pivot = new Vector2(0.5f, 0.5f);
-                RawImage image = iconObject.GetComponent<RawImage>();
-                image.texture = sprite.mainTexture;
-                image.uvRect = new Rect(sourceUv.x, sourceUv.y,
-                    sourceUv.z - sourceUv.x, sourceUv.w - sourceUv.y);
-                Color color = sprite.color;
-                color.a = alpha;
-                image.color = color;
-                image.raycastTarget = false;
-                _vanillaIcons.Add(new VanillaIcon
+    private static bool IsMapIconChrome(string name) =>
+        string.Equals(name, "HoverWidget", StringComparison.Ordinal) ||
+        string.Equals(name, "Label", StringComparison.Ordinal) ||
+        string.Equals(name, "LabelBG", StringComparison.Ordinal) ||
+        string.Equals(name, "highlight", StringComparison.Ordinal);
+
+    // NGUI only fills drawingUVs while a widget is actually being drawn. With the map panel    // closed nothing is drawn, so rebuild the atlas rectangle from the sprite data instead.
+    private static bool TryGetSpriteUv(UISprite sprite, out Vector4 uv)
+    {
+        uv = default;
+        try
+        {
+            Vector4 drawn = sprite.drawingUVs;
+            if (drawn.z > drawn.x && drawn.w > drawn.y)
+            {
+                uv = drawn;
+                return true;
+            }
+        }
+        catch
+        {
+            // fall through to the atlas lookup
+        }
+
+        try
+        {
+            if (sprite.atlas == null)
+                return false;
+            var data = sprite.atlas.GetSprite(sprite.spriteName);
+            Texture texture = sprite.atlas.texture;
+            if (data == null || texture == null || texture.width <= 0 || texture.height <= 0)
+                return false;
+
+            uv = new Vector4(
+                (float)data.x / texture.width,
+                1f - (float)(data.y + data.height) / texture.height,
+                (float)(data.x + data.width) / texture.width,
+                1f - (float)data.y / texture.height);
+            return uv.z > uv.x && uv.w > uv.y;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private void CaptureVanillaIconsRecursive(Transform transform, Transform mapElements,
+        bool allowInactive)
+    {
+        // With the panel closed, NGUI's own visibility test is unavailable, so the hover label
+        // chrome has to be skipped explicitly. Otherwise each marker's label background is
+        // captured as if it were a map icon.
+        if (allowInactive && IsMapIconChrome(transform.name))
+            return;
+
+        // With the map panel closed the whole subtree is inactive in the hierarchy, yet the
+        // element objects and their sprites still exist with valid transforms and atlases.
+        if (allowInactive)
+        {
+            if (!transform.gameObject.activeSelf)
+                return;
+        }
+        else if (!transform.gameObject.activeInHierarchy)
+        {
+            return;
+        }
+
+        UISprite sprite = transform.GetComponent<UISprite>();
+        if (sprite != null && sprite.mainTexture != null)
+        {
+            float alpha;
+            if (allowInactive)
+            {
+                // NGUI's isVisible is unusable here, but the widget's own enabled flag still
+                // reflects whether it would be drawn. Ignoring it pulls in glow/backdrop
+                // sprites that swell the markers.
+                try
                 {
-                    Root = iconObject,
-                    Rect = rect,
-                    MapUv = (minUv + maxUv) * 0.5f,
-                    MapUvSize = new Vector2(Mathf.Abs(maxUv.x - minUv.x),
-                        Mathf.Abs(maxUv.y - minUv.y))
-                });
+                    alpha = sprite.enabled ? sprite.alpha * sprite.color.a : 0f;
+                }
+                catch
+                {
+                    alpha = 0f;
+                }
+            }
+            else
+            {
+                alpha = sprite.isVisible ? sprite.CalculateFinalAlpha(Time.frameCount) : 0f;
+            }
+
+            if (alpha > 0.01f && TryGetSpriteUv(sprite, out Vector4 sourceUv))
+            {
+                var corners = sprite.worldCorners;
+                if (corners != null && corners.Length >= 4)
+                {
+                    Vector3 first = mapElements.InverseTransformPoint(corners[0]);
+                    float minX = first.x;
+                    float maxX = first.x;
+                    float minY = first.y;
+                    float maxY = first.y;
+                    for (int i = 1; i < corners.Length; i++)
+                    {
+                        Vector3 point = mapElements.InverseTransformPoint(corners[i]);
+                        minX = Mathf.Min(minX, point.x);
+                        maxX = Mathf.Max(maxX, point.x);
+                        minY = Mathf.Min(minY, point.y);
+                        maxY = Mathf.Max(maxY, point.y);
+                    }
+
+                    Vector2 minUv = VanillaLocalToTextureUv(minX, minY);
+                    Vector2 maxUv = VanillaLocalToTextureUv(maxX, maxY);
+                    var sizeUv = new Vector2(Mathf.Abs(maxUv.x - minUv.x),
+                        Mathf.Abs(maxUv.y - minUv.y));
+                    if (allowInactive)
+                        sizeUv *= PanelFreeIconScale;
+                    GameObject iconObject = CreateUiObject("VanillaMapIcon",
+                        typeof(RectTransform), typeof(CanvasRenderer), typeof(RawImage));
+                    iconObject.transform.SetParent(_mapRect, false);
+                    RectTransform rect = iconObject.GetComponent<RectTransform>();
+                    rect.anchorMin = new Vector2(0.5f, 0.5f);
+                    rect.anchorMax = new Vector2(0.5f, 0.5f);
+                    rect.pivot = new Vector2(0.5f, 0.5f);
+                    RawImage image = iconObject.GetComponent<RawImage>();
+                    image.texture = sprite.mainTexture;
+                    image.uvRect = new Rect(sourceUv.x, sourceUv.y,
+                        sourceUv.z - sourceUv.x, sourceUv.w - sourceUv.y);
+                    Color color = sprite.color;
+                    color.a = alpha;
+                    image.color = color;
+                    image.raycastTarget = false;
+                    _pendingVanillaIcons.Add(new VanillaIcon
+                    {
+                        Root = iconObject,
+                        Rect = rect,
+                        MapUv = (minUv + maxUv) * 0.5f,
+                        MapUvSize = sizeUv
+                    });
+                }
             }
         }
 
         for (int i = 0; i < transform.childCount; i++)
-            CaptureVanillaIconsRecursive(transform.GetChild(i), mapElements);
+            CaptureVanillaIconsRecursive(transform.GetChild(i), mapElements, allowInactive);
     }
 
     private Vector2 VanillaLocalToTextureUv(float x, float y)
@@ -1002,6 +1154,217 @@ public sealed class ModEntry : MelonMod
         }
 
         return null;
+    }
+
+    // Polls the marker containers so collected/searchable markers disappear from the HUD
+    // shortly after the game removes them, instead of only refreshing when M is pressed.
+    private void TryRefreshVanillaIcons()
+    {
+        if (!_usingVanillaMap || DateTime.UtcNow < _nextVanillaIconRefreshUtc)
+            return;
+
+        _nextVanillaIconRefreshUtc = DateTime.UtcNow.AddSeconds(1);
+        try
+        {
+            Panel_Map panel = InterfaceManager.GetPanel<Panel_Map>();
+            if (panel == null)
+                return;
+
+            // Markers are only read while the map panel is closed. The open panel lays its
+            // elements out at the current wheel-zoom scale (0.33 by default, 1.00 zoomed in),
+            // which would change the marker size, and the HUD is hidden while the map is open
+            // anyway.
+            if (panel.gameObject.activeInHierarchy)
+                return;
+
+            Transform mapElements = FindChildByName(panel.transform, "MapElements");
+            if (mapElements == null)
+                return;
+
+            long signature = ComputeVanillaIconSignature(mapElements);
+            if (signature == _vanillaIconSignature)
+                return;
+
+            _vanillaIconSignature = signature;
+            CaptureVanillaIcons(mapElements, true, true);
+        }
+        catch (Exception ex)
+        {
+            LoggerInstance.Warning($"Vanilla icon refresh failed: {ex.Message}");
+        }
+    }
+
+    private static long ComputeVanillaIconSignature(Transform mapElements)
+    {
+        string[] containerNames =
+        {
+            "ActiveElementsBigSprite",
+            "ActiveElementsSmallSprite",
+            "ActiveElementsDetailEntry"
+        };
+        long hash = 17;
+        for (int i = 0; i < containerNames.Length; i++)
+        {
+            Transform container = FindChildByName(mapElements, containerNames[i]);
+            if (container == null)
+                continue;
+            hash = hash * 31 + container.childCount;
+            for (int child = 0; child < container.childCount; child++)
+            {
+                Vector3 position = container.GetChild(child).localPosition;
+                hash = hash * 31 + (long)Mathf.Round(position.x * 10f);
+                hash = hash * 31 + (long)Mathf.Round(position.y * 10f);
+            }
+        }
+
+        return hash;
+    }
+
+    // Asks the game for the region's own base map. This is independent of Panel_Map, so the
+    // HUD no longer requires the player to open the game map first.
+    private void TryRequestVanillaBaseMap(string sceneName)
+    {
+        if (_baseMapPending || string.Equals(_baseMapRequestedScene, sceneName, StringComparison.Ordinal))
+            return;
+
+        try
+        {
+            RegionSpecification region = GameManager.TryGetCurrentRegion();
+            if (region == null)
+                return;   // transient during scene load; try again next frame
+
+            if (!region.HasMiniMapTexture)
+            {
+                // Genuinely unavailable for this region: stop asking, and let the surveyed
+                // texture fallback take over if the player opens the map panel.
+                _baseMapRequestedScene = sceneName;
+                LoggerInstance.Warning($"Region {sceneName} reports no base map texture.");
+                return;
+            }
+
+            _baseMapRequestedScene = sceneName;
+            _baseMapHandle = region.GetMiniMapTextureAsync();
+            _baseMapPending = true;
+            _baseMapRequestUtc = DateTime.UtcNow;
+            LoggerInstance.Msg($"Requested region base map for {sceneName}.");
+        }
+        catch (Exception ex)
+        {
+            _baseMapRequestedScene = sceneName;
+            LoggerInstance.Warning($"Region base map request failed for {sceneName}: {ex.Message}");
+        }
+    }
+
+    private void PollVanillaBaseMap(string sceneName)
+    {
+        if (!_baseMapPending)
+            return;
+
+        // Never leave the HUD permanently blank if the load silently stalls.
+        if ((DateTime.UtcNow - _baseMapRequestUtc).TotalSeconds > 15.0)
+        {
+            _baseMapPending = false;
+            LoggerInstance.Warning($"Region base map for {sceneName} timed out.");
+            return;
+        }
+
+        try
+        {
+            if (!_baseMapHandle.IsDone)
+                return;
+        }
+        catch (Exception ex)
+        {
+            _baseMapPending = false;
+            LoggerInstance.Warning($"Region base map handle failed: {ex.Message}");
+            return;
+        }
+
+        _baseMapPending = false;
+        try
+        {
+            Texture2D source = _baseMapHandle.Result;
+            if (source == null)
+            {
+                LoggerInstance.Warning($"Region base map for {sceneName} resolved to NULL.");
+                return;
+            }
+
+            // The loaded asset is not CPU-readable and is owned by Addressables, so keep an
+            // owned copy instead of handing the asset itself to the HUD.
+            Texture2D owned = CaptureTexture(source);
+            UseVanillaBaseMap(owned, sceneName);
+            LoggerInstance.Msg(
+                $"Vanilla base map active for {sceneName}: {owned.width}x{owned.height} " +
+                "(no map panel needed).");
+        }
+        catch (Exception ex)
+        {
+            LoggerInstance.Warning($"Region base map load failed for {sceneName}: {ex.Message}");
+        }
+    }
+
+    // Panel_Map exposes public entry points that build the marker objects. Calling them with
+    // the panel closed populates the same containers the open panel would, which lets markers
+    // appear without the player opening the map.
+    private void TryLoadVanillaElementsWithoutPanel(string sceneName)
+    {
+        // LoadMapElementsForScene appends to the existing containers, so calling it repeatedly
+        // duplicates every marker. Load each scene's elements exactly once.
+        if (string.Equals(_elementsLoadedForScene, sceneName, StringComparison.Ordinal))
+            return;
+        if (DateTime.UtcNow < _elementLoadAfterUtc)
+            return;
+        _elementLoadAfterUtc = DateTime.UtcNow.AddSeconds(2);
+
+        try
+        {
+            Panel_Map panel = InterfaceManager.GetPanel<Panel_Map>();
+            if (panel == null)
+                return;
+
+            bool requested = false;
+            try { panel.ForceUpdateRegion(); requested = true; }
+            catch (Exception ex) { LoggerInstance.Warning($"ForceUpdateRegion failed: {ex.Message}"); }
+
+            try { panel.LoadMapElementsForScene(sceneName); requested = true; }
+            catch (Exception ex) { LoggerInstance.Warning($"LoadMapElementsForScene failed: {ex.Message}"); }
+
+            try { panel.RefreshIconVisibility(); }
+            catch (Exception ex) { LoggerInstance.Warning($"RefreshIconVisibility failed: {ex.Message}"); }
+
+            if (!requested)
+                return;
+
+            _elementsLoadedForScene = sceneName;
+            Transform mapElements = FindChildByName(panel.transform, "MapElements");
+            if (mapElements == null)
+                return;
+
+            _vanillaIconSignature = ComputeVanillaIconSignature(mapElements);
+            CaptureVanillaIcons(mapElements, true, true);
+        }
+        catch (Exception ex)
+        {
+            LoggerInstance.Warning($"Closed-panel marker load failed: {ex.Message}");
+        }
+    }
+
+    private void UseVanillaBaseMap(Texture2D texture, string sceneName)    {
+        EnsureUnityUi();
+        Texture2D previous = _currentTexture;
+        _currentTexture = texture;
+        _mapImage.texture = texture;
+        _loadedMapId = "__basemap__" + sceneName;
+        _vanillaProjectionScene = sceneName;
+        // The base map shares the surveyed map's framing, verified by direct overlay of the
+        // two textures, so the same projection bounds apply.
+        _vanillaMapLocalBounds = new Rect(-325f, -325f, 650f, 650f);
+        _vanillaTextureUv = new Rect(0f, 0f, 1f, 1f);
+        _usingVanillaMap = true;
+        _textureReady = true;
+        if (!ReferenceEquals(previous, null) && !ReferenceEquals(previous, texture))
+            UnityEngine.Object.Destroy(previous);
     }
 
     private static Transform FindChildByName(Transform root, string name)

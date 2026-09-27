@@ -445,3 +445,90 @@ Vanilla map projection: TracksRegion -> TracksRegion (-130.577, 160.787, 0.000),
 - 原版地图的主纹理、已发现图标和官方坐标投影均已实机渲染成功；用户反馈“可以了，准确”。
 
 交接后可在两条主线中选择：继续第 9 节的民间地图粗校准，或先把第 14 节原版地图原型产品化。不要重新调查已经确认的原版纹理层级。
+
+## 16. 原版地图免开面板（v0.6.2，2026-09-27 完成）
+
+原版模式此前必须让玩家先按一次 M 才能出现 HUD。该限制**已解除**，根因不是权限问题，
+而是模组查错了对象：`FindActiveRegionMap` 要求 `activeInHierarchy`，而面板关闭时恒为 false。
+
+### 16.1 底图：不需要打开地图面板
+
+`Il2Cpp.Panel_Map` 之外还有一条更干净的路，全部为 public：
+
+```csharp
+RegionSpecification region = GameManager.TryGetCurrentRegion();   // static，无参
+if (region != null && region.HasMiniMapTexture)
+{
+    AsyncOperationHandle<Texture2D> handle = region.GetMiniMapTextureAsync();
+    // handle.IsDone 轮询；handle.Result 是 Texture2D
+}
+```
+
+- 实测 **~130 ms** 返回 **1024×1024 DXT5**（`readable=false`，需 blit 成可读副本）。
+- 内容是**完整区域**的木炭底图（铁路、山脉、湖泊齐全），**与勘测进度无关**。
+- 与 `Panel_Map` 的勘测纹理**完全同框**：把勘测图缩到 1024 后，在 ±120 像素范围内
+  扫描最佳偏移，结果稳定为 **(0,0)**。因此坐标换算沿用同一组
+  `bounds=(-325,-325,650,650)` + `uvRect=(0,0,1,1)`，**不需要第二套参数**。
+- 勘测纹理（2048）是**渐进解锁**的：实测某个存档只亮了 **5.7%** 的像素，其余全透明。
+  因此它不能当作 HUD 地形来源。
+
+用户已确认采用**底图常驻**：始终显示完整区域，不随勘测进度变化。
+
+### 16.2 标记：可以不开面板生成
+
+`Panel_Map` 暴露了三个 public 入口，面板关闭时调用同样有效：
+
+```csharp
+panel.ForceUpdateRegion();
+panel.LoadMapElementsForScene(sceneName);   // 参数是 Unity 场景名
+panel.RefreshIconVisibility();
+```
+
+调用后五个 `ActiveElements*` 容器立刻被填充（实测 `1 / 2 / 10`）。但读出来有四个坑，
+每一个都**必须**处理，否则 HUD 会被污染或标记消失：
+
+1. **`LoadMapElementsForScene` 是追加语义**——重复调用会让标记成倍累加
+   （实测 26 → 52）。每个场景只能调用一次。
+2. **不能依赖 `isVisible`**——面板关闭时它恒为 false（`mIsVisibleByPanel` 不更新）。
+   改用 `sprite.enabled && sprite.alpha * sprite.color.a > 0.01`。
+3. **`drawingUVs` 恒为无效值**——NGUI 只在绘制时填它。必须自己从图集重建，
+   且**必须做 V 轴翻转**（`UISpriteData` 是左上原点，Unity UV 是左下原点）：
+   ```csharp
+   var d = sprite.atlas.GetSprite(sprite.spriteName);
+   uv = new Vector4(d.x / tw, 1f - (d.y + d.height) / th,
+                    (d.x + d.width) / tw, 1f - d.y / th);
+   ```
+4. **尺寸必须乘 1/3**——面板布局时把元素根节点缩放到 **0.33**，而
+   `LoadMapElementsForScene` 创建的元素没走这一步。实测同一图标
+   `ngui=52.0`（自建）对 `17.3`（面板内），比值 **3.006**；多个图标一致为 3.0。
+
+另外要**跳过 `HoverWidget` / `Label` / `LabelBG` / `highlight` 子树**，
+否则每个标记的悬停标签底板都会被当成图标（表现为一堆白色方块）。
+
+### 16.3 0.33 不是常量，是滚轮缩放档位
+
+用户在实机中发现：M 大地图有**两档滚轮缩放**——默认 **0.33**、放大 **1.00**。
+
+**推论：从打开的面板读图标会继承当时的档位**，玩家只要放大过地图，
+抓到的尺寸就会偏大 3 倍。因此**只在面板关闭时读图标**，永远走自建元素这条一致路径。
+（面板打开时 HUD 本来就被隐藏，此时刷新图标没有意义。）
+
+### 16.4 其他
+
+- `GameManager.TryGetCurrentRegion()` 在场景加载瞬间可能返回 null，需下一帧重试。
+- `SaveGameSlotHelper.GetCurrentSaveSlotInfo()` 在游戏内返回 **null**
+  （`m_SaveSlotName` / `m_GameId` 都取不到），所以**按存档键控缓存这条路走不通**——
+  好在底图方案根本不需要缓存。
+- HUD 的地图容器已加 `RectMask2D`；否则边缘标记会画到小地图矩形之外。
+- 顺带修好一个老 bug：`OnSceneWasInitialized` 会被 `*_WILDLIFE` / `*_SANDBOX` 等
+  附加场景反复触发，导致同一区域重复 `ObserveScene`、已加载纹理被丢弃。
+  现在按**场景名**判断，同名不再重置状态。
+
+### 16.5 标记覆盖范围受勘测限制
+
+未勘测区域**不会**出现标记——这是游戏机制。绕过它需要
+`UnlockRegionMap` / `ForceUnlock` / `ApplySurvey` 等接口，**会写入存档的勘测/解锁状态**，
+与第 14 节第 3 条冲突。用户询问过"一键点亮全图"作弊选项，**尚未实现，待决策**。
+
+**标记尺寸不再需要手工标定**：全部由 16.2 第 4 条的 1/3 得出。
+
