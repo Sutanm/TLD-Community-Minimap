@@ -917,3 +917,155 @@ so there is no vanilla base map here.
 
 - `c378297` 过渡区诊断 —— **已提交，推送失败**（网络 `Connection was reset`）
 - 连同之前的提交，等网络恢复一条 `git push` 全部上传
+---
+
+## 20. 社区地图标记 BUG 与数据源机会（2026-09-27 深夜，读 MapIconFix 后）
+
+### 20.1 参考项目
+
+- 仓库：https://github.com/hzb1130/MapIconFix
+- 文件：`MapIconFix.cs`（4505 字节）、`MaoIconFix.csproj`、`README.md`
+- **无 LICENSE 文件**（见 20.5）
+
+### 20.2 BUG 机制：游戏既不删数据也不删图标
+
+`MapDetail` 记录着每处资源对应的可采集物：
+
+```
+mapDetail.m_HarvestablesForMapVisibility    // 各自的 h.m_Harvested 会变成 true
+mapDetail.m_HarvestablesSharingIcon         // 共用同一图标的那些
+```
+
+采集后 `h.m_Harvested` 翻成 `true`，**但没有任何东西把这个状态传给地图**。于是：
+
+- `MapDetailManager.s_MapDetails` 里那条记录还在
+- `MapElements` 里的 UI 图标也还画着
+
+MapIconFix 的做法（挂在 `Panel_Map.Enable(bool)` 的 Postfix 上）：
+
+```csharp
+mapPanel.RemoveMapDetailFromMap(marker, 0f);   // 隐藏图标
+MapDetailManager.s_MapDetails.Remove(marker);  // 从数据源删除
+mapPanel.RefreshIconVisibility();
+```
+
+判定条件是 `marker.m_IsSurveyed && 所有可采集物都已采集`。
+
+README 印证这是**跨存档累积**的：打开地图发现脏图标 → 关闭（修复）→ 再打开（正常）。之所以要开关一次，是因为清理挂在 `Enable` 上。
+
+### 20.3 我们的暴露面：会中招，但有条件
+
+我们的标记是从面板的 `MapElements` **UI 对象**刮下来的，游戏不删图标我们就刮到脏数据。
+
+但用户早期反馈"**游戏地图会消失、小地图不会**"，说明**同一次游戏内的采集游戏是处理的**。推测：
+
+| 情况 | 游戏 | 我们 |
+|---|---|---|
+| 本次游戏内采集 | 会移除 | 跟着正确 |
+| **跨存档残留的旧标记** | 不删 | **也会画出来** |
+
+这解释了为什么早期验证没发现问题——当时测的是当场采集。
+
+**重要**：用户装了 MapIconFix 之后，`s_MapDetails` 会在打开地图时被真的清干净，我们之后刮到的就是干净数据。**两个 mod 互补，不冲突。**
+
+### 20.4 最大的收获：可能一直在用最脏的数据源
+
+现状是**刮 UI 精灵**，为此付出了一整套代价（全部是实测踩出来的）：
+
+| 被迫做的事 | 原因 |
+|---|---|
+| 从图集手工重建 `drawingUVs`（含 V 翻转） | 面板关闭时 `drawingUVs` 是空的 |
+| 乘 1/3 | 面板外元素边界恰好大 3 倍 |
+| 跳过 `HoverWidget` / `Label` / `LabelBG` | 那是装饰不是标记 |
+| 用 `sprite.enabled && alpha*color.a` 判可见 | 面板关闭时 `isVisible` 不可用 |
+| 每秒比对签名 | 数据变了不会通知我们 |
+
+**而 `MapDetailManager.s_MapDetails` 是干净的数据源。** `MapDetail` 对象自带地图位置、类型、勘测状态、是否已采集——正是我们手工猜的那些东西。
+
+**若能确认 `MapDetail` 暴露地图坐标**（从它被 `RemoveMapDetailFromMap` 和 `MapElements` 消费来看极可能存在），则可以：
+
+- **扔掉 UI 刮取**，改读数据
+- **顺便自动修掉这个 bug**（自己读 `m_Harvested` 过滤，不依赖别人的 mod）
+- 打开标记类型、图层筛选、路线点等功能的可能性
+
+**这可能是接手以来性价比最高的一次重构**——不是加功能，而是**换掉最脆弱的一段代码**。
+
+**下一步**：探测 `MapDetail` 的字段（用 Il2CppInterop 反射列出字段名与类型）。
+
+### 20.5 许可证注意
+
+仓库只有 `MapIconFix.cs`、`MaoIconFix.csproj`、`README.md`，**没有 LICENSE 文件**。
+
+按惯例：**无许可证 = 默认保留所有权利**，不属于可自由使用的开源代码。
+
+| 可以 | 不可以 |
+|---|---|
+| 读它、理解机制 | 逐行照抄其代码 |
+| 使用它揭示的**游戏 API**（`s_MapDetails`、`RemoveMapDetailFromMap` 属于游戏，不属于作者） | 复制其 `AreAllHarvestablesHarvested` 实现 |
+| 独立实现同样逻辑，注明受其启发 | —— |
+
+**"开源"不等于"随便用"。** GitHub 上没写 license 的仓库默认 all rights reserved。
+
+**建议**：社区氛围友好，直接找 hzb 要一个 MIT 许可（加个 LICENSE 文件即可）。大概率会给，之后参考什么都名正言顺。
+
+### 20.6 重要修正：面板风险要收窄（补充 §19.3）
+
+MapIconFix 是一份**反例证据**——它在改游戏的数据模型，而且是个已发布、能用的 mod：
+
+```csharp
+MapDetailManager.s_MapDetails.Remove(marker);   // 直接改游戏数据模型
+mapPanel.RemoveMapDetailFromMap(marker, 0f);    // 调面板公开方法
+mapPanel.RefreshIconVisibility();
+```
+
+所以"碰一下就崩"的判断**必须收窄**：
+
+| 操作 | 实证结论 |
+|---|---|
+| 调面板公开方法（`RemoveMapDetailFromMap` / `RefreshIconVisibility`） | ✅ 安全，两边都在用 |
+| **增删 `s_MapDetails` 条目** | ✅ **MapIconFix 就在做** |
+| **`LoadMapElementsForScene` 重建** | ⚠️ **会追加**（我们实测 26→52） |
+
+**"面板是天坑"这个印象，很可能主要来自某一个方法的重入行为。** 这把"整块禁区"缩小成了"一个要小心的调用"。
+
+§19.3 的"不要碰"仍然成立，但**理由要更新为工程判断，而不是恐惧**：
+
+> 不碰是因为**没必要**（替代品已经能达成目标），而不是因为**碰不得**。
+> 唯一确认的危险点是 `LoadMapElementsForScene` 的重入语义。
+
+### 20.7 行动清单（按性价比）
+
+| # | 事项 | 价值 |
+|---|---|---|
+| 1 | 探测 `MapDetail` / `MapDetailManager.s_MapDetails` 字段，评估替换 UI 刮取 | ⭐⭐⭐ 换掉最脆的代码 |
+| 2 | 自己实现标记清理（读 `m_Harvested` 过滤），不依赖 MapIconFix | ⭐⭐ 顺带修 bug，HUD 永远干净 |
+| 3 | 找 hzb 要许可证 | ⭐⭐ 法律上站得住 |
+| 4 | 记录用户已取得社区地图作者的**再分发 / 修改 / 打包**授权（见 20.8） | ⭐⭐ |
+
+第 1 与第 2 是同一件事的两面：一旦读 `MapDetail`，就同时得到干净数据源与自动过滤能力。
+
+### 20.8 分发与授权的新进展
+
+用户已确认：**社区地图作者的授权已拿到手。**
+
+由此：
+
+- **地图包拆分从可选变成应该做**，但驱动力是**体积**（源图约 110 MB）和**开箱即用**，不再是版权
+- **可以做开箱即用**：`CommunityMinimap.Maps\` 打包 JPG + `calibrations.json`，装上即用，无需玩家跑 `prepare-maps.ps1`
+- **校准也一起发**：`calibrations.json` 是我们自己的数据，本来就不涉及版权
+
+**仍然不按"原版 / 社区"拆代码**（理由见 §19.2 与本次讨论）：90% 复杂度共享、回退功能需要同进程双来源、双 HUD 冲突、双倍维护。**正确的切分线是代码与数据。**
+
+**另需补做**：把授权写进仓库（`CREDITS.md` / `MAP-LICENSE.md`），记录署名、授权范围、日期、原帖链接。口头授权在公开项目里无法自证。README 与设置页必须保留作者署名。
+
+### 20.9 顺带确认的一条 UX 问题
+
+**玩家肌肉记忆是按 M，不是按 Tab。** 现在我们的全屏地图在 `Tab`，而 `M` 打开的是游戏自己的地图（未勘测就是空的）。很多人不会发现 Tab。
+
+**接管 M 键**（拦住 → 打开我们的全屏地图）是投入产出比最高的一次改动：
+
+- 约 10 行（`InputPatches.cs` 已有基础设施，现成在拦 Escape）
+- **不打开游戏面板**，风险接近于零
+- 一次性解决发现性问题
+
+做完之后，"要不要碰 Panel_Map"的动机又少一大半。
