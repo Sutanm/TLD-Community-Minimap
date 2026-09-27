@@ -210,28 +210,54 @@ function compute() {
     maxRes = Math.max(maxRes, Math.hypot(eu, ev));
   }
 
+  // Fit a similarity in the map plane, NOT just scale+translation: some community maps are
+  // rotated relative to the in-game map, and forcing zero rotation would silently skew them.
+  // Work in complex numbers: z = u + i*(-v) (v flipped so both axes point "down" like image
+  // rows), w = mapX + i*mapY, and solve w = a*z + c in the least-squares sense. |a| is the
+  // scale and arg(a) the rotation, so a near-zero angle confirms the two maps share an
+  // orientation.
   const manualS = parseFloat(document.getElementById("sInput").value) || 8.61;
-  let S = manualS, tx = 0, ty = 0, fitted = false;
+  let aRe = manualS, aIm = 0, tx = 0, ty = 0, fitted = false, theta = 0;
 
-  // anchors
   const A = pts.filter(p => state.anchors.has(p.id)).map(p => ({ ...p, ...state.anchors.get(p.id) }));
   if (A.length >= 2) {
-    // unknowns S, tx, ty;  X = S u + tx ;  Y = -S v + ty
-    const N = [[0,0,0],[0,0,0],[0,0,0]], b = [0,0,0];
-    const add = (r, val) => { for (let i=0;i<3;i++){ b[i]+=r[i]*val; for(let j=0;j<3;j++) N[i][j]+=r[i]*r[j]; } };
-    for (const a of A) { add([a.u, 1, 0], a.px); add([-a.v, 0, 1], a.py); }
-    const s = solve3(N, b);
-    if (s) { S = s[0]; tx = s[1]; ty = s[2]; fitted = true; }
+    const n = A.length;
+    let mzx = 0, mzy = 0, mwx = 0, mwy = 0;
+    for (const a of A) { mzx += a.u; mzy += -a.v; mwx += a.px; mwy += a.py; }
+    mzx /= n; mzy /= n; mwx /= n; mwy /= n;
+    let numRe = 0, numIm = 0, den = 0;
+    for (const a of A) {
+      const dzx = a.u - mzx, dzy = -a.v - mzy;
+      const dwx = a.px - mwx, dwy = a.py - mwy;
+      numRe += dzx*dwx + dzy*dwy;
+      numIm += dzx*dwy - dzy*dwx;
+      den   += dzx*dzx + dzy*dzy;
+    }
+    if (den > 1e-9) {
+      aRe = numRe/den; aIm = numIm/den;
+      tx = mwx - (aRe*mzx - aIm*mzy);
+      ty = mwy - (aRe*mzy + aIm*mzx);
+      fitted = true;
+      theta = Math.atan2(aIm, aRe) * 180 / Math.PI;
+    }
   }
   if (!fitted) {
-    if (A.length >= 1) { tx = A[0].px - S * A[0].u; ty = A[0].py + S * A[0].v; }
-    else return { fit, S, tx, ty, fitted, maxRes, pts: [], anchorErrors: [] };
+    aRe = manualS; aIm = 0;
+    if (A.length >= 1) {
+      tx = A[0].px - aRe * A[0].u;
+      ty = A[0].py - aRe * (-A[0].v);
+    } else {
+      return { fit, S: manualS, theta: 0, tx: 0, ty: 0, fitted: false, maxRes,
+               pts: [], anchorErrors: [] };
+    }
   }
+  const S = Math.hypot(aRe, aIm);
 
   const out = pts.map(p => {
     const u = fit.u[0]*p.worldX + fit.u[1]*p.worldZ + fit.u[2];
     const v = fit.v[0]*p.worldX + fit.v[1]*p.worldZ + fit.v[2];
-    return { ...p, u, v, mx: S*u + tx, my: -S*v + ty };
+    const zx = u, zy = -v;
+    return { ...p, u, v, mx: aRe*zx - aIm*zy + tx, my: aRe*zy + aIm*zx + ty };
   });
 
   const anchorErrors = A.map(a => {
@@ -258,7 +284,7 @@ function compute() {
     scaleY = Math.sqrt(Math.max(1e-12, tr/2 - disc));
     aniso = scaleX / scaleY;
   }
-  return { fit, S, tx, ty, fitted, maxRes, pts: out, anchorErrors, aniso, scaleX, scaleY };
+  return { fit, S, theta, tx, ty, fitted, maxRes, pts: out, anchorErrors, aniso, scaleX, scaleY };
 }
 
 // ---------------- render ----------------
@@ -298,6 +324,11 @@ function renderStats(r) {
   const rows = [];
   rows.push(["F9 数据一致性（world→NGUI 残差）", r.maxRes.toExponential(2) + " NGUI"]);
   rows.push(["S", r.S.toFixed(4) + (r.fitted ? "（已拟合）" : "（手动）")]);
+  const th = ((r.theta + 180) % 360 + 360) % 360 - 180;
+  const thCls = Math.abs(th) < 0.5 ? "ok" : (Math.abs(th) < 3 ? "" : "warn");
+  rows.push(["相对原版图的旋转",
+             `<span class="${thCls}">${th.toFixed(2)}°</span>` +
+             (Math.abs(th) < 0.5 ? "（无旋转）" : (Math.abs(th) > 5 ? "（这张图是转过的！）" : ""))]);
   rows.push(["平移 tx, ty", r.tx.toFixed(1) + ", " + r.ty.toFixed(1)]);
   if (r.aniso) rows.push(["各向异性", r.aniso.toFixed(4) + " (" + ((r.aniso-1)*100).toFixed(2) + "%)"]);
   if (r.scaleX) rows.push(["px / 世界单位", r.scaleX.toFixed(3) + " / " + r.scaleY.toFixed(3)]);
