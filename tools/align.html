@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>地图对齐工具 · Community Minimap</title>
+<style>
+  :root { --bg:#14161a; --panel:#1c1f26; --line:#2c313c; --fg:#e6e9ef; --dim:#98a1b3;
+          --accent:#5aa9ff; --ok:#5ddc9a; --warn:#ffb454; }
+  * { box-sizing: border-box; }
+  html, body { margin:0; height:100%; background:var(--bg); color:var(--fg);
+               font:13px/1.5 "Segoe UI", "Microsoft YaHei", system-ui, sans-serif; }
+  #app { display:flex; height:100%; }
+  #side { width:330px; flex:0 0 330px; background:var(--panel); border-right:1px solid var(--line);
+          overflow-y:auto; padding:14px; }
+  #stage { flex:1; position:relative; overflow:hidden; background:#0d0f12; }
+  canvas { display:block; cursor:grab; }
+  canvas.dragging { cursor:grabbing; }
+  h1 { font-size:14px; margin:0 0 4px; }
+  h2 { font-size:12px; color:var(--dim); text-transform:none; margin:18px 0 8px;
+       border-bottom:1px solid var(--line); padding-bottom:5px; font-weight:600; }
+  .sub { color:var(--dim); font-size:11.5px; margin-bottom:12px; }
+  label.file { display:block; margin-bottom:10px; }
+  label.file span { display:block; color:var(--dim); margin-bottom:4px; font-size:11.5px; }
+  input[type=file] { width:100%; font-size:11.5px; color:var(--dim); }
+  .row { display:flex; align-items:center; gap:8px; margin-bottom:9px; }
+  .row .name { flex:0 0 74px; color:var(--dim); font-size:11.5px; }
+  .row input[type=range] { flex:1; min-width:0; accent-color:var(--accent); }
+  .row input[type=number] { flex:0 0 76px; background:#12141a; color:var(--fg);
+                            border:1px solid var(--line); border-radius:5px; padding:3px 6px;
+                            font-size:11.5px; text-align:right; }
+  .readout { background:#12141a; border:1px solid var(--line); border-radius:7px; padding:10px 12px; }
+  .readout .big { font-size:22px; font-weight:700; color:var(--ok); font-variant-numeric:tabular-nums; }
+  .readout .big small { font-size:12px; color:var(--dim); font-weight:400; }
+  .kv { display:flex; justify-content:space-between; padding:3px 0; font-size:11.5px;
+        font-variant-numeric:tabular-nums; }
+  .kv span:first-child { color:var(--dim); }
+  button { background:#252a34; color:var(--fg); border:1px solid var(--line); border-radius:6px;
+           padding:6px 11px; cursor:pointer; font-size:11.5px; }
+  button:hover { background:#2f3644; }
+  button.primary { background:#1d4b7d; border-color:#2b6cb0; }
+  .btns { display:flex; gap:7px; flex-wrap:wrap; margin-bottom:10px; }
+  .hint { color:var(--dim); font-size:11px; line-height:1.75; }
+  .hint b { color:var(--fg); font-weight:600; }
+  .warnbox { background:#3a2a12; border:1px solid #6b4a1c; color:#ffcf8a;
+             border-radius:7px; padding:9px 11px; font-size:11.5px; margin-top:12px; }
+  select { background:#12141a; color:var(--fg); border:1px solid var(--line);
+           border-radius:5px; padding:4px 6px; font-size:11.5px; flex:1; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="side">
+    <h1>地图对齐工具</h1>
+    <div class="sub">底图固定不可旋转；对比图可旋转、可拉伸。对齐后读取角度。</div>
+
+    <label class="file"><span>① 底图（不透明、不可旋转）</span>
+      <input type="file" id="fileBase" accept="image/*"></label>
+    <label class="file"><span>② 对比图（半透明、可旋转拉伸）</span>
+      <input type="file" id="fileOver" accept="image/*"></label>
+
+    <h2>对比图变换</h2>
+    <div class="row"><span class="name">旋转</span>
+      <input type="range" id="rotR" min="-180" max="180" step="0.1" value="0">
+      <input type="number" id="rotN" step="0.1" value="0"></div>
+    <div class="row"><span class="name">缩放 X</span>
+      <input type="range" id="sxR" min="0.02" max="4" step="0.001" value="1">
+      <input type="number" id="sxN" step="0.001" value="1"></div>
+    <div class="row"><span class="name">缩放 Y</span>
+      <input type="range" id="syR" min="0.02" max="4" step="0.001" value="1">
+      <input type="number" id="syN" step="0.001" value="1"></div>
+    <div class="row"><span class="name">X 位置</span>
+      <input type="range" id="txR" min="-3000" max="6000" step="1" value="0">
+      <input type="number" id="txN" step="1" value="0"></div>
+    <div class="row"><span class="name">Y 位置</span>
+      <input type="range" id="tyR" min="-3000" max="6000" step="1" value="0">
+      <input type="number" id="tyN" step="1" value="0"></div>
+    <div class="row"><span class="name">透明度</span>
+      <input type="range" id="opR" min="0" max="1" step="0.01" value="0.55">
+      <input type="number" id="opN" step="0.01" value="0.55"></div>
+    <div class="row"><span class="name">混合</span>
+      <select id="mode">
+        <option value="normal">半透明叠加（对齐用）</option>
+        <option value="difference">差异（对齐准了会变黑）</option>
+        <option value="overOnly">只看对比图</option>
+        <option value="baseOnly">只看底图</option>
+      </select></div>
+    <div class="btns">
+      <button id="swapFlip">水平翻转对比图</button>
+      <button id="flipV">垂直翻转对比图</button>
+    </div>
+
+    <h2>读数</h2>
+    <div class="readout">
+      <div class="big" id="bigRot">0.0°<small> 顺时针为正</small></div>
+      <div class="kv"><span>缩放 X / Y</span><span id="kvScale">—</span></div>
+      <div class="kv"><span>拉伸比 X:Y</span><span id="kvStretch">—</span></div>
+      <div class="kv"><span>对比图中心</span><span id="kvPos">—</span></div>
+      <div class="kv"><span>底图尺寸</span><span id="kvBase">—</span></div>
+      <div class="kv"><span>对比图尺寸</span><span id="kvOver">—</span></div>
+      <div class="kv"><span>视图缩放</span><span id="kvView">—</span></div>
+    </div>
+
+    <div class="btns" style="margin-top:12px">
+      <button class="primary" id="resetFit">居中并适配</button>
+      <button id="resetView">复位视图</button>
+      <button id="rot90cw">转 +90°</button>
+      <button id="rot90ccw">转 −90°</button>
+      <button id="rot0">旋转归零</button>
+    </div>
+
+    <h2>操作</h2>
+    <div class="hint">
+      <b>拖动</b> 移动对比图<br>
+      <b>Shift + 拖动</b> 绕中心旋转<br>
+      <b>Alt + 拖动</b> 上下拖动缩放<br>
+      <b>右键 / 中键拖动</b> 平移视图<br>
+      <b>滚轮</b> 缩放视图<br>
+      <b>方向键</b> 微调对比图 1 像素（Shift 为 10）<br>
+      <b>[ ]</b> 旋转 ∓0.1°　<b>, .</b> 旋转 ∓1°
+    </div>
+
+    <div class="warnbox">
+      底图请放<b>原版底图</b>（basemap_*.png），对比图放<b>社区高清图</b>。
+      对齐后，把上方那个<b>旋转读数</b>告诉我即可。
+    </div>
+  </div>
+
+  <div id="stage"><canvas id="cv"></canvas></div>
+</div>
+
+<script>
+(() => {
+  const cv = document.getElementById("cv");
+  const ctx = cv.getContext("2d");
+  const stage = document.getElementById("stage");
+
+  const base = { img: null };
+  const over = { img: null, x: 0, y: 0, rot: 0, sx: 1, sy: 1, flipH: false, flipV: false };
+  const view = { scale: 1, x: 0, y: 0 };
+  let opacity = 0.55;
+  let mode = "normal";
+
+  const $ = id => document.getElementById(id);
+
+  function resize() {
+    const r = stage.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    cv.width = Math.round(r.width * dpr);
+    cv.height = Math.round(r.height * dpr);
+    cv.style.width = r.width + "px";
+    cv.style.height = r.height + "px";
+    ctx.setTransform(1,0,0,1,0,0);
+    render();
+  }
+  window.addEventListener("resize", resize);
+
+  function loadImage(file, target, after) {
+    const url = URL.createObjectURL(file);
+    const im = new Image();
+    im.onload = () => { target.img = im; URL.revokeObjectURL(url); after && after(); };
+    im.onerror = () => alert("图片加载失败：" + file.name);
+    im.src = url;
+  }
+
+  $("fileBase").onchange = e => {
+    const f = e.target.files[0]; if (!f) return;
+    loadImage(f, base, () => { fitOverlay(); resetView(); sync(); render(); });
+  };
+  $("fileOver").onchange = e => {
+    const f = e.target.files[0]; if (!f) return;
+    loadImage(f, over, () => { fitOverlay(); sync(); render(); });
+  };
+
+  // initial: overlay scaled so its width matches the base width, centred on the base
+  function fitOverlay() {
+    if (!base.img || !over.img) return;
+    const s = base.img.width / over.img.width;
+    over.sx = s; over.sy = s;
+    over.x = base.img.width / 2;
+    over.y = base.img.height / 2;
+    over.rot = 0; over.flipH = false; over.flipV = false;
+    const r = Math.max(over.sx, over.sy);
+    for (const [rng, num, val] of [["sxR","sxN",over.sx],["syR","syN",over.sy]]) {
+      $(rng).min = 0.02; $(rng).max = 4; $(rng).value = val; $(num).value = val.toFixed(3);
+    }
+  }
+
+  function resetView() {
+    const pad = 20;
+    if (base.img) {
+      const s = Math.min((cv.clientWidth - pad*2) / base.img.width,
+                         (cv.clientHeight - pad*2) / base.img.height);
+      view.scale = s;
+      view.x = (cv.clientWidth - base.img.width * s) / 2;
+      view.y = (cv.clientHeight - base.img.height * s) / 2;
+    } else { view.scale = 1; view.x = 0; view.y = 0; }
+  }
+
+  function render() {
+    const dpr = window.devicePixelRatio || 1;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, cv.width, cv.height);
+    ctx.fillStyle = "#0d0f12";
+    ctx.fillRect(0, 0, cv.width, cv.height);
+    if (!base.img && !over.img) return;
+
+    ctx.save();
+    ctx.translate(view.x, view.y);
+    ctx.scale(view.scale, view.scale);
+
+    if (base.img && mode !== "overOnly") {
+      ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = "source-over";
+      ctx.drawImage(base.img, 0, 0);
+    }
+    if (over.img && mode !== "baseOnly") {
+      ctx.globalAlpha = (mode === "normal") ? opacity : 1;
+      ctx.globalCompositeOperation = (mode === "difference") ? "difference" : "source-over";
+      ctx.save();
+      ctx.translate(over.x, over.y);
+      ctx.rotate(over.rot * Math.PI / 180);
+      ctx.scale(over.sx * (over.flipH ? -1 : 1), over.sy * (over.flipV ? -1 : 1));
+      ctx.drawImage(over.img, -over.img.width/2, -over.img.height/2);
+      ctx.restore();
+      // outline of the transformed overlay, so an off-screen edge is still findable
+      ctx.globalAlpha = 0.9;
+      ctx.globalCompositeOperation = "source-over";
+      ctx.strokeStyle = "#5aa9ff";
+      ctx.lineWidth = 1.5 / view.scale;
+      ctx.save();
+      ctx.translate(over.x, over.y);
+      ctx.rotate(over.rot * Math.PI / 180);
+      ctx.scale(over.sx * (over.flipH ? -1 : 1), over.sy * (over.flipV ? -1 : 1));
+      ctx.strokeRect(-over.img.width/2, -over.img.height/2, over.img.width, over.img.height);
+      ctx.restore();
+    }
+    ctx.restore();
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = "source-over";
+  }
+
+  // ---- controls -------------------------------------------------------------
+  function bindPair(rangeId, numId, get, set, fmt) {
+    const r = $(rangeId), n = $(numId);
+    const push = v => { set(v); sync(); render(); };
+    r.oninput = () => push(parseFloat(r.value));
+    n.onchange = () => push(parseFloat(n.value) || 0);
+    return push;
+  }
+
+  bindPair("rotR","rotN", () => over.rot, v => over.rot = v);
+  bindPair("sxR","sxN",  () => over.sx,  v => over.sx = Math.max(0.001, v));
+  bindPair("syR","syN",  () => over.sy,  v => over.sy = Math.max(0.001, v));
+  bindPair("txR","txN",  () => over.x,   v => over.x = v);
+  bindPair("tyR","tyN",  () => over.y,   v => over.y = v);
+  bindPair("opR","opN",  () => opacity,  v => opacity = Math.min(1, Math.max(0, v)));
+
+  $("mode").onchange = e => { mode = e.target.value; render(); sync(); };
+  $("resetFit").onclick = () => { fitOverlay(); sync(); render(); };
+  $("resetView").onclick = () => { resetView(); sync(); render(); };
+  $("rot90cw").onclick  = () => { spin(+90); };
+  $("rot90ccw").onclick = () => { spin(-90); };
+  $("rot0").onclick     = () => { over.rot = 0; sync(); render(); };
+  $("swapFlip").onclick = () => { over.flipH = !over.flipH; render(); };
+  $("flipV").onclick    = () => { over.flipV = !over.flipV; render(); };
+
+  function spin(d) {
+    if (!over.img) return;
+    over.rot = ((over.rot + d + 180) % 360 + 360) % 360 - 180;
+    // keep the overlay centred on the same point while it spins
+    sync(); render();
+  }
+
+  function sync() {
+    const set = (r, n, v, dec) => {
+      const rr = $(r), nn = $(n);
+      if (rr.min !== "" && v < parseFloat(rr.min)) rr.min = String(Math.floor(v));
+      if (rr.max !== "" && v > parseFloat(rr.max)) rr.max = String(Math.ceil(v));
+      rr.value = v; nn.value = dec === undefined ? v : v.toFixed(dec);
+    };
+    set("rotR","rotN", over.rot, 1);
+    set("sxR","sxN", over.sx, 3);
+    set("syR","syN", over.sy, 3);
+    set("txR","txN", over.x, 0);
+    set("tyR","tyN", over.y, 0);
+    set("opR","opN", opacity, 2);
+
+    const norm = ((over.rot % 360) + 540) % 360 - 180;
+    $("bigRot").innerHTML = norm.toFixed(1) + "°<small> 顺时针为正</small>";
+    $("kvScale").textContent = over.sx.toFixed(4) + " / " + over.sy.toFixed(4);
+    $("kvStretch").textContent = (over.sx / over.sy).toFixed(4) + " : 1";
+    $("kvPos").textContent = over.x.toFixed(0) + ", " + over.y.toFixed(0);
+    $("kvBase").textContent = base.img ? base.img.width + "×" + base.img.height : "—";
+    $("kvOver").textContent = over.img ? over.img.width + "×" + over.img.height : "—";
+    $("kvView").textContent = view.scale.toFixed(3) + "×";
+  }
+
+  // ---- mouse ----------------------------------------------------------------
+  let drag = null;
+  const toWorld = (e) => {
+    const r = cv.getBoundingClientRect();
+    return { x: (e.clientX - r.left - view.x) / view.scale,
+             y: (e.clientY - r.top  - view.y) / view.scale };
+  };
+
+  cv.addEventListener("contextmenu", e => e.preventDefault());
+  cv.addEventListener("mousedown", e => {
+    cv.setPointerCapture(e.pointerId);
+    const w = toWorld(e);
+    if (e.button === 2 || e.button === 1) { drag = { kind: "view", sx: e.clientX, sy: e.clientY, vx: view.x, vy: view.y }; }
+    else if (e.shiftKey && over.img)       { drag = { kind: "rot", cx: over.x, cy: over.y, a0: Math.atan2(w.y - over.y, w.x - over.x), r0: over.rot }; }
+    else if (e.altKey && over.img)         { drag = { kind: "scale", sy: e.clientY, sx0: over.sx, sy0: over.sy }; }
+    else if (over.img)                     { drag = { kind: "move", dx: w.x - over.x, dy: w.y - over.y }; }
+    else                                   { drag = { kind: "view", sx: e.clientX, sy: e.clientY, vx: view.x, vy: view.y }; }
+    cv.classList.add("dragging");
+  });
+
+  cv.addEventListener("pointermove", e => {
+    if (!drag) return;
+    if (drag.kind === "view") {
+      view.x = drag.vx + (e.clientX - drag.sx);
+      view.y = drag.vy + (e.clientY - drag.sy);
+      sync();
+    } else if (drag.kind === "move") {
+      const w = toWorld(e);
+      over.x = w.x - drag.dx; over.y = w.y - drag.dy;
+      sync();
+    } else if (drag.kind === "rot") {
+      const w = toWorld(e);
+      const a = Math.atan2(w.y - drag.cy, w.x - drag.cx);
+      over.rot = drag.r0 + (a - drag.a0) * 180 / Math.PI;
+      over.rot = ((over.rot % 360) + 540) % 360 - 180;
+      sync();
+    } else if (drag.kind === "scale") {
+      const f = Math.exp((e.clientY - drag.sy) * -0.004);
+      over.sx = Math.max(0.001, drag.sx0 * f);
+      over.sy = Math.max(0.001, drag.sy0 * f);
+      sync();
+    }
+    render();
+  });
+
+  const endDrag = () => { drag = null; cv.classList.remove("dragging"); };
+  cv.addEventListener("pointerup", endDrag);
+  cv.addEventListener("pointercancel", endDrag);
+
+  cv.addEventListener("wheel", e => {
+    e.preventDefault();
+    const r = cv.getBoundingClientRect();
+    const mx = e.clientX - r.left, my = e.clientY - r.top;
+    const f = Math.exp(-e.deltaY * 0.0015);
+    const ns = Math.min(40, Math.max(0.02, view.scale * f));
+    view.x = mx - (mx - view.x) * (ns / view.scale);
+    view.y = my - (my - view.y) * (ns / view.scale);
+    view.scale = ns;
+    sync(); render();
+  }, { passive: false });
+
+  window.addEventListener("keydown", e => {
+    if (!over.img) return;
+    const big = e.shiftKey ? 10 : 1;
+    let hit = true;
+    switch (e.key) {
+      case "ArrowLeft":  over.x -= big; break;
+      case "ArrowRight": over.x += big; break;
+      case "ArrowUp":    over.y -= big; break;
+      case "ArrowDown":  over.y += big; break;
+      case "[": over.rot -= 0.1; break;
+      case "]": over.rot += 0.1; break;
+      case ",": over.rot -= 1; break;
+      case ".": over.rot += 1; break;
+      default: hit = false;
+    }
+    if (hit) {
+      over.rot = ((over.rot % 360) + 540) % 360 - 180;
+      e.preventDefault(); sync(); render();
+    }
+  });
+
+  sync();
+  resize();
+})();
+</script>
+</body>
+</html>
