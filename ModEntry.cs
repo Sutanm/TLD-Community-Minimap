@@ -909,10 +909,18 @@ public sealed class ModEntry : MelonMod
                 UseCapturedVanillaMap(capturedMain, sceneName);
             }
 
+            // Some regions store their base map texture rotated and let the widget's own
+            // transform turn it back, so the raw texture cannot be compared with anything
+            // until this angle is known. Report it rather than assume zero.
+            Vector3 widgetEuler = regionMap.localEulerAngles;
+            Vector3 widgetScale = regionMap.localScale;
             LoggerInstance.Msg(
                 $"Vanilla map panel refreshed from {regionMap.name}; " +
                 $"bounds={_vanillaMapLocalBounds}, uv={_vanillaTextureUv}, " +
-                $"widget={main.width}x{main.height}.");
+                $"widget={main.width}x{main.height}, " +
+                $"rotation=({widgetEuler.x:F1},{widgetEuler.y:F1},{widgetEuler.z:F1}), " +
+                $"scale=({widgetScale.x:F3},{widgetScale.y:F3},{widgetScale.z:F3}), " +
+                $"texture={(main.mainTexture != null ? $"{main.mainTexture.width}x{main.mainTexture.height}" : "null")}.");
             return true;
         }
         catch (Exception ex)

@@ -114,6 +114,34 @@
       ]
     },
     {
+      "mapId": "mystery_lake",
+      "imageWidth": 4583,
+      "imageHeight": 4539,
+      "points": [
+        {
+          "worldX": 1020.657,
+          "worldZ": 451.905,
+          "mapX": 2664.7,
+          "mapY": 2919.5,
+          "label": "营地办公室"
+        },
+        {
+          "worldX": 1308.289,
+          "worldZ": 288.732,
+          "mapX": 3285.0,
+          "mapY": 3271.4,
+          "label": "湖上冰钓小屋"
+        },
+        {
+          "worldX": 38.373,
+          "worldZ": 28.564,
+          "mapX": 546.3,
+          "mapY": 3832.5,
+          "label": "捕兽者之家"
+        }
+      ]
+    },
+    {
       "mapId": "pleasant_valley",
       "imageWidth": 4965,
       "imageHeight": 4584,
