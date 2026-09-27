@@ -1069,3 +1069,121 @@ mapPanel.RefreshIconVisibility();
 - 一次性解决发现性问题
 
 做完之后，"要不要碰 Panel_Map"的动机又少一大半。
+---
+
+## 21. 与第三方 mod 的兼容性（2026-09-27 深夜）
+
+### 21.1 审计方法：六个维度
+
+每引入一个第三方 mod 或新功能，按这六项过一遍：
+
+| # | 维度 | 查什么 |
+|---|---|---|
+| 1 | **Harmony 目标** | 有没有 patch 同一个方法？**尤其是 prefix 返回 false 的** |
+| 2 | **按键** | 有没有占用同一个 KeyCode？ |
+| 3 | **渲染层级** | 自建 Canvas 还是挂进原版 UI 层级？sortingOrder 谁在上？ |
+| 4 | **共享游戏对象** | 有没有改同一个游戏侧的数据结构 / 控件？ |
+| 5 | **屏幕空间** | 默认位置会不会重叠？层级上谁遮谁？ |
+| 6 | **光标** | 有没有改 `Cursor.lockState`？ |
+
+审计手段：**下载源码到本地用 grep 扫**，不要把整个文件读进上下文（`Core.cs` 有 64 KB）。关注 `HarmonyPatch`、`KeyCode`、`AddComponent<`、`SetParent`、`anchorMin/Max`、`Panel_Map`、`MapDetail`。
+
+### 21.2 InterloperHUDPro 审计结果：技术上零冲突
+
+- 仓库：https://github.com/EtherSystem/InterloperHUDPro （默认分支 `Main`，注意大写）
+- 功能：生存数据 HUD（日期时间、温度、负重、移速、手持物耐久、破冰计时、薄冰计时、风向风速）
+- **`license: null`**（GitHub API 确认，又一个不写许可证的 TLD mod）
+
+| 维度 | InterloperHUDPro | 我们 | 结论 |
+|---|---|---|---|
+| Harmony 目标 | `GameManager.Start`、`StatusBar.Update`、`Panel_HUD.Update`、`Panel_IceFishingHoleClear.*` | `InputManager.GetEscapePressed`、`GetPauseMenuTogglePressed` | ✅ 零重叠 |
+| 按键 | **一个都没有**（纯 ModSettings 开关） | Tab / F8 / F9 | ✅ |
+| 地图模块 | **从不触碰**（grep `Panel_Map`/`MapDetail`/`RegionMap`/`MapElements` 全空） | 核心对象 | ✅ |
+| 渲染 | NGUI `UILabel`，**挂进原版 HUD 层级**（`outerBoxSprite.transform.parent`、`barSprite.transform.parent`） | 自建 `ScreenSpaceOverlay` Canvas，`sortingOrder 2000` | ✅ 两套体系 |
+| 屏幕空间 | 原版寒冷条**上方**（左下）+ 风力块 + 日期 + 手持物 | 四角之一（默认左上） | ⚠️ 默认不重叠，调左下可能压住 |
+| 光标 | 不动 | 全屏地图打开时会释放（待做） | ✅ |
+
+**两个 mod 连一个共同方法都没碰**，这是最理想的情况。
+
+层级上**永远是我们盖住它**（`ScreenSpaceOverlay` + `sortingOrder 2000` 在所有 NGUI 之上）。重叠时用户可自行调整——我们有四角位置设置，它有逐元素 X/Y 偏移设置。
+
+**结论：这次审计反过来确认了我们架构是"友好"的。**
+
+- **自建 Canvas**、不改原版 UI 层级 → 不和任何"挂进原版 HUD"的 mod 打架
+- **不碰原版 HUD 控件** → `StatusBar` / `Panel_HUD` 那片全是别人的地盘，我们不进去
+- **只读地图面板** → 与地图类 mod 也基本不冲突
+- **唯一的理论风险来自"想改原版地图"那条路**——而我们已经决定不走。**又一条"替代品比补丁安全"的实证。**
+
+### 21.3 按键冲突的注意点
+
+`Tab` 和 `F8` 在 mod 生态里是**热门键**（Tab 尤其）。好消息：我们的三个键**都可以在 ModSettings 里改**，用户能自行解决，不需要我们发版。
+
+**建议改进**：在设置项的 `Description` 里写明"若与其他 mod 冲突请改这里"，否则用户不一定知道去哪儿改。
+
+### 21.4 「标记修复」的两条实现路径与 MapIconFix 的共存
+
+背景见 §20.2（游戏不删 `s_MapDetails` 里的已采集条目，也不删 UI 图标）。
+
+用户已安装 MapIconFix。问题：**如果我们自己也做标记修复，会不会冲突？**
+
+#### 路径 A：改数据（照 MapIconFix 的做法）
+
+```csharp
+mapPanel.RemoveMapDetailFromMap(marker, 0f);   // 隐藏 UI
+MapDetailManager.s_MapDetails.Remove(marker);  // 删数据
+mapPanel.RefreshIconVisibility();
+```
+
+**基本安全，因为天然幂等。** Harmony postfix 顺序执行，两边都从**共享列表**里删条目：
+
+| 顺序 | 结果 |
+|---|---|
+| 我们先 | 我们删干净 → MapIconFix 扫到空列表，什么都不做 |
+| MapIconFix 先 | 它删干净 → 我们扫到空列表，什么都不做 |
+
+`List.Remove` 删不存在的元素是 no-op，**两种顺序都安全**。
+
+**但有一个真陷阱：触发时机不同就会踩。**
+
+如果我们**不挂 `Panel_Map.Enable`**，而挂在自己每秒轮询上：
+
+```
+1. 我们扫描 → 收集到 marker M
+2. 用户打开地图 → MapIconFix 把 M 从 s_MapDetails 删除、UI 也移除
+3. 我们拿着已失效的 M 调 RemoveMapDetailFromMap(M, 0f)   ← 可能空引用
+```
+
+MapIconFix 在删数据前检查了 `Contains(marker)`，但**对 UI 那一步没做同样检查**（因为它和删数据同帧同段，不会被打断）。**照抄时必须补这层防护。**
+
+**另有实现级坑（两边都会踩）**：**必须先收集、后删除两趟走**，边遍历边删会抛 `InvalidOperationException`。两者都不会因此互相冲突，只是各自可能崩。
+
+#### 路径 B：只读过滤（推荐）
+
+```csharp
+// 读的时候判断，不写任何东西
+bool stale = marker.m_IsSurveyed && AllHarvestablesHarvested(marker);
+if (stale && !showStaleMarkers) continue;   // 跳过，不画
+```
+
+| | 路径 A（改数据） | **路径 B（只读过滤）** |
+|---|---|---|
+| 装了 MapIconFix | 幂等，基本安全（有 1 个陷阱） | ✅ **完全无交互** |
+| 没装 MapIconFix | 我们顺便修了游戏 bug | 我们的 HUD 干净；**游戏自己的 M 地图仍脏** |
+| 是否碰游戏数据 | 是 | ❌ **不碰** |
+| 崩溃面 | 有 | **接近零** |
+
+**路径 B 的唯一"损失"**：游戏自己那张 M 地图的脏图标不会被我们修掉。但那不是我们的职责（我们打开的是自己的地图），要修让 MapIconFix 去修。
+
+**语义注意**：如果我们的判定**比 MapIconFix 宽**（例如也清理"已搜刮的容器"），用户会看到"装了 MapIconFix 但某些图标还在"——那不在它的范围内，也不该它管。**建议对齐语义**：只处理 `m_IsSurveyed && 所有可采集物已采集`；想扩展就做成设置项。
+
+#### 结论
+
+**路径 B 与我们前面认定的"最高性价比重构"（§20.4，改用 `MapDetailManager.s_MapDetails` 作为标记数据源）是同一件事。**
+
+一旦换成读数据，**三个问题一次解决**：
+
+1. 标记修复
+2. 对游戏 bug 免疫
+3. 与 MapIconFix 等第三方 mod 的兼容性
+
+**文档里写一句"与 MapIconFix 可共存"即可。**
