@@ -794,7 +794,7 @@ Vanilla map panel refreshed from <场景>_RegionMap; ... rotation=(0.0,0.0,90.0)
 
 **二选一，看你想先解决哪个：**
 
-- **A（推荐，快）**：原版制图模式下跑 4 个区域各按一次 M，把 `MelonLoader\Latest.exe` 日志给我 → 我读出每张底图的旋转 → 若确认旋转 bug，我修 HUD 显示，顺带把导出也修正
+- **A（推荐，快）**：原版制图模式下跑 4 个区域各按一次 M，把 `MelonLoader\Latest.log` 日志给我 → 我读出每张底图的旋转 → 若确认旋转 bug，我修 HUD 显示，顺带把导出也修正
 - **B（主线推进）**：神秘湖补 1~2 个 F9，然后在 `calibrate.html` 里点 3~4 个锚点，一次把神秘湖做对
 
 两者不冲突，A 更快且有定论，B 是校准主线。
