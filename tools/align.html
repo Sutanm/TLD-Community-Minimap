@@ -5,380 +5,595 @@
 <title>地图对齐工具 · Community Minimap</title>
 <style>
   :root { --bg:#14161a; --panel:#1c1f26; --line:#2c313c; --fg:#e6e9ef; --dim:#98a1b3;
-          --accent:#5aa9ff; --ok:#5ddc9a; --warn:#ffb454; }
+          --accent:#5aa9ff; --ok:#5ddc9a; --warn:#ffb454; --danger:#ff6b6b; }
   * { box-sizing: border-box; }
   html, body { margin:0; height:100%; background:var(--bg); color:var(--fg);
-               font:13px/1.5 "Segoe UI", "Microsoft YaHei", system-ui, sans-serif; }
+               font:13px/1.5 "Segoe UI", "Microsoft YaHei", system-ui, sans-serif; overflow:hidden; }
   #app { display:flex; height:100%; }
-  #side { width:330px; flex:0 0 330px; background:var(--panel); border-right:1px solid var(--line);
+  #side { width:340px; flex:0 0 340px; background:var(--panel); border-right:1px solid var(--line);
           overflow-y:auto; padding:14px; }
   #stage { flex:1; position:relative; overflow:hidden; background:#0d0f12; }
-  canvas { display:block; cursor:grab; }
-  canvas.dragging { cursor:grabbing; }
+  canvas { display:block; touch-action:none; }
+  canvas.grab { cursor:grab; } canvas.grabbing { cursor:grabbing; }
+  canvas.rotate { cursor:crosshair; } canvas.pick { cursor:crosshair; }
   h1 { font-size:14px; margin:0 0 4px; }
-  h2 { font-size:12px; color:var(--dim); text-transform:none; margin:18px 0 8px;
+  h2 { font-size:12px; color:var(--dim); margin:16px 0 8px;
        border-bottom:1px solid var(--line); padding-bottom:5px; font-weight:600; }
   .sub { color:var(--dim); font-size:11.5px; margin-bottom:12px; }
-  label.file { display:block; margin-bottom:10px; }
+  label.file { display:block; margin-bottom:9px; }
   label.file span { display:block; color:var(--dim); margin-bottom:4px; font-size:11.5px; }
   input[type=file] { width:100%; font-size:11.5px; color:var(--dim); }
-  .row { display:flex; align-items:center; gap:8px; margin-bottom:9px; }
-  .row .name { flex:0 0 74px; color:var(--dim); font-size:11.5px; }
+  .row { display:flex; align-items:center; gap:8px; margin-bottom:8px; }
+  .row .name { flex:0 0 80px; color:var(--dim); font-size:11.5px; }
   .row input[type=range] { flex:1; min-width:0; accent-color:var(--accent); }
-  .row input[type=number] { flex:0 0 76px; background:#12141a; color:var(--fg);
+  .row input[type=number] { flex:0 0 78px; background:#12141a; color:var(--fg);
                             border:1px solid var(--line); border-radius:5px; padding:3px 6px;
-                            font-size:11.5px; text-align:right; }
+                            font-size:11.5px; text-align:right; font-variant-numeric:tabular-nums; }
   .readout { background:#12141a; border:1px solid var(--line); border-radius:7px; padding:10px 12px; }
-  .readout .big { font-size:22px; font-weight:700; color:var(--ok); font-variant-numeric:tabular-nums; }
-  .readout .big small { font-size:12px; color:var(--dim); font-weight:400; }
-  .kv { display:flex; justify-content:space-between; padding:3px 0; font-size:11.5px;
+  .readout .big { font-size:21px; font-weight:700; color:var(--ok); font-variant-numeric:tabular-nums; }
+  .readout .big small { font-size:11.5px; color:var(--dim); font-weight:400; }
+  .kv { display:flex; justify-content:space-between; padding:2.5px 0; font-size:11.5px;
         font-variant-numeric:tabular-nums; }
   .kv span:first-child { color:var(--dim); }
+  .kv b { font-weight:600; }
   button { background:#252a34; color:var(--fg); border:1px solid var(--line); border-radius:6px;
-           padding:6px 11px; cursor:pointer; font-size:11.5px; }
+           padding:6px 10px; cursor:pointer; font-size:11.5px; }
   button:hover { background:#2f3644; }
   button.primary { background:#1d4b7d; border-color:#2b6cb0; }
-  .btns { display:flex; gap:7px; flex-wrap:wrap; margin-bottom:10px; }
-  .hint { color:var(--dim); font-size:11px; line-height:1.75; }
+  button.on { background:#1d6b46; border-color:#2ea36a; }
+  button.danger { background:#5c2222; border-color:#8c3333; }
+  .btns { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:9px; }
+  .hint { color:var(--dim); font-size:11px; line-height:1.7; }
   .hint b { color:var(--fg); font-weight:600; }
+  .note { background:#16232e; border:1px solid #27455c; color:#a9d3ef;
+          border-radius:7px; padding:9px 11px; font-size:11.5px; margin-top:10px; }
   .warnbox { background:#3a2a12; border:1px solid #6b4a1c; color:#ffcf8a;
-             border-radius:7px; padding:9px 11px; font-size:11.5px; margin-top:12px; }
+             border-radius:7px; padding:9px 11px; font-size:11.5px; margin-top:10px; }
   select { background:#12141a; color:var(--fg); border:1px solid var(--line);
            border-radius:5px; padding:4px 6px; font-size:11.5px; flex:1; }
+  .ptlist { font-size:11px; color:var(--dim); max-height:96px; overflow-y:auto; margin-top:6px;
+            font-variant-numeric:tabular-nums; }
+  .ptlist div { padding:1px 0; }
 </style>
 </head>
 <body>
 <div id="app">
   <div id="side">
     <h1>地图对齐工具</h1>
-    <div class="sub">底图固定不可旋转；对比图可旋转、可拉伸。对齐后读取角度。</div>
+    <div class="sub">图①固定不可动；图②可拖动、拉伸、旋转。也可点对应点自动求解。</div>
 
-    <label class="file"><span>① 底图（不透明、不可旋转）</span>
+    <label class="file"><span>① 底图（固定）</span>
       <input type="file" id="fileBase" accept="image/*"></label>
-    <label class="file"><span>② 对比图（半透明、可旋转拉伸）</span>
+    <label class="file"><span>② 对比图（可变换）</span>
       <input type="file" id="fileOver" accept="image/*"></label>
+    <div class="btns"><button id="swap">交换两张图</button></div>
 
-    <h2>对比图变换</h2>
-    <div class="row"><span class="name">旋转</span>
-      <input type="range" id="rotR" min="-180" max="180" step="0.1" value="0">
+    <h2>变换（图②）</h2>
+    <div class="row"><span class="name">旋转 θ</span>
+      <input type="range" id="rotR" min="-180" max="180" step="0.01" value="0">
       <input type="number" id="rotN" step="0.1" value="0"></div>
     <div class="row"><span class="name">缩放 X</span>
-      <input type="range" id="sxR" min="0.02" max="4" step="0.001" value="1">
+      <input type="range" id="sxR" min="0" max="1000" step="1" value="500">
       <input type="number" id="sxN" step="0.001" value="1"></div>
     <div class="row"><span class="name">缩放 Y</span>
-      <input type="range" id="syR" min="0.02" max="4" step="0.001" value="1">
+      <input type="range" id="syR" min="0" max="1000" step="1" value="500">
       <input type="number" id="syN" step="0.001" value="1"></div>
-    <div class="row"><span class="name">X 位置</span>
-      <input type="range" id="txR" min="-3000" max="6000" step="1" value="0">
+    <div class="row"><span class="name">剪切</span>
+      <input type="range" id="shR" min="-45" max="45" step="0.01" value="0">
+      <input type="number" id="shN" step="0.1" value="0"></div>
+    <div class="row"><span class="name">位移 X</span>
+      <input type="range" id="txR" min="-3000" max="8000" step="1" value="0">
       <input type="number" id="txN" step="1" value="0"></div>
-    <div class="row"><span class="name">Y 位置</span>
-      <input type="range" id="tyR" min="-3000" max="6000" step="1" value="0">
+    <div class="row"><span class="name">位移 Y</span>
+      <input type="range" id="tyR" min="-3000" max="8000" step="1" value="0">
       <input type="number" id="tyN" step="1" value="0"></div>
     <div class="row"><span class="name">透明度</span>
       <input type="range" id="opR" min="0" max="1" step="0.01" value="0.55">
       <input type="number" id="opN" step="0.01" value="0.55"></div>
     <div class="row"><span class="name">混合</span>
       <select id="mode">
-        <option value="normal">半透明叠加（对齐用）</option>
-        <option value="difference">差异（对齐准了会变黑）</option>
-        <option value="overOnly">只看对比图</option>
-        <option value="baseOnly">只看底图</option>
+        <option value="normal">半透明叠加</option>
+        <option value="difference">差异（越黑越准）</option>
+        <option value="overOnly">只看图②</option>
+        <option value="baseOnly">只看图①</option>
       </select></div>
     <div class="btns">
-      <button id="swapFlip">水平翻转对比图</button>
-      <button id="flipV">垂直翻转对比图</button>
+      <button id="fit">居中适配</button>
+      <button id="rot0">θ 归零</button>
+      <button id="rot90cw">+90°</button>
+      <button id="rot90ccw">−90°</button>
+      <button id="flipH">水平翻转</button>
+      <button id="flipV">垂直翻转</button>
     </div>
 
     <h2>读数</h2>
     <div class="readout">
-      <div class="big" id="bigRot">0.0°<small> 顺时针为正</small></div>
+      <div class="big" id="bigRot">0.00°<small> 逆时针为正</small></div>
       <div class="kv"><span>缩放 X / Y</span><span id="kvScale">—</span></div>
       <div class="kv"><span>拉伸比 X:Y</span><span id="kvStretch">—</span></div>
-      <div class="kv"><span>对比图中心</span><span id="kvPos">—</span></div>
-      <div class="kv"><span>底图尺寸</span><span id="kvBase">—</span></div>
-      <div class="kv"><span>对比图尺寸</span><span id="kvOver">—</span></div>
+      <div class="kv"><span>剪切</span><span id="kvShear">—</span></div>
+      <div class="kv"><span>位移</span><span id="kvPos">—</span></div>
+      <div class="kv"><span>图① 尺寸</span><span id="kvBase">—</span></div>
+      <div class="kv"><span>图② 尺寸</span><span id="kvOver">—</span></div>
       <div class="kv"><span>视图缩放</span><span id="kvView">—</span></div>
     </div>
 
-    <div class="btns" style="margin-top:12px">
-      <button class="primary" id="resetFit">居中并适配</button>
-      <button id="resetView">复位视图</button>
-      <button id="rot90cw">转 +90°</button>
-      <button id="rot90ccw">转 −90°</button>
-      <button id="rot0">旋转归零</button>
+    <h2>对应点求解（更准）</h2>
+    <div class="note">在图①和图②上，依次点<b>同一个地物</b>。点满 3 组即可自动解出完整仿射（含非等比拉伸）。</div>
+    <div class="btns" style="margin-top:9px">
+      <button id="pickBase">① 在图①上点</button>
+      <button id="pickOver">② 在图②上点</button>
+      <button id="pickClear">清空</button>
+    </div>
+    <div class="ptlist" id="ptlist">（尚未标点）</div>
+    <div class="btns" style="margin-top:9px">
+      <button class="primary" id="solve" disabled>用这些点求解</button>
     </div>
 
     <h2>操作</h2>
     <div class="hint">
-      <b>拖动</b> 移动对比图<br>
-      <b>Shift + 拖动</b> 绕中心旋转<br>
-      <b>Alt + 拖动</b> 上下拖动缩放<br>
-      <b>右键 / 中键拖动</b> 平移视图<br>
-      <b>滚轮</b> 缩放视图<br>
-      <b>方向键</b> 微调对比图 1 像素（Shift 为 10）<br>
-      <b>[ ]</b> 旋转 ∓0.1°　<b>, .</b> 旋转 ∓1°
+      <b>拖图内</b> 平移图②<br>
+      <b>拖角点</b> 非等比拉伸　<b>Shift+拖角点</b> 等比<br>
+      <b>拖边中点</b> 单轴拉伸<br>
+      <b>拖顶部圆点</b> 旋转<br>
+      <b>右键/中键拖动</b> 平移视图　<b>滚轮</b> 缩放视图<br>
+      <b>方向键</b> 微调 1px（Shift=10）<br>
+      <b>[ ]</b> θ∓0.1°　<b>, .</b> θ∓1°
     </div>
 
-    <div class="warnbox">
-      底图请放<b>原版底图</b>（basemap_*.png），对比图放<b>社区高清图</b>。
-      对齐后，把上方那个<b>旋转读数</b>告诉我即可。
-    </div>
+    <div class="warnbox" id="warn"></div>
   </div>
-
   <div id="stage"><canvas id="cv"></canvas></div>
 </div>
 
 <script>
 (() => {
-  const cv = document.getElementById("cv");
-  const ctx = cv.getContext("2d");
-  const stage = document.getElementById("stage");
+  const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+  const stage = document.getElementById("stage"), $ = id => document.getElementById(id);
 
-  const base = { img: null };
-  const over = { img: null, x: 0, y: 0, rot: 0, sx: 1, sy: 1, flipH: false, flipV: false };
-  const view = { scale: 1, x: 0, y: 0 };
-  let opacity = 0.55;
-  let mode = "normal";
+  // ---- state ----------------------------------------------------------------
+  let base = null;                                  // HTMLImageElement
+  let over = null;
+  // Affine mapping overlay-image pixels -> base-image pixels:  q = A p + t
+  let A = [1, 0, 0, 1];                             // [a, b, c, d]  (x'=a x + c y, y'=b x + d y)
+  let T = [0, 0];
+  const view = { s: 1, x: 0, y: 0 };
+  let opacity = 0.55, mode = "normal";
 
-  const $ = id => document.getElementById(id);
+  // correspondence picking
+  let pickTarget = null;                            // "base" | "over"
+  const pairs = [];                                 // [{b:[x,y], o:[x,y]}]
+  let pendingBase = null, pendingOver = null;
 
-  function resize() {
-    const r = stage.getBoundingClientRect();
-    const dpr = window.devicePixelRatio || 1;
-    cv.width = Math.round(r.width * dpr);
-    cv.height = Math.round(r.height * dpr);
-    cv.style.width = r.width + "px";
-    cv.style.height = r.height + "px";
-    ctx.setTransform(1,0,0,1,0,0);
-    render();
+  const DEG = 180 / Math.PI;
+
+  // ---- maths ----------------------------------------------------------------
+  const mul = (M, N) => [                                   // M*N, 2x2 row-major [a,b,c,d]
+    M[0]*N[0] + M[2]*N[1], M[1]*N[0] + M[3]*N[1],
+    M[0]*N[2] + M[2]*N[3], M[1]*N[2] + M[3]*N[3]];
+  const apply = (M, t, p) => [M[0]*p[0] + M[2]*p[1] + t[0], M[1]*p[0] + M[3]*p[1] + t[1]];
+  const det = M => M[0]*M[3] - M[1]*M[2];
+  const inv = M => { const d = det(M); return [M[3]/d, -M[1]/d, -M[2]/d, M[0]/d]; };
+  const rotM = deg => { const r = deg / DEG, c = Math.cos(r), s = Math.sin(r);
+                        return [c, s, -s, c]; };
+  const scaleM = (sx, sy) => [sx, 0, 0, sy];
+  const shearM = deg => [1, 0, Math.tan(deg / DEG), 1];
+
+  // decompose: column0 = image +x axis, column1 = image +y axis
+  function decompose() {
+    const c0 = [A[0], A[1]], c1 = [A[2], A[3]];
+    const sx = Math.hypot(c0[0], c0[1]);
+    const sy = Math.hypot(c1[0], c1[1]);
+    const th = Math.atan2(c0[1], c0[0]) * DEG;
+    // angle between the two mapped axes vs a right angle => shear
+    let ang = (Math.atan2(c1[1], c1[0]) - Math.atan2(c0[1], c0[0])) * DEG;
+    ang = ((ang % 360) + 540) % 360 - 180;
+    const shear = ang - 90;
+    return { sx, sy, theta: th, shear };
   }
-  window.addEventListener("resize", resize);
 
-  function loadImage(file, target, after) {
-    const url = URL.createObjectURL(file);
-    const im = new Image();
-    im.onload = () => { target.img = im; URL.revokeObjectURL(url); after && after(); };
-    im.onerror = () => alert("图片加载失败：" + file.name);
+  // rebuild A from decomposed parameters, keeping the image centre fixed
+  function compose(theta, sx, sy, shear, anchorImgPt) {
+    const old = { A: A.slice(), T: T.slice() };
+    A = mul(rotM(theta), mul(scaleM(sx, sy), shearM(shear)));
+    // keep anchorImgPt pointing at the same base position
+    const q = apply(old.A, old.T, anchorImgPt);
+    T = [q[0] - (A[0]*anchorImgPt[0] + A[2]*anchorImgPt[1]),
+         q[1] - (A[1]*anchorImgPt[0] + A[3]*anchorImgPt[1])];
+  }
+
+  // ---- loading --------------------------------------------------------------
+  const load = (file, cb) => {
+    const url = URL.createObjectURL(file), im = new Image();
+    im.onload = () => { URL.revokeObjectURL(url); cb(im); };
+    im.onerror = () => alert("加载失败：" + file.name);
     im.src = url;
-  }
-
-  $("fileBase").onchange = e => {
-    const f = e.target.files[0]; if (!f) return;
-    loadImage(f, base, () => { fitOverlay(); resetView(); sync(); render(); });
   };
-  $("fileOver").onchange = e => {
-    const f = e.target.files[0]; if (!f) return;
-    loadImage(f, over, () => { fitOverlay(); sync(); render(); });
-  };
+  $("fileBase").onchange = e => { const f = e.target.files[0]; if (f) load(f, im => { base = im; fitBoth(); }); };
+  $("fileOver").onchange = e => { const f = e.target.files[0]; if (f) load(f, im => { over = im; fitBoth(); }); };
 
-  // initial: overlay scaled so its width matches the base width, centred on the base
-  function fitOverlay() {
-    if (!base.img || !over.img) return;
-    const s = base.img.width / over.img.width;
-    over.sx = s; over.sy = s;
-    over.x = base.img.width / 2;
-    over.y = base.img.height / 2;
-    over.rot = 0; over.flipH = false; over.flipV = false;
-    const r = Math.max(over.sx, over.sy);
-    for (const [rng, num, val] of [["sxR","sxN",over.sx],["syR","syN",over.sy]]) {
-      $(rng).min = 0.02; $(rng).max = 4; $(rng).value = val; $(num).value = val.toFixed(3);
-    }
+  function fitBoth() { fitOverlay(); resetView(); sync(); render(); }
+
+  function fitOverlay() {                                  // overlay centred & width-matched
+    if (base && over) {
+      const s = base.width / over.width;
+      A = scaleM(s, s); T = [base.width/2, base.height/2];
+    } else { A = [1,0,0,1]; T = [0,0]; }
   }
 
   function resetView() {
-    const pad = 20;
-    if (base.img) {
-      const s = Math.min((cv.clientWidth - pad*2) / base.img.width,
-                         (cv.clientHeight - pad*2) / base.img.height);
-      view.scale = s;
-      view.x = (cv.clientWidth - base.img.width * s) / 2;
-      view.y = (cv.clientHeight - base.img.height * s) / 2;
-    } else { view.scale = 1; view.x = 0; view.y = 0; }
+    const pad = 24;
+    if (base) {
+      view.s = Math.min((cv.clientWidth - pad*2) / base.width,
+                        (cv.clientHeight - pad*2) / base.height);
+      view.x = (cv.clientWidth - base.width * view.s) / 2;
+      view.y = (cv.clientHeight - base.height * view.s) / 2;
+    } else { view.s = 1; view.x = 0; view.y = 0; }
   }
 
+  // ---- handles --------------------------------------------------------------
+  // handle positions in BASE image coordinates
+  function handles() {
+    if (!over) return null;
+    const w = over.width, h = over.height;
+    const P = (x, y) => apply(A, T, [x, y]);
+    const c = { tl: P(0,0), tr: P(w,0), bl: P(0,h), br: P(w,h) };
+    return {
+      corners: [["tl",c.tl],["tr",c.tr],["br",c.br],["bl",c.bl]],
+      edges: [["t",  P(w/2,0)],["r", P(w,h/2)],["b", P(w/2,h)],["l", P(0,h/2)]],
+      rot: P(w/2, -h * 0.12),
+      centre: P(w/2, h/2)
+    };
+  }
+  const toBase = (e) => {
+    const r = cv.getBoundingClientRect();
+    return [(e.clientX - r.left - view.x) / view.s, (e.clientY - r.top - view.y) / view.s];
+  };
+
+  // ---- render ---------------------------------------------------------------
   function render() {
     const dpr = window.devicePixelRatio || 1;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, cv.width, cv.height);
-    ctx.fillStyle = "#0d0f12";
-    ctx.fillRect(0, 0, cv.width, cv.height);
-    if (!base.img && !over.img) return;
+    ctx.fillStyle = "#0d0f12"; ctx.fillRect(0, 0, cv.width, cv.height);
+    if (!base && !over) return;
 
     ctx.save();
-    ctx.translate(view.x, view.y);
-    ctx.scale(view.scale, view.scale);
+    ctx.translate(view.x, view.y); ctx.scale(view.s, view.s);
 
-    if (base.img && mode !== "overOnly") {
-      ctx.globalAlpha = 1;
-      ctx.globalCompositeOperation = "source-over";
-      ctx.drawImage(base.img, 0, 0);
-    }
-    if (over.img && mode !== "baseOnly") {
+    if (base && mode !== "overOnly") { ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over";
+                                       ctx.drawImage(base, 0, 0); }
+    if (over && mode !== "baseOnly") {
       ctx.globalAlpha = (mode === "normal") ? opacity : 1;
       ctx.globalCompositeOperation = (mode === "difference") ? "difference" : "source-over";
       ctx.save();
-      ctx.translate(over.x, over.y);
-      ctx.rotate(over.rot * Math.PI / 180);
-      ctx.scale(over.sx * (over.flipH ? -1 : 1), over.sy * (over.flipV ? -1 : 1));
-      ctx.drawImage(over.img, -over.img.width/2, -over.img.height/2);
-      ctx.restore();
-      // outline of the transformed overlay, so an off-screen edge is still findable
-      ctx.globalAlpha = 0.9;
-      ctx.globalCompositeOperation = "source-over";
-      ctx.strokeStyle = "#5aa9ff";
-      ctx.lineWidth = 1.5 / view.scale;
-      ctx.save();
-      ctx.translate(over.x, over.y);
-      ctx.rotate(over.rot * Math.PI / 180);
-      ctx.scale(over.sx * (over.flipH ? -1 : 1), over.sy * (over.flipV ? -1 : 1));
-      ctx.strokeRect(-over.img.width/2, -over.img.height/2, over.img.width, over.img.height);
+      ctx.transform(A[0], A[1], A[2], A[3], T[0], T[1]);
+      ctx.drawImage(over, 0, 0);
       ctx.restore();
     }
+    // chrome
+    ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over";
+    if (over) {
+      const H = handles();
+      ctx.strokeStyle = "#5aa9ff"; ctx.lineWidth = 1.5 / view.s;
+      ctx.beginPath();
+      ctx.moveTo(H.corners[0][1][0], H.corners[0][1][1]);
+      for (let i = 1; i < 4; i++) ctx.lineTo(H.corners[i][1][0], H.corners[i][1][1]);
+      ctx.closePath(); ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(H.centre[0], H.centre[1]); ctx.lineTo(H.rot[0], H.rot[1]); ctx.stroke();
+      const cs = 7 / view.s, es = 5.5 / view.s;
+      ctx.fillStyle = "#5aa9ff";
+      for (const [, p] of H.corners) ctx.fillRect(p[0]-cs, p[1]-cs, cs*2, cs*2);
+      ctx.fillStyle = "#9ad1ff";
+      for (const [, p] of H.edges) ctx.fillRect(p[0]-es, p[1]-es, es*2, es*2);
+      ctx.beginPath(); ctx.arc(H.rot[0], H.rot[1], cs, 0, Math.PI*2); ctx.fillStyle = "#ffd479"; ctx.fill();
+    }
+    // pending pick markers
+    const dot = (p, col) => { ctx.beginPath(); ctx.arc(p[0], p[1], 6/view.s, 0, Math.PI*2);
+                              ctx.fillStyle = col; ctx.fill();
+                              ctx.strokeStyle = "#000"; ctx.lineWidth = 1.5/view.s; ctx.stroke(); };
+    if (pendingBase) dot(pendingBase, "#ff6b6b");
+    if (pendingOver) dot(pendingOver, "#5ddc9a");
+    for (const pr of pairs) { dot(pr.b, "#ff6b6b"); dot(pr.o, "#5ddc9a"); }
+
     ctx.restore();
-    ctx.globalAlpha = 1;
-    ctx.globalCompositeOperation = "source-over";
   }
 
-  // ---- controls -------------------------------------------------------------
-  function bindPair(rangeId, numId, get, set, fmt) {
-    const r = $(rangeId), n = $(numId);
-    const push = v => { set(v); sync(); render(); };
-    r.oninput = () => push(parseFloat(r.value));
-    n.onchange = () => push(parseFloat(n.value) || 0);
-    return push;
+  function resize() {
+    const r = stage.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+    cv.width = Math.round(r.width*dpr); cv.height = Math.round(r.height*dpr);
+    cv.style.width = r.width+"px"; cv.style.height = r.height+"px";
+    if (!base && !over) resetView();
+    render();
   }
+  window.addEventListener("resize", () => { resize(); });
 
-  bindPair("rotR","rotN", () => over.rot, v => over.rot = v);
-  bindPair("sxR","sxN",  () => over.sx,  v => over.sx = Math.max(0.001, v));
-  bindPair("syR","syN",  () => over.sy,  v => over.sy = Math.max(0.001, v));
-  bindPair("txR","txN",  () => over.x,   v => over.x = v);
-  bindPair("tyR","tyN",  () => over.y,   v => over.y = v);
-  bindPair("opR","opN",  () => opacity,  v => opacity = Math.min(1, Math.max(0, v)));
-
-  $("mode").onchange = e => { mode = e.target.value; render(); sync(); };
-  $("resetFit").onclick = () => { fitOverlay(); sync(); render(); };
-  $("resetView").onclick = () => { resetView(); sync(); render(); };
-  $("rot90cw").onclick  = () => { spin(+90); };
-  $("rot90ccw").onclick = () => { spin(-90); };
-  $("rot0").onclick     = () => { over.rot = 0; sync(); render(); };
-  $("swapFlip").onclick = () => { over.flipH = !over.flipH; render(); };
-  $("flipV").onclick    = () => { over.flipV = !over.flipV; render(); };
-
-  function spin(d) {
-    if (!over.img) return;
-    over.rot = ((over.rot + d + 180) % 360 + 360) % 360 - 180;
-    // keep the overlay centred on the same point while it spins
-    sync(); render();
-  }
-
-  function sync() {
-    const set = (r, n, v, dec) => {
-      const rr = $(r), nn = $(n);
-      if (rr.min !== "" && v < parseFloat(rr.min)) rr.min = String(Math.floor(v));
-      if (rr.max !== "" && v > parseFloat(rr.max)) rr.max = String(Math.ceil(v));
-      rr.value = v; nn.value = dec === undefined ? v : v.toFixed(dec);
-    };
-    set("rotR","rotN", over.rot, 1);
-    set("sxR","sxN", over.sx, 3);
-    set("syR","syN", over.sy, 3);
-    set("txR","txN", over.x, 0);
-    set("tyR","tyN", over.y, 0);
-    set("opR","opN", opacity, 2);
-
-    const norm = ((over.rot % 360) + 540) % 360 - 180;
-    $("bigRot").innerHTML = norm.toFixed(1) + "°<small> 顺时针为正</small>";
-    $("kvScale").textContent = over.sx.toFixed(4) + " / " + over.sy.toFixed(4);
-    $("kvStretch").textContent = (over.sx / over.sy).toFixed(4) + " : 1";
-    $("kvPos").textContent = over.x.toFixed(0) + ", " + over.y.toFixed(0);
-    $("kvBase").textContent = base.img ? base.img.width + "×" + base.img.height : "—";
-    $("kvOver").textContent = over.img ? over.img.width + "×" + over.img.height : "—";
-    $("kvView").textContent = view.scale.toFixed(3) + "×";
-  }
-
-  // ---- mouse ----------------------------------------------------------------
+  // ---- interaction ----------------------------------------------------------
   let drag = null;
-  const toWorld = (e) => {
-    const r = cv.getBoundingClientRect();
-    return { x: (e.clientX - r.left - view.x) / view.scale,
-             y: (e.clientY - r.top  - view.y) / view.scale };
-  };
+  const HIT = 12;                                          // screen px
+
+  function hitHandle(bp) {
+    const H = handles(); if (!H) return null;
+    const scr = p => [p[0]*view.s + view.x, p[1]*view.s + view.y];
+    const m = scr(bp);
+    for (const [k, p] of H.corners) { const q = scr(p);
+      if (Math.hypot(q[0]-m[0], q[1]-m[1]) < HIT) return { kind: "corner", k }; }
+    for (const [k, p] of H.edges)   { const q = scr(p);
+      if (Math.hypot(q[0]-m[0], q[1]-m[1]) < HIT) return { kind: "edge", k }; }
+    const q = scr(H.rot);
+    if (Math.hypot(q[0]-m[0], q[1]-m[1]) < HIT + 3) return { kind: "rot" };
+    return null;
+  }
 
   cv.addEventListener("contextmenu", e => e.preventDefault());
-  cv.addEventListener("mousedown", e => {
+  cv.addEventListener("pointerdown", e => {
     cv.setPointerCapture(e.pointerId);
-    const w = toWorld(e);
-    if (e.button === 2 || e.button === 1) { drag = { kind: "view", sx: e.clientX, sy: e.clientY, vx: view.x, vy: view.y }; }
-    else if (e.shiftKey && over.img)       { drag = { kind: "rot", cx: over.x, cy: over.y, a0: Math.atan2(w.y - over.y, w.x - over.x), r0: over.rot }; }
-    else if (e.altKey && over.img)         { drag = { kind: "scale", sy: e.clientY, sx0: over.sx, sy0: over.sy }; }
-    else if (over.img)                     { drag = { kind: "move", dx: w.x - over.x, dy: w.y - over.y }; }
-    else                                   { drag = { kind: "view", sx: e.clientX, sy: e.clientY, vx: view.x, vy: view.y }; }
-    cv.classList.add("dragging");
+    const bp = toBase(e);
+
+    if (pickTarget) {                                       // correspondence picking
+      if (pickTarget === "base") { pendingBase = bp; pickTarget = null; }
+      else { pendingOver = apply(inv(A), T, bp); pickTarget = null; }
+      if (pendingBase && pendingOver) {
+        pairs.push({ b: pendingBase, o: pendingOver });
+        pendingBase = pendingOver = null;
+      }
+      sync(); render(); return;
+    }
+
+    if (e.button === 2 || e.button === 1) {
+      drag = { kind: "view", sx: e.clientX, sy: e.clientY, vx: view.x, vy: view.y };
+      cv.className = "grabbing"; return;
+    }
+    if (!over) { drag = { kind: "view", sx: e.clientX, sy: e.clientY, vx: view.x, vy: view.y }; return; }
+
+    const h = hitHandle(bp);
+    const H = handles();
+    if (h && h.kind === "rot") {
+      const c = H.centre;
+      drag = { kind: "rot", cx: c[0], cy: c[1], a0: Math.atan2(bp[1]-c[1], bp[0]-c[0]),
+               A0: A.slice(), T0: T.slice() };
+    } else if (h && h.kind === "corner") {
+      const opp = { tl: "br", tr: "bl", br: "tl", bl: "tr" }[h.k];
+      const anchor = handles().corners.find(c => c[0] === opp)[1];
+      drag = { kind: "corner", k: h.k, anchor, A0: A.slice(), T0: T.slice(), start: bp,
+               uniform: e.shiftKey };
+    } else if (h && h.kind === "edge") {
+      const opp = { t: "b", b: "t", l: "r", r: "l" }[h.k];
+      const anchor = handles().edges.find(c => c[0] === opp)[1];
+      drag = { kind: "edge", k: h.k, anchor, A0: A.slice(), T0: T.slice(), start: bp };
+    } else {
+      drag = { kind: "move", grab: bp, T0: T.slice() };
+      cv.className = "grabbing";
+    }
   });
 
   cv.addEventListener("pointermove", e => {
-    if (!drag) return;
-    if (drag.kind === "view") {
-      view.x = drag.vx + (e.clientX - drag.sx);
-      view.y = drag.vy + (e.clientY - drag.sy);
-      sync();
-    } else if (drag.kind === "move") {
-      const w = toWorld(e);
-      over.x = w.x - drag.dx; over.y = w.y - drag.dy;
-      sync();
-    } else if (drag.kind === "rot") {
-      const w = toWorld(e);
-      const a = Math.atan2(w.y - drag.cy, w.x - drag.cx);
-      over.rot = drag.r0 + (a - drag.a0) * 180 / Math.PI;
-      over.rot = ((over.rot % 360) + 540) % 360 - 180;
-      sync();
-    } else if (drag.kind === "scale") {
-      const f = Math.exp((e.clientY - drag.sy) * -0.004);
-      over.sx = Math.max(0.001, drag.sx0 * f);
-      over.sy = Math.max(0.001, drag.sy0 * f);
-      sync();
+    if (!drag) {
+      if (!over) { cv.className = "grab"; return; }
+      cv.className = pickTarget ? "pick" : (hitHandle(toBase(e)) ? (hitHandle(toBase(e)).kind === "rot" ? "rotate" : "grab") : "grab");
+      return;
     }
-    render();
+    const bp = toBase(e);
+    if (drag.kind === "view") {
+      view.x = drag.vx + (e.clientX - drag.sx); view.y = drag.vy + (e.clientY - drag.sy);
+    } else if (drag.kind === "move") {
+      T = [drag.T0[0] + (bp[0]-drag.grab[0]), drag.T0[1] + (bp[1]-drag.grab[1])];
+    } else if (drag.kind === "rot") {
+      const a = Math.atan2(bp[1]-drag.cy, bp[0]-drag.cx);
+      const d = (a - drag.a0) * DEG;
+      A = mul(rotM(d), drag.A0);
+      const q = apply(drag.A0, drag.T0, [drag.cx, drag.cy]);
+      const c = apply(A, [0,0], [drag.cx, drag.cy]);
+      T = [q[0] - c[0], q[1] - c[1]];
+    } else if (drag.kind === "corner" || drag.kind === "edge") {
+      const anc = drag.anchor;
+      // vector from anchor to the dragged pointer, expressed in the overlay's own axes
+      const invA0 = inv(drag.A0);
+      const dNow = [bp[0]-anc[0], bp[1]-anc[1]];
+      const d0   = [drag.start[0]-anc[0], drag.start[1]-anc[1]];
+      const n0 = apply(invA0, [0,0], d0);
+      const n1 = apply(invA0, [0,0], dNow);
+      let fx = (Math.abs(n0[0]) > 1e-6) ? n1[0]/n0[0] : 1;
+      let fy = (Math.abs(n0[1]) > 1e-6) ? n1[1]/n0[1] : 1;
+      if (drag.kind === "edge") { if (drag.k === "t" || drag.k === "b") fx = 1; else fy = 1; }
+      if (drag.uniform) { const f = (Math.abs(fx-1) > Math.abs(fy-1)) ? fx : fy; fx = fy = f; }
+      fx = Math.max(0.01, Math.min(50, fx)); fy = Math.max(0.01, Math.min(50, fy));
+      A = mul(drag.A0, scaleM(fx, fy));
+      // keep the anchor fixed
+      const q = apply(drag.A0, drag.T0, anc);
+      const q2 = apply(A, [0,0], anc);
+      T = [q[0]-q2[0], q[1]-q2[1]];
+    }
+    sync(); render();
   });
 
-  const endDrag = () => { drag = null; cv.classList.remove("dragging"); };
+  const endDrag = () => { drag = null; cv.className = "grab"; };
   cv.addEventListener("pointerup", endDrag);
   cv.addEventListener("pointercancel", endDrag);
 
   cv.addEventListener("wheel", e => {
     e.preventDefault();
-    const r = cv.getBoundingClientRect();
-    const mx = e.clientX - r.left, my = e.clientY - r.top;
-    const f = Math.exp(-e.deltaY * 0.0015);
-    const ns = Math.min(40, Math.max(0.02, view.scale * f));
-    view.x = mx - (mx - view.x) * (ns / view.scale);
-    view.y = my - (my - view.y) * (ns / view.scale);
-    view.scale = ns;
+    const r = cv.getBoundingClientRect(), mx = e.clientX-r.left, my = e.clientY-r.top;
+    if (e.ctrlKey && over) {                       // ctrl+wheel scales the overlay
+      const f = Math.exp(-e.deltaY * 0.0015);
+      const anc = handles().centre;
+      const q = apply(A, T, anc);
+      A = mul(A, scaleM(f, f));
+      const q2 = apply(A, [0,0], anc);
+      T = [q[0]-q2[0], q[1]-q2[1]];
+    } else {
+      const f = Math.exp(-e.deltaY * 0.0015);
+      const ns = Math.max(0.02, Math.min(60, view.s * f));
+      view.x = mx - (mx - view.x) * (ns / view.s);
+      view.y = my - (my - view.y) * (ns / view.s);
+      view.s = ns;
+    }
     sync(); render();
   }, { passive: false });
 
   window.addEventListener("keydown", e => {
-    if (!over.img) return;
+    if (!over) return;
     const big = e.shiftKey ? 10 : 1;
+    const H = handles(), c = H.centre;
+    const rotateBy = d => { const q = apply(A, T, c); A = mul(rotM(d), A);
+                            const q2 = apply(A, [0,0], c); T = [q[0]-q2[0], q[1]-q2[1]]; };
     let hit = true;
     switch (e.key) {
-      case "ArrowLeft":  over.x -= big; break;
-      case "ArrowRight": over.x += big; break;
-      case "ArrowUp":    over.y -= big; break;
-      case "ArrowDown":  over.y += big; break;
-      case "[": over.rot -= 0.1; break;
-      case "]": over.rot += 0.1; break;
-      case ",": over.rot -= 1; break;
-      case ".": over.rot += 1; break;
+      case "ArrowLeft":  T[0] -= big; break;
+      case "ArrowRight": T[0] += big; break;
+      case "ArrowUp":    T[1] -= big; break;
+      case "ArrowDown":  T[1] += big; break;
+      case "[": rotateBy(-0.1); break;
+      case "]": rotateBy(+0.1); break;
+      case ",": rotateBy(-1); break;
+      case ".": rotateBy(+1); break;
       default: hit = false;
     }
-    if (hit) {
-      over.rot = ((over.rot % 360) + 540) % 360 - 180;
-      e.preventDefault(); sync(); render();
-    }
+    if (hit) { e.preventDefault(); sync(); render(); }
   });
 
-  sync();
-  resize();
+  // ---- sliders --------------------------------------------------------------
+  // scale sliders are log-scaled: 0..1000 -> 0.01 .. 20
+  const LO = Math.log(0.01), HI = Math.log(20);
+  const s2v = s => Math.round((Math.log(Math.max(1e-4, s)) - LO) / (HI - LO) * 1000);
+  const v2s = v => Math.exp(LO + (HI - LO) * (v / 1000));
+
+  function setTheta(deg) {
+    const d = decompose();
+    compose(deg, d.sx, d.sy, d.shear, handles().centre);
+  }
+  function setScale(sx, sy) {
+    const d = decompose(); const c = handles().centre;
+    compose(d.theta, sx, sy, d.shear, c);
+  }
+  function setShear(sh) {
+    const d = decompose(); const c = handles().centre;
+    compose(d.theta, d.sx, d.sy, sh, c);
+  }
+
+  $("rotR").oninput = e => { setTheta(parseFloat(e.target.value)); sync(); render(); };
+  $("rotN").onchange = e => { setTheta(parseFloat(e.target.value) || 0); sync(); render(); };
+  $("sxR").oninput = e => { const d = decompose(); setScale(v2s(+e.target.value), d.sy); sync(); render(); };
+  $("sxN").onchange = e => { const d = decompose(); setScale(parseFloat(e.target.value) || 1, d.sy); sync(); render(); };
+  $("syR").oninput = e => { const d = decompose(); setScale(d.sx, v2s(+e.target.value)); sync(); render(); };
+  $("syN").onchange = e => { const d = decompose(); setScale(d.sx, parseFloat(e.target.value) || 1); sync(); render(); };
+  $("shR").oninput = e => { setShear(parseFloat(e.target.value)); sync(); render(); };
+  $("shN").onchange = e => { setShear(parseFloat(e.target.value) || 0); sync(); render(); };
+  $("txR").oninput = e => { T[0] = parseFloat(e.target.value); sync(); render(); };
+  $("txN").onchange = e => { T[0] = parseFloat(e.target.value) || 0; sync(); render(); };
+  $("tyR").oninput = e => { T[1] = parseFloat(e.target.value); sync(); render(); };
+  $("tyN").onchange = e => { T[1] = parseFloat(e.target.value) || 0; sync(); render(); };
+  $("opR").oninput = e => { opacity = parseFloat(e.target.value); sync(); render(); };
+  $("opN").onchange = e => { opacity = Math.min(1, Math.max(0, parseFloat(e.target.value) || 0)); sync(); render(); };
+  $("mode").onchange = e => { mode = e.target.value; render(); };
+
+  $("fit").onclick = () => { fitBoth(); };
+  $("rot0").onclick = () => { setTheta(0); sync(); render(); };
+  $("rot90cw").onclick = () => { const d = decompose(); setTheta(d.theta + 90); sync(); render(); };
+  $("rot90ccw").onclick = () => { const d = decompose(); setTheta(d.theta - 90); sync(); render(); };
+  const flipX = () => { const c = handles().centre, q = apply(A, T, c);
+                        A = mul(A, [-1,0,0,1]); const q2 = apply(A,[0,0],c);
+                        T = [q[0]-q2[0], q[1]-q2[1]]; sync(); render(); };
+  const flipY = () => { const c = handles().centre, q = apply(A, T, c);
+                        A = mul(A, [1,0,0,-1]); const q2 = apply(A,[0,0],c);
+                        T = [q[0]-q2[0], q[1]-q2[1]]; sync(); render(); };
+  $("flipH").onclick = flipX;
+  $("flipV").onclick = flipY;
+
+  $("swap").onclick = () => {
+    if (!base || !over) return;
+    const nb = over, no = base;
+    const iA = inv(A);
+    const nA = iA;
+    const nT = apply(iA, [0,0], T).map(v => -v);
+    base = nb; over = no; A = nA; T = nT;
+    resetView(); sync(); render();
+  };
+
+  // ---- correspondence solving ----------------------------------------------
+  $("pickBase").onclick = () => { pickTarget = "base"; sync(); };
+  $("pickOver").onclick = () => { pickTarget = "over"; sync(); };
+  $("pickClear").onclick = () => { pairs.length = 0; pendingBase = pendingOver = null; pickTarget = null; sync(); };
+  $("solve").onclick = () => {
+    if (pairs.length < 3) return;
+    // least-squares affine mapping overlay pixel -> base pixel
+    let sx=0, sy=0, sxx=0, sxy=0, syy=0, bx=0, by=0, bxx=0, bxy=0, byx=0, byy=0;
+    const n = pairs.length;
+    for (const p of pairs) {
+      const x = p.o[0], y = p.o[1], X = p.b[0], Y = p.b[1];
+      sxx += x*x; sxy += x*y; syy += y*y; sx += x; sy += y;
+      bx += X; by += Y; bxx += x*X; bxy += y*X; byx += x*Y; byy += y*Y;
+    }
+    // normal equations for [a c tx] and [b d ty]
+    const M = [[sxx, sxy, sx], [sxy, syy, sy], [sx, sy, n]];
+    const solve3 = (rhs) => {
+      const m = [M[0].concat(rhs[0]), M[1].concat(rhs[1]), M[2].concat(rhs[2])];
+      for (let i = 0; i < 3; i++) {
+        let p = i; for (let r = i+1; r < 3; r++) if (Math.abs(m[r][i]) > Math.abs(m[p][i])) p = r;
+        [m[i], m[p]] = [m[p], m[i]];
+        if (Math.abs(m[i][i]) < 1e-12) return null;
+        for (let c = i+1; c < 4; c++) m[i][c] /= m[i][i];
+        m[i][i] = 1;
+        for (let r = 0; r < 3; r++) { if (r === i) continue;
+          const f = m[r][i]; for (let c = i; c < 4; c++) m[r][c] -= f*m[i][c]; }
+      }
+      return [m[0][3], m[1][3], m[2][3]];
+    };
+    const X = solve3([bxx, bxy, bx]), Y = solve3([byx, byy, by]);
+    if (!X || !Y) { setWarn("点太少或共线，解不出来，换个位置再点。"); return; }
+    A = [X[0], Y[0], X[1], Y[1]]; T = [X[2], Y[2]];
+    // report the residual
+    let worst = 0;
+    for (const p of pairs) {
+      const q = apply(A, T, p.o);
+      worst = Math.max(worst, Math.hypot(q[0]-p.b[0], q[1]-p.b[1]));
+    }
+    const d = decompose();
+    setWarn(`已用 ${n} 组点求解。最大残差 <b>${worst.toFixed(1)} px</b>（图①像素）` +
+      (worst > 25 ? " —— 偏大，可能有组点标错了。<br>" : "。<br>") +
+      `θ=${d.theta.toFixed(2)}°　X:Y=${(d.sx/d.sy).toFixed(4)}　剪切=${d.shear.toFixed(2)}°`);
+    sync(); render();
+  };
+
+  // ---- readout --------------------------------------------------------------
+  function sync() {
+    const d = decompose();
+    const setN = (id, v, dec) => { const e = $(id); if (document.activeElement !== e) e.value = v.toFixed(dec); };
+    setN("rotN", d.theta, 2); if (document.activeElement !== $("rotR")) $("rotR").value = Math.max(-180, Math.min(180, d.theta));
+    setN("sxN", d.sx, 3);    if (document.activeElement !== $("sxR")) $("sxR").value = s2v(d.sx);
+    setN("syN", d.sy, 3);    if (document.activeElement !== $("syR")) $("syR").value = s2v(d.sy);
+    setN("shN", d.shear, 2); if (document.activeElement !== $("shR")) $("shR").value = Math.max(-45, Math.min(45, d.shear));
+    setN("txN", T[0], 0);    if (document.activeElement !== $("txR")) $("txR").value = T[0];
+    setN("tyN", T[1], 0);    if (document.activeElement !== $("tyR")) $("tyR").value = T[1];
+    setN("opN", opacity, 2); if (document.activeElement !== $("opR")) $("opR").value = opacity;
+
+    let th = ((d.theta % 360) + 540) % 360 - 180;
+    $("bigRot").innerHTML = th.toFixed(2) + "°<small> 逆时针为正</small>";
+    $("kvScale").textContent = d.sx.toFixed(4) + " / " + d.sy.toFixed(4);
+    $("kvStretch").textContent = (d.sx / d.sy).toFixed(4) + " : 1";
+    $("kvShear").textContent = d.shear.toFixed(2) + "°";
+    $("kvPos").textContent = T[0].toFixed(0) + ", " + T[1].toFixed(0);
+    $("kvBase").textContent = base ? base.width + "×" + base.height : "—";
+    $("kvOver").textContent = over ? over.width + "×" + over.height : "—";
+    $("kvView").textContent = view.s.toFixed(3) + "×";
+
+    $("pickBase").className = pickTarget === "base" ? "on" : "";
+    $("pickOver").className = pickTarget === "over" ? "on" : "";
+    $("solve").disabled = pairs.length < 3;
+
+    const lines = [];
+    pairs.forEach((p, i) => lines.push(
+      `<div>#${i+1}  图①(${p.b[0].toFixed(0)}, ${p.b[1].toFixed(0)})  ↔  图②(${p.o[0].toFixed(0)}, ${p.o[1].toFixed(0)})</div>`));
+    if (pendingBase) lines.push(`<div style="color:#ff9b9b">图①已点，请点图②上的同一位置</div>`);
+    if (pendingOver) lines.push(`<div style="color:#9bf0c0">图②已点，请点图①上的同一位置</div>`);
+    $("ptlist").innerHTML = lines.length ? lines.join("") : "（尚未标点）";
+
+    if (!base || !over) setWarn("请先载入两张图。");
+  }
+  let warnIsInit = false;
+  function setWarn(html) { $("warn").innerHTML = html; warnIsInit = true; }
+
+  resize(); sync();
 })();
 </script>
 </body>
