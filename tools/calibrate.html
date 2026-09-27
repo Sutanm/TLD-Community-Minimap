@@ -62,7 +62,7 @@
       点表格里的「锚」把该点设为待标定，然后在地图上点击它所在的位置。
     </div>
     <table id="ptTable">
-      <thead><tr><th>点</th><th>NGUI</th><th>地图像素</th><th></th></tr></thead>
+      <thead><tr><th>点</th><th>NGUI</th><th>地图像素</th><th title="该锚点偏离拟合的像素数；越小越好">误差</th><th></th></tr></thead>
       <tbody></tbody>
     </table>
   </div>
@@ -152,7 +152,7 @@ function rebuildPoints() {
     state.points.push({ id: f.capture_id, scene: f.scene, worldX: wx, worldZ: wz, u, v: vv, px: null, py: null });
   }
   state.anchors.clear(); state.activeAnchorId = null;
-  renderTable(); recompute();
+  recompute();
 }
 
 function fillScenes() {
@@ -262,23 +262,32 @@ function compute() {
 }
 
 // ---------------- render ----------------
-function renderTable() {
+function renderTable(r) {
   const tb = document.querySelector("#ptTable tbody");
   tb.innerHTML = "";
+  const errOf = {};
+  if (r && r.anchorErrors) for (const e of r.anchorErrors) errOf[e.id] = e.err;
   for (const p of state.points) {
     const a = state.anchors.get(p.id);
     const tr = document.createElement("tr");
     if (a) tr.className = "picked";
     if (state.activeAnchorId === p.id) tr.classList.add("anchor");
+    let errCell = "—";
+    if (a && errOf[p.id] !== undefined) {
+      const e = errOf[p.id];
+      const cls = e < 20 ? "ok" : (e < 45 ? "" : "warn");
+      errCell = `<span class="${cls}">${e.toFixed(1)} px</span>`;
+    }
     tr.innerHTML = `<td>${p.scene}<br><span style="color:var(--dim)">${p.worldX.toFixed(0)}, ${p.worldZ.toFixed(0)}</span></td>
       <td>${p.u.toFixed(1)}<br>${p.v.toFixed(1)}</td>
       <td>${a ? a.px.toFixed(0) + ", " + a.py.toFixed(0) : "—"}</td>
+      <td>${errCell}</td>
       <td><button class="row-btn" data-id="${p.id}">锚</button></td>`;
     tb.appendChild(tr);
   }
   tb.querySelectorAll("button[data-id]").forEach(b => b.onclick = () => {
     state.activeAnchorId = b.dataset.id;
-    renderTable(); updateStatus();
+    recompute();
   });
 }
 
@@ -287,16 +296,17 @@ function renderStats(r) {
   const sf = document.getElementById("sFit");
   if (!r || !r.pts.length) { el.innerHTML = '<span style="color:var(--dim)">先点一个锚点</span>'; sf.textContent = ""; return; }
   const rows = [];
-  rows.push(["world→NGUI 拟合残差", r.maxRes.toExponential(2) + " NGUI"]);
+  rows.push(["F9 数据一致性（world→NGUI 残差）", r.maxRes.toExponential(2) + " NGUI"]);
   rows.push(["S", r.S.toFixed(4) + (r.fitted ? "（已拟合）" : "（手动）")]);
   rows.push(["平移 tx, ty", r.tx.toFixed(1) + ", " + r.ty.toFixed(1)]);
   if (r.aniso) rows.push(["各向异性", r.aniso.toFixed(4) + " (" + ((r.aniso-1)*100).toFixed(2) + "%)"]);
   if (r.scaleX) rows.push(["px / 世界单位", r.scaleX.toFixed(3) + " / " + r.scaleY.toFixed(3)]);
   el.innerHTML = rows.map(([k,v]) => `<div class="stat"><span>${k}</span><b>${v}</b></div>`).join("");
-  if (r.anchorErrors.length)
-    sf.innerHTML = "锚点误差：" + r.anchorErrors.map(e => e.err.toFixed(1) + "px").join("、") +
-      (r.fitted ? "" : "（<2 个锚点，S 用手动值）");
-  else sf.textContent = "";
+  const worst = r.anchorErrors.length ? Math.max(...r.anchorErrors.map(e => e.err)) : null;
+  sf.innerHTML = (r.fitted ? "" : "锚点少于 2 个，S 用上面的手动值。<br>") +
+    (worst === null ? "" :
+      `锚点最大误差 <b class="${worst < 20 ? 'ok' : (worst < 45 ? '' : 'warn')}">${worst.toFixed(1)} px</b>` +
+      `（每行误差见上表；>45px 建议重新点）`);
   return rows;
 }
 
@@ -314,7 +324,7 @@ function renderJson(r) {
 
 function recompute() {
   const r = compute();
-  renderStats(r); renderJson(r); draw(); updateStatus(r);
+  renderTable(r); renderStats(r); renderJson(r); draw(); updateStatus(r);
 }
 
 function updateStatus(r) {
@@ -372,7 +382,7 @@ cv.addEventListener("mousedown", e => {
     const p = toImage(e.clientX, e.clientY);
     state.anchors.set(state.activeAnchorId, { px: p.x, py: p.y });
     state.activeAnchorId = null;
-    renderTable(); recompute();
+    recompute();
     return;
   }
   state.dragging = true; state.lastX = e.clientX; state.lastY = e.clientY;
@@ -418,7 +428,7 @@ document.getElementById("copyBtn").onclick = () => {
   setTimeout(() => document.getElementById("copyBtn").textContent = "复制 JSON", 1200);
 };
 document.getElementById("resetBtn").onclick = () => {
-  state.anchors.clear(); state.activeAnchorId = null; renderTable(); recompute();
+  state.anchors.clear(); state.activeAnchorId = null; recompute();
 };
 window.addEventListener("resize", resize);
 
