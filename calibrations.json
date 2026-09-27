@@ -112,6 +112,48 @@
           "label": "老斯彭斯之家锻炉棚"
         }
       ]
+    },
+    {
+      "mapId": "pleasant_valley",
+      "imageWidth": 4965,
+      "imageHeight": 4584,
+      "points": [
+        {
+          "worldX": 1460.86,
+          "worldZ": 1030.975,
+          "mapX": 1471.3,
+          "mapY": 2211.6,
+          "label": "怡人山谷农庄"
+        },
+        {
+          "worldX": 1918.098,
+          "worldZ": 624.271,
+          "mapX": 849.0,
+          "mapY": 2917.0,
+          "label": "信号山坡（无线电控制站）"
+        },
+        {
+          "worldX": 2275.781,
+          "worldZ": 2288.882,
+          "mapX": 3396.1,
+          "mapY": 3468.8,
+          "label": "怡人山谷教堂"
+        },
+        {
+          "worldX": 1798.937,
+          "worldZ": 1138.565,
+          "mapX": 1635.9,
+          "mapY": 2733.2,
+          "label": "心碎桥"
+        },
+        {
+          "worldX": 1410.254,
+          "worldZ": 2237.996,
+          "mapX": 3318.2,
+          "mapY": 2133.6,
+          "label": "孤独家宅附近木棚"
+        }
+      ]
     }
   ]
 }
