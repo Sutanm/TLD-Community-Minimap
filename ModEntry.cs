@@ -128,6 +128,7 @@ public sealed class ModEntry : MelonMod
     {
         s_instance = this;
         HarmonyInstance.PatchAll();
+        PanelProbe.Install(HarmonyInstance);
         _settings.AddToModSettings("社区HUD地图", MenuType.Both);
         // The settings GUI does not exist yet, so the visibility rules have to be applied once by
         // hand or the developer-only rows show up for everyone until something changes.
@@ -169,7 +170,11 @@ public sealed class ModEntry : MelonMod
             RecordCalibrationPoint();
             DumpMapDetails();
         }
-        if (FullMapVisible)
+        // The full map can be switched on in a scene that has no map at all, and the UI is only
+        // built once a region with a map loads, so this has to tolerate a missing UI. Without the
+        // guard, left-clicking while the view sat on FullMap in a map-less scene threw a
+        // NullReferenceException straight out of OnUpdate.
+        if (FullMapVisible && !ReferenceEquals(_mapRect, null))
         {
             HandleFullMapInput();
             // While the full map is open our input context stops the game from dispatching its own
@@ -178,8 +183,9 @@ public sealed class ModEntry : MelonMod
         }
 
         // The full map owns the cursor and the input context, but only while it is actually on
-        // screen: turning a layer off in the settings has to hand the input back as well.
-        bool showFullMap = FullMapVisible;
+        // screen: turning a layer off in the settings has to hand the input back as well, and
+        // there is nothing to push as a context until the UI exists.
+        bool showFullMap = FullMapVisible && !ReferenceEquals(_backgroundImage, null);
         if (s_fullMapActive != showFullMap)
         {
             s_fullMapActive = showFullMap;

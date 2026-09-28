@@ -2317,6 +2317,53 @@ DLL，只在 `Copy-Item` 抛 IOException 时才暴露出来。
 用户明确要 Tab（"就在移动键旁边，用起来真的很顺手"）。**如果以后嫌烦**，可以 patch
 `InputManager.ExecuteSurvivalPanelAction` 在轮换键那一帧吃掉它——但那是替用户做决定，先不做。
 
+### 31.6 又被证伪一次：勘测弹图拦错了方法
+
+**现象**：`木炭勘测后弹图` 三个选项**全都弹出游戏内置地图**。
+
+**证据**：整场游戏日志里**一条 `Survey popup:` 都没有**，而 `Vanilla map panel refreshed from
+MountainTownSandbox_RegionMap` 出现了 —— 说明内置面板**确实被打开了，但我们的补丁没被执行**。
+
+**结论：`InputManager.ExecuteOpenMapActionFromObjective` 根本不在这条路径上。**
+
+从名字就能看出来：它是 **FromObjective** —— **任务目标提示**那条路，不是木炭勘测。
+之前记的"加了补丁就修好了"是**误判**，当时没有验证。
+
+**这是同一个错误的第二次**：不测量就假定某条路径存在。第一次是 Tab 冲突，第二次是这个。
+
+**已加只读探针** `PanelProbe.cs`（临时文件，用完删）。它把一次勘测可能走的入口全盯上，
+**只写日志、不改行为**：
+
+```
+Panel_Map.Enable(bool / bool,bool)     ← 面板自己的激活入口，最可能
+Panel_Map.DoDetailSurvey(SurveyType)   ← 勘测动作本身
+Panel_Map.RevealFogForScene(string)
+Panel_Map.RevealCurrentScene()
+Panel_ActionsRadial.DoOpenMap()        ← 放射菜单（顺带量 §30.2 那条）
+```
+
+两个设计要点：
+
+1. **不用 `PatchAll`，逐个手动注册并 try/catch。** 某个目标的签名不对时 Harmony 会抛异常，
+   而 `PatchAll` 里抛一次会把整个模组带下去。
+2. **记录调用者**（`System.Diagnostics.StackTrace`，去重后取前 4 帧）。既然已经猜错过一次，
+   这次要看到底是谁调的；IL2CPP 下拿不到托管栈就明说，不假装。
+
+### 31.7 修了一个真崩溃：`HandleFullMapInput` 空引用
+
+```
+[20:42:00.317] System.NullReferenceException
+   at CommunityMinimap.ModEntry.HandleFullMapInput()
+```
+
+场景是 `GreyMothersHouseA` —— **一个没有地图定义的场景**。Tab 把视图切到了 FullMap，
+但那个场景从来没建过 UI（`EnsureUnityUi` 只在有地图的区域才被调到），于是 `_mapRect` 是 null，
+左键拖动时崩在 `_mapRect.rect.size`。
+
+**修法**：`OnUpdate` 里三处都加上"UI 不存在就别碰"的判断——全屏地图输入、按键轮询、
+输入上下文对账。全屏地图的**状态**仍然可以存在（切场景回来还在），只是没有 UI 时不做任何操作。
+
+
 
 
 
