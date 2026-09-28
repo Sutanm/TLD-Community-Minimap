@@ -660,6 +660,28 @@ public sealed class ModEntry : MelonMod
         if (!ReferenceEquals(_hintFont, null))
             return _hintFont;
 
+        // The bar's text is Chinese, and Unity's built-in font has no CJK glyphs on most
+        // builds, so try an OS font first. CreateDynamicFontFromOSFont falls back to a default
+        // family rather than failing, so the first name that exists on the machine wins.
+        string[] osNames = { "Microsoft YaHei", "SimHei", "Noto Sans CJK SC", "PingFang SC", "Arial" };
+        foreach (string name in osNames)
+        {
+            try
+            {
+                Font font = Font.CreateDynamicFontFromOSFont(name, 17);
+                if (!ReferenceEquals(font, null))
+                {
+                    _hintFont = font;
+                    LoggerInstance.Msg($"Key hint font: OS font \"{name}\".");
+                    return _hintFont;
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggerInstance.Warning($"OS font \"{name}\" unavailable: {ex.Message}");
+            }
+        }
+
         // LegacyRuntime.ttf is the built-in font's name from Unity 2022.2 on; Arial.ttf is what
         // it was called before. Try both rather than assume which build this is.
         string[] builtInNames = { "LegacyRuntime.ttf", "Arial.ttf" };
@@ -681,28 +703,8 @@ public sealed class ModEntry : MelonMod
             }
         }
 
-        // The bar's text is Chinese, so an OS font with CJK coverage beats the built-in one.
-        string[] osNames = { "Microsoft YaHei", "SimHei", "Noto Sans CJK SC", "Arial" };
-        foreach (string name in osNames)
-        {
-            try
-            {
-                Font font = Font.CreateDynamicFontFromOSFont(name, 17);
-                if (!ReferenceEquals(font, null))
-                {
-                    _hintFont = font;
-                    LoggerInstance.Msg($"Key hint font: OS font \"{name}\".");
-                    return _hintFont;
-                }
-            }
-            catch (Exception ex)
-            {
-                LoggerInstance.Warning($"OS font \"{name}\" unavailable: {ex.Message}");
-            }
-        }
-
         LoggerInstance.Warning(
-            "Key hint bar skipped: no built-in or OS font could be resolved. The map still works.");
+            "Key hint bar skipped: no OS or built-in font could be resolved. The map still works.");
         return null;
     }
 
