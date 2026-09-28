@@ -375,15 +375,19 @@ public sealed class ModEntry : MelonMod
         _observedPreferCommunity = preferCommunity;
 
         // Whichever source we are leaving, the texture it produced is destroyed when the other one
-        // loads, and the markers captured for it are thrown away too. Both "already done for this
-        // scene" markers then become lies, and leaving them set meant coming back skipped the
-        // request and the capture: the HUD vanished with its markers and only a scene change,
-        // which resets them, brought either back.
+        // loads, so the "already requested this scene" marker becomes a lie and has to be cleared
+        // or the base map request is skipped on the way back.
+        //
+        // The marker set is deliberately NOT touched here. Clearing it forced a re-capture, and a
+        // re-capture after the map panel has ever been opened only returns the markers inside the
+        // surveyed area - CaptureVanillaIconsRecursive drops sprites whose enabled flag the game's
+        // RefreshIconVisibility has turned off, which is how the game draws its fog. The log shows
+        // it plainly: 162 markers on scene load, 28 after the panel was opened once.
+        // The markers also stay valid across a switch because they are only drawn while the
+        // vanilla source is active, and LoadMapElementsForScene appends rather than replaces, so
+        // keeping _elementsLoadedForScene also avoids duplicating every marker.
         _baseMapRequestedScene = "";
         _baseMapPending = false;
-        _elementsLoadedForScene = "";
-        _vanillaIconSignature = 0;
-        ClearVanillaIcons();
 
         if (preferCommunity)
         {
@@ -1454,6 +1458,20 @@ public sealed class ModEntry : MelonMod
         // the markers still exist. Keep what we have rather than blanking the HUD.
         if (_pendingVanillaIcons.Count == 0 && keepExistingWhenEmpty)
             return;
+
+        // A capture smaller than what we already hold is the game's fog, not markers going away:
+        // RefreshIconVisibility switches off the sprite's enabled flag outside the surveyed area,
+        // and CaptureVanillaIconsRecursive drops anything with a zero alpha. The game never
+        // removes a marker at all, so replacing the set would silently shrink the HUD to the lit
+        // area - the log showed exactly that, 162 markers dropping to 28 once the panel had been
+        // opened. Keeping the larger set costs nothing except stale markers we already had.
+        if (keepExistingWhenEmpty && _pendingVanillaIcons.Count < _vanillaIcons.Count)
+        {
+            LoggerInstance.Msg(
+                $"Kept {_vanillaIcons.Count} markers: the re-capture returned only " +
+                $"{_pendingVanillaIcons.Count}, which is the game's fog rather than markers leaving.");
+            return;
+        }
 
         ClearVanillaIcons();
         _vanillaIcons.AddRange(_pendingVanillaIcons);
