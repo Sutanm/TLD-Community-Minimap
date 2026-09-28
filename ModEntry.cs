@@ -95,6 +95,18 @@ public sealed class ModEntry : MelonMod
     private readonly List<VanillaIcon> _pendingVanillaIcons = new();
     private DateTime _nextVanillaIconRefreshUtc = DateTime.MinValue;
     private long _vanillaIconSignature;
+
+    // The game names its map icons as strings; the texture behind a name only exists on the
+    // panel's sprite objects. Collect the mapping while scraping the UI so the marker list can
+    // later be driven from MapDetail data instead of from the sprites themselves.
+    private sealed class IconRef
+    {
+        public Texture Texture;
+        public Rect Uv;
+    }
+
+    private readonly Dictionary<string, IconRef> _iconBySpriteName = new(StringComparer.Ordinal);
+    private UIAtlas _mapIconAtlas;
     private float _vanillaIconMaxUv = 1f;
 
     private sealed class VanillaIcon
@@ -138,7 +150,8 @@ public sealed class ModEntry : MelonMod
             ToggleDisplayMode();
         if (Input.GetKeyDown(_settings.RecordPointKey))
             RecordCalibrationPoint();
-        if (_displayMode == DisplayMode.FullMap)
+        if (Input.GetKeyDown(_settings.RecordPointKey))
+            DumpMapDetails();        if (_displayMode == DisplayMode.FullMap)
             HandleFullMapInput();
 
         var scene = UnitySceneManager.GetActiveScene();
@@ -1139,6 +1152,65 @@ public sealed class ModEntry : MelonMod
             $"({(allowInactive ? "panel-free" : "panel-open")}).");
     }
 
+
+    // Diagnostic: the marker data behind the game's map, which is the source the refactor will
+    // read instead of scraping the panel's sprites. Prints what a marker actually carries.
+    private void DumpMapDetails()
+    {
+        try
+        {
+            var details = MapDetailManager.s_MapDetails;
+            if (details == null)
+            {
+                LoggerInstance.Warning("MapDetail dump: s_MapDetails is null.");
+                return;
+            }
+            LoggerInstance.Msg(
+                $"MapDetail dump: {details.Count} entries; " +
+                $"icon table holds {_iconBySpriteName.Count} sprite names.");
+            int withSprite = 0, resolved = 0, atlasResolved = 0;
+            for (int i = 0; i < details.Count; i++)
+            {
+                MapDetail all = details[i];
+                if (ReferenceEquals(all, null))
+                    continue;
+                // text labels carry no sprite name, which is the cheapest way to tell them
+                // apart without depending on the MapIconType enum's namespace
+                if (string.IsNullOrEmpty(all.m_SpriteName))
+                    continue;
+                withSprite++;
+                if (_iconBySpriteName.ContainsKey(all.m_SpriteName))
+                    resolved++;
+                else if (!ReferenceEquals(_mapIconAtlas, null) &&
+                         !ReferenceEquals(_mapIconAtlas.GetSprite(all.m_SpriteName), null))
+                    atlasResolved++;
+            }
+            LoggerInstance.Msg(
+                $"MapDetail summary: {withSprite} markers with a sprite name; " +
+                $"{resolved} found among the scraped sprites, " +
+                $"{atlasResolved} more resolvable through the atlas " +
+                $"({(resolved + atlasResolved) * 100 / Mathf.Max(1, withSprite)}% total); " +
+                $"atlas present: {!ReferenceEquals(_mapIconAtlas, null)}; " +
+                $"{details.Count - withSprite} carry no sprite name (labels and areas).");
+            int shown = 0;
+            for (int i = 0; i < details.Count && shown < 40; i++)
+            {
+                MapDetail d = details[i];
+                if (ReferenceEquals(d, null))
+                    continue;
+                shown++;
+                Vector3 world = d.GetWorldPosition();
+                LoggerInstance.Msg(
+                    $"  [{i}] sprite='{d.m_SpriteName}' loc='{d.m_LocID}' type={d.m_IconType} " +
+                    $"surveyed={d.m_IsSurveyed} discovered={d.m_IsDiscovered} unlocked={d.m_IsUnlocked} " +
+                    $"world=({world.x:F1},{world.y:F1},{world.z:F1}) target=({d.m_TargetPosition.x:F1},{d.m_TargetPosition.y:F1},{d.m_TargetPosition.z:F1})");
+            }
+        }
+        catch (Exception ex)
+        {
+            LoggerInstance.Warning($"MapDetail dump failed: {ex.Message}");
+        }
+    }
     private static bool IsMapIconChrome(string name) =>
         string.Equals(name, "HoverWidget", StringComparison.Ordinal) ||
         string.Equals(name, "Label", StringComparison.Ordinal) ||
@@ -1231,6 +1303,18 @@ public sealed class ModEntry : MelonMod
 
             if (alpha > 0.01f && TryGetSpriteUv(sprite, out Vector4 sourceUv))
             {
+                if (ReferenceEquals(_mapIconAtlas, null) && !ReferenceEquals(sprite.atlas, null))
+                    _mapIconAtlas = sprite.atlas;
+                string spriteName = sprite.spriteName;
+                if (!string.IsNullOrEmpty(spriteName) && !_iconBySpriteName.ContainsKey(spriteName))
+                {
+                    _iconBySpriteName[spriteName] = new IconRef
+                    {
+                        Texture = sprite.mainTexture,
+                        Uv = new Rect(sourceUv.x, sourceUv.y,
+                            sourceUv.z - sourceUv.x, sourceUv.w - sourceUv.y),
+                    };
+                }
                 var corners = sprite.worldCorners;
                 if (corners != null && corners.Length >= 4)
                 {

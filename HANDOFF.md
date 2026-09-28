@@ -1493,3 +1493,81 @@ MapDetail dump: 816 entries.
 `DumpMapDetails()` 挂在 **F9** 上（与校准点记录同时触发），日志打印前 40 条。保留着，重构过程中还要反复对照。
 
 **编译通过本身已确认**：`MapDetailManager.s_MapDetails`、`GetWorldPosition()`、`m_SpriteName`、`m_LocID`、`m_IconType`、`m_IsSurveyed`、`m_IsDiscovered`、`m_IsUnlocked`、`m_TargetPosition` **全部可从我们的模组访问**。
+---
+
+## 25. 图标链路打通：100%（2026-09-28，重构已解锁）
+
+### 25.1 第一步的失败教训（先量再改）
+
+先试"刮 UI 时记录 `sprite.spriteName` 建字典"，量出来：
+
+```
+icon table holds 8 sprite names
+802 markers with a sprite name, 205 resolvable      ← 只有 26%
+Captured 162 vanilla map marker layers (panel-free)
+```
+
+**字典里只有 8 个名字**——面板关闭时它只实例化了很少几种图标。**若当时直接重写，四分之三的标记会变成空白。** 幸好先用诊断量了一遍。
+
+### 25.2 正解：走图集
+
+`UISprite` 上除 `spriteName` 还有 **`atlas`**；NGUI 的 `UIAtlas` 提供 **`GetSprite(name)`**，拿到图集后**任何名字都能查出贴图**，不再依赖"面板恰好实例化了哪些"。
+
+刮取时存一个图集引用即可：
+
+```csharp
+if (ReferenceEquals(_mapIconAtlas, null) && !ReferenceEquals(sprite.atlas, null))
+    _mapIconAtlas = sprite.atlas;
+```
+
+### 25.3 实测结果：100%
+
+```
+MapDetail dump: 816 entries; icon table holds 8 sprite names.
+MapDetail summary: 802 markers with a sprite name;
+                   205 found among the scraped sprites,
+                   597 more resolvable through the atlas (100% total);
+                   atlas present: True;
+                   14 carry no sprite name (labels and areas).
+```
+
+**802 / 802 全部可解析。** `atlas present: True`（面板关闭时精灵的 `atlas` 也有值）。
+
+### 25.4 重构的全部要素已确认
+
+| 要素 | 来源 | 状态 |
+|---|---|---|
+| **位置** | `MapDetail.GetWorldPosition()` → 我们已有的校准 → uv | ✅ |
+| **图标** | `_mapIconAtlas.GetSprite(m_SpriteName)` → 贴图 + UV | ✅ 100% |
+| **可见性** | `m_IsSurveyed` / `m_IsUnlocked`（实时） | ✅ |
+| **过滤** | `m_SpriteName` 为空 = 地名标签 / 区域，不画 | ✅ |
+| **地名** | `m_LocID`（可本地化） | ✅ |
+| **分类** | `m_SpriteName` 前缀（`icoMap_*`） | ✅ |
+
+**注意**：`m_TargetPosition` 恒为 `(0,0,0)`，**必须用 `GetWorldPosition()`**。
+
+### 25.5 下一步（重写标记来源）
+
+目标：把 `_vanillaIcons` 的来源从"刮 UI 精灵"换成"读 `s_MapDetails`"。
+
+```
+每个 MapDetail:
+  if (m_SpriteName 为空) 跳过                       // 标签/区域
+  if (!m_IsSurveyed && !m_IsUnlocked) 跳过          // 未揭示
+  if (所有可采集物已采集) 跳过                      // 免疫采集 bug
+  world = GetWorldPosition()
+  if (!TryPlayerToMapUv(world, out uv)) 跳过        // 与玩家指针共用校准
+  sprite = _mapIconAtlas.GetSprite(m_SpriteName)    // 100% 可得
+  → 画在 uv 上，尺寸按精灵的像素尺寸换算
+```
+
+**同时**：签名改为从 `s_MapDetails` 计算（数量 + 勘测位 + 采集位），**实现实时刷新，不需要换场景**。
+
+**保留 UI 刮取**，但只作为**图集与精灵尺寸的来源**，不再决定画什么。
+
+**保留 F9 诊断**，重写过程中反复对照。
+
+### 25.6 待观察
+
+- **816 条 vs 实际显示数量**：绝大多数是重复资源条目（香蒲等），需要确认原版面板是否会把同类聚合显示（`m_MultiMarkerIconSize`、`DoMapIconSpacing` 暗示有聚合逻辑）。**若不聚合，全画出来会很乱**，可能要看齐原版的聚合行为。
+- **`m_IsSurveyed` 与 `m_IsUnlocked` 的组合**：需要确认哪些组合该画（目前 dump 里见到 `surveyed=True`、`unlocked=True`、两者皆 False 的情况）。
