@@ -15,8 +15,21 @@ internal sealed class MinimapSettings : JsonModSettings
     [Section("HUD")]
 
     [Name("启用小地图")]
-    [Description("显示或隐藏地图 HUD。")]
+    [Description("只控制角落小地图。全屏地图由下面的“启用全屏地图”单独控制，关掉小地图不会再连带关掉全屏地图。")]
     public bool Enabled = true;
+
+    [Name("启用全屏地图")]
+    [Description("允许用游戏地图键（默认 M）打开全屏地图。与角落小地图互不影响。")]
+    public bool FullMapEnabled = true;
+
+    [Name("Tab 循环内容")]
+    [Description("按 Tab 时轮流显示哪些视图。无论这里选什么，全屏地图都可以用游戏地图键（默认 M）随时直接打开。")]
+    [Choice("小地图 ↔ 无", "大地图 ↔ 无", "小地图 ↔ 大地图 ↔ 无", "小地图 ↔ 大地图")]
+    public int TabCycleMode = 3;
+
+    [Name("全屏地图按键提示")]
+    [Description("在全屏地图底部显示一行操作提示（缩放 / 拖动 / 关闭）。找不到可用字体会自动隐藏，并写入日志。")]
+    public bool ShowKeyHints = true;
 
     [Name("HUD 位置")]
     [Description("选择小地图在屏幕上的位置。")]
@@ -74,6 +87,13 @@ internal sealed class MinimapSettings : JsonModSettings
     [Name("显示坐标诊断")]
     [Description("在小地图下方显示场景名、玩家世界坐标和朝向，供地图配准使用。")]
     public bool ShowDiagnostics = true;
+
+    [Section("勘测弹图")]
+
+    [Name("木炭勘测后弹图")]
+    [Description("用木炭点亮地图时，游戏会强制打开一次地图。原版地图＝保持游戏原样；我们的地图＝改弹本模组的全屏地图；不弹＝直接吃掉这次弹窗（我们的地图本来就全亮，信息量相同，少一次打扰）。")]
+    [Choice("原版地图", "我们的地图", "不弹")]
+    public int SurveyPopup = 1;
 
     [Section("快捷键与校准")]
 

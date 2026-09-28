@@ -29,6 +29,7 @@
     <Reference Include="UnityEngine.ScreenCaptureModule" HintPath="$(GameDirectory)\MelonLoader\Il2CppAssemblies\UnityEngine.ScreenCaptureModule.dll" Private="false" />
     <Reference Include="UnityEngine.UI" HintPath="$(GameDirectory)\MelonLoader\Il2CppAssemblies\UnityEngine.UI.dll" Private="false" />
     <Reference Include="UnityEngine.UIModule" HintPath="$(GameDirectory)\MelonLoader\Il2CppAssemblies\UnityEngine.UIModule.dll" Private="false" />
+    <Reference Include="UnityEngine.TextRenderingModule" HintPath="$(GameDirectory)\MelonLoader\Il2CppAssemblies\UnityEngine.TextRenderingModule.dll" Private="false" />
     <Reference Include="ModSettings" HintPath="$(GameDirectory)\Mods\ModSettings.dll" Private="false" />
   </ItemGroup>
 </Project>

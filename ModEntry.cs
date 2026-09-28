@@ -30,11 +30,19 @@ public sealed class ModEntry : MelonMod
     internal static ModEntry s_instance;
     private static int s_suppressEscapeThroughFrame = -1;
 
-    private enum DisplayMode
-    {
-        MiniMap,
-        FullMap
-    }
+    // The corner HUD and the full-screen map used to be one two-state switch, so hiding the
+    // corner map also took the full map away and vice versa. They are two independent layers
+    // now: the corner map is the persistent layer, the full map is a modal overlay that the
+    // game's own map key can always open, whatever the corner layer is doing.
+    private bool _miniMapOn = true;
+    private bool _fullMapOn;
+    private int _tabStage;
+
+    private static readonly (bool Mini, bool Full)[] CycleMiniOnly = { (true, false), (false, false) };
+    private static readonly (bool Mini, bool Full)[] CycleFullOnly = { (false, true), (false, false) };
+    private static readonly (bool Mini, bool Full)[] CycleMiniFullNone =
+        { (true, false), (false, true), (false, false) };
+    private static readonly (bool Mini, bool Full)[] CycleMiniFull = { (true, false), (false, true) };
 
     private readonly MinimapSettings _settings = new();
     private string _modDirectory = "";
@@ -73,7 +81,6 @@ public sealed class ModEntry : MelonMod
     // through LoadMapElementsForScene never go through that layout, so their measured bounds
     // come out exactly 3x too large; measured 52.0 vs 17.3, 32.0 vs 10.7, 47.8 vs 15.9.
     private const float PanelFreeIconScale = 1f / 3f;
-    private DisplayMode _displayMode = DisplayMode.MiniMap;
     private MapDefinition _currentDefinition;
     private string _loadedMapId = "";
     private Texture2D _currentTexture;
@@ -87,6 +94,8 @@ public sealed class ModEntry : MelonMod
     private Image _backgroundImage;
     private RectTransform _mapRect;
     private RawImage _mapImage;
+    private Text _hintLabel;
+    private Font _hintFont;
     private GameObject _markerRoot;
     private RectTransform _markerRect;
     private RawImage _markerImage;
@@ -143,23 +152,35 @@ public sealed class ModEntry : MelonMod
 
         if (Input.GetKeyDown(_settings.ToggleKey))
             _temporarilyHidden = !_temporarilyHidden;
-        bool leaveFullMap = _displayMode == DisplayMode.FullMap &&
-                            Input.GetKeyDown(KeyCode.Escape);
-        if (leaveFullMap)
+        if (FullMapVisible && Input.GetKeyDown(KeyCode.Escape))
             LeaveFullMap();
         else if (Input.GetKeyDown(_settings.MapModeKey))
-            ToggleDisplayMode();
+            CycleViewMode();
         if (Input.GetKeyDown(_settings.RecordPointKey))
+        {
             RecordCalibrationPoint();
-        if (Input.GetKeyDown(_settings.RecordPointKey))
-            DumpMapDetails();        if (_displayMode == DisplayMode.FullMap)
+            DumpMapDetails();
+        }
+        if (FullMapVisible)
             HandleFullMapInput();
         // While the full map is open our input context stops the game from raising its own
         // open-map action, so pressing the map key again never reached the redirect and the
         // map could only be closed with Escape. Watch the key directly, through the same
         // de-duplication so the two paths cannot cancel each other out.
-        if (_displayMode == DisplayMode.FullMap && Input.GetKeyDown(_settings.GameMapKey))
+        if (FullMapVisible && Input.GetKeyDown(_settings.GameMapKey))
             TryRedirectGameMap();
+
+        // The full map owns the cursor and the input context, but only while it is actually on
+        // screen: turning a layer off in the settings has to hand the input back as well.
+        bool showFullMap = FullMapVisible;
+        if (s_fullMapActive != showFullMap)
+        {
+            s_fullMapActive = showFullMap;
+            if (showFullMap)
+                ApplyMapInputContext();
+            else
+                ReleaseMapInputContext();
+        }
         if (DateTime.UtcNow >= _nextMarkerCleanupUtc)
         {
             _nextMarkerCleanupUtc = DateTime.UtcNow.AddSeconds(2);
@@ -226,7 +247,8 @@ public sealed class ModEntry : MelonMod
         }
 
         bool shouldShow = _textureReady && _currentDefinition != null && playerReady &&
-                          _settings.Enabled && !_temporarilyHidden && !vanillaMapOpen;
+                          (MiniMapVisible || FullMapVisible) &&
+                          !_temporarilyHidden && !vanillaMapOpen;
         SetUiVisible(shouldShow);
         if (!shouldShow)
             return;
@@ -373,24 +395,73 @@ public sealed class ModEntry : MelonMod
         }
     }
 
-    private void ToggleDisplayMode()
+    // A layer can be switched on by the Tab cycle and still be switched off in the settings, so
+    // every read goes through the settings as well as the layer flag.
+    private bool MiniMapVisible => _miniMapOn && _settings.Enabled;
+    private bool FullMapVisible => _fullMapOn && _settings.FullMapEnabled;
+
+    private string DescribeView() => FullMapVisible ? "FullMap"
+        : MiniMapVisible ? "MiniMap" : "None";
+
+    // The entries the Tab key walks through, with the layers the player turned off removed.
+    // "None" is always in the list, so a player who disabled both layers still gets a Tab that
+    // simply does nothing instead of an error.
+    private (bool Mini, bool Full)[] GetTabCycle()
     {
-        _displayMode = _displayMode == DisplayMode.MiniMap
-            ? DisplayMode.FullMap
-            : DisplayMode.MiniMap;
-        s_fullMapActive = _displayMode == DisplayMode.FullMap;
-        if (s_fullMapActive)
+        (bool Mini, bool Full)[] source = _settings.TabCycleMode switch
         {
-            // open looking at the player, so the map is useful before it is touched
+            0 => CycleMiniOnly,
+            1 => CycleFullOnly,
+            2 => CycleMiniFullNone,
+            _ => CycleMiniFull,
+        };
+
+        var allowed = new List<(bool Mini, bool Full)>(source.Length);
+        foreach ((bool mini, bool full) in source)
+        {
+            if (mini && !_settings.Enabled)
+                continue;
+            if (full && !_settings.FullMapEnabled)
+                continue;
+            allowed.Add((mini, full));
+        }
+        return allowed.ToArray();
+    }
+
+    private void ApplyViewState(bool mini, bool full)
+    {
+        // Opening the full map resets it onto the player: a map that reopens wherever it was
+        // last dragged is disorienting, and the player is the one thing on it that moved.
+        if (full && !_fullMapOn)
+        {
             _fullMapZoom = 1f;
             _fullMapCenterValid = false;
-            ApplyMapInputContext();
         }
-        else
-        {
-            ReleaseMapInputContext();
-        }
-        LoggerInstance.Msg($"Map display mode: {_displayMode}.");
+        _miniMapOn = mini;
+        _fullMapOn = full;
+    }
+
+    private void CycleViewMode()
+    {
+        (bool Mini, bool Full)[] cycle = GetTabCycle();
+        if (cycle.Length == 0)
+            return;
+
+        _tabStage = (_tabStage + 1) % cycle.Length;
+        ApplyViewState(cycle[_tabStage].Mini, cycle[_tabStage].Full);
+        LoggerInstance.Msg($"Tab: view is now {DescribeView()} ({_tabStage + 1}/{cycle.Length}).");
+    }
+
+    private void OpenFullMap()
+    {
+        if (!_settings.FullMapEnabled)
+            return;
+        ApplyViewState(_miniMapOn, true);
+    }
+
+    private void CloseFullMap()
+    {
+        ApplyViewState(_miniMapOn, false);
     }
 
     // The game's own map key lives in muscle memory far more than our Tab does, so by default
@@ -403,25 +474,61 @@ public sealed class ModEntry : MelonMod
             return false;
         if (mod._currentDefinition == null)
             return false;                 // no map for this scene; leave the game alone
+        if (!mod._settings.FullMapEnabled && !mod._fullMapOn)
+            return false;                 // the player disabled our full map; use the game's
 
         // The game fires this action twice for a single press - the log showed FullMap and
         // MiniMap in the same millisecond - so a plain toggle opened and closed our map at once
         // and nothing appeared to happen. Collapse the repeat.
         DateTime now = DateTime.UtcNow;
         if ((now - s_lastMapRedirectUtc).TotalMilliseconds < 120.0)
+        {
+            // Not a fault: the game raises this action twice for one press, and both the key
+            // patch and the survey patch can arrive for a single survey.
+            mod.LoggerInstance.Msg("Duplicate map action within 120 ms; collapsed into one.");
             return true;
+        }
         s_lastMapRedirectUtc = now;
 
-        mod.ToggleDisplayMode();
+        if (mod._fullMapOn)
+            mod.CloseFullMap();
+        else
+            mod.OpenFullMap();
+        mod.LoggerInstance.Msg($"Game map key: view is now {mod.DescribeView()}.");
         return true;
+    }
+
+    // Cartography forces a map open after a survey, through a different action. The player may
+    // want the game's own map there (it is the one that draws what was just revealed), our map,
+    // or nothing at all: our map is lit everywhere already, so that popup carries no new
+    // information and swallowing it removes an interruption.
+    internal static bool TryRedirectGameMapFromObjective()
+    {
+        ModEntry mod = s_instance;
+        if (mod == null)
+            return false;
+
+        switch (mod._settings.SurveyPopup)
+        {
+            case 0:
+                // Same de-duplication window as the key path: if the game also raises the plain
+                // open-map action for this one survey, it must not land on top of the panel.
+                s_lastMapRedirectUtc = DateTime.UtcNow;
+                mod.LoggerInstance.Msg("Survey popup: handing the map to the game.");
+                return false;
+            case 2:
+                s_lastMapRedirectUtc = DateTime.UtcNow;
+                mod.LoggerInstance.Msg("Survey popup: suppressed.");
+                return true;
+            default:
+                return TryRedirectGameMap();
+        }
     }
 
     private void LeaveFullMap()
     {
-        _displayMode = DisplayMode.MiniMap;
-        s_fullMapActive = false;
         s_suppressEscapeThroughFrame = Time.frameCount + 1;
-        ReleaseMapInputContext();
+        CloseFullMap();
         LoggerInstance.Msg("Full map closed with Escape.");
     }
 
@@ -476,9 +583,131 @@ public sealed class ModEntry : MelonMod
         _fullMapCenterValid = true;
     }
 
-    private void ApplyMapInputContext()
+    // We invented the wheel-zoom and drag interactions, so the full map has to say so: nothing
+    // in the game tells the player they exist. The label is built lazily and reports which font
+    // it managed to find, because a font that does not exist in this Unity build would
+    // otherwise fail silently and just leave the bar blank.
+    private void UpdateFullMapHints(bool fullMap)
     {
-        if (!_settings.ReleaseMouseOnFullMap)
+        if (!fullMap || !_settings.ShowKeyHints)
+        {
+            if (!ReferenceEquals(_hintLabel, null) && _hintLabel.gameObject.activeSelf)
+                _hintLabel.gameObject.SetActive(false);
+            return;
+        }
+
+        EnsureHintLabel();
+        if (ReferenceEquals(_hintLabel, null))
+            return;
+
+        if (!_hintLabel.gameObject.activeSelf)
+        {
+            _hintLabel.gameObject.SetActive(true);
+            _hintLabel.transform.SetAsLastSibling();
+        }
+
+        RectTransform rect = _hintLabel.rectTransform;
+        float width = Mathf.Max(320f, Screen.width - 64f);
+        if (!Mathf.Approximately(rect.sizeDelta.x, width))
+            rect.sizeDelta = new Vector2(width, rect.sizeDelta.y);
+
+        string text = BuildHintText();
+        if (!string.Equals(_hintLabel.text, text, StringComparison.Ordinal))
+            _hintLabel.text = text;
+    }
+
+    private string BuildHintText()
+    {
+        string text = _settings.ReleaseMouseOnFullMap
+            ? "滚轮 缩放      左键拖动 平移      "
+            : "";
+        return $"{text}{_settings.GameMapKey} / Esc 关闭";
+    }
+
+    private void EnsureHintLabel()
+    {
+        if (!ReferenceEquals(_hintLabel, null) || !_settings.ShowKeyHints)
+            return;
+
+        Font font = ResolveHintFont();
+        if (ReferenceEquals(font, null))
+            return;
+
+        GameObject hintObject = CreateUiObject("KeyHints",
+            typeof(RectTransform), typeof(CanvasRenderer), typeof(Text));
+        hintObject.transform.SetParent(_uiRoot.transform, false);
+        RectTransform rect = hintObject.GetComponent<RectTransform>();
+        rect.anchorMin = new Vector2(0.5f, 0f);
+        rect.anchorMax = new Vector2(0.5f, 0f);
+        rect.pivot = new Vector2(0.5f, 0f);
+        rect.anchoredPosition = new Vector2(0f, 14f);
+        rect.sizeDelta = new Vector2(Mathf.Max(320f, Screen.width - 64f), 30f);
+
+        _hintLabel = hintObject.GetComponent<Text>();
+        _hintLabel.font = font;
+        _hintLabel.fontSize = 17;
+        _hintLabel.alignment = TextAnchor.MiddleCenter;
+        _hintLabel.horizontalOverflow = HorizontalWrapMode.Overflow;
+        _hintLabel.verticalOverflow = VerticalWrapMode.Overflow;
+        _hintLabel.color = new Color(0.88f, 0.91f, 0.95f, 0.92f);
+        _hintLabel.raycastTarget = false;
+        _hintLabel.text = BuildHintText();
+        LoggerInstance.Msg($"Key hint bar created: \"{_hintLabel.text}\".");
+    }
+
+    private Font ResolveHintFont()
+    {
+        if (!ReferenceEquals(_hintFont, null))
+            return _hintFont;
+
+        // LegacyRuntime.ttf is the built-in font's name from Unity 2022.2 on; Arial.ttf is what
+        // it was called before. Try both rather than assume which build this is.
+        string[] builtInNames = { "LegacyRuntime.ttf", "Arial.ttf" };
+        foreach (string name in builtInNames)
+        {
+            try
+            {
+                Font font = Resources.GetBuiltinResource<Font>(name);
+                if (!ReferenceEquals(font, null))
+                {
+                    _hintFont = font;
+                    LoggerInstance.Msg($"Key hint font: built-in \"{name}\".");
+                    return _hintFont;
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggerInstance.Warning($"Built-in font \"{name}\" unavailable: {ex.Message}");
+            }
+        }
+
+        // The bar's text is Chinese, so an OS font with CJK coverage beats the built-in one.
+        string[] osNames = { "Microsoft YaHei", "SimHei", "Noto Sans CJK SC", "Arial" };
+        foreach (string name in osNames)
+        {
+            try
+            {
+                Font font = Font.CreateDynamicFontFromOSFont(name, 17);
+                if (!ReferenceEquals(font, null))
+                {
+                    _hintFont = font;
+                    LoggerInstance.Msg($"Key hint font: OS font \"{name}\".");
+                    return _hintFont;
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggerInstance.Warning($"OS font \"{name}\" unavailable: {ex.Message}");
+            }
+        }
+
+        LoggerInstance.Warning(
+            "Key hint bar skipped: no built-in or OS font could be resolved. The map still works.");
+        return null;
+    }
+
+    private void ApplyMapInputContext()
+    {        if (!_settings.ReleaseMouseOnFullMap)
             return;
         try
         {
@@ -728,7 +957,8 @@ public sealed class ModEntry : MelonMod
 
     private void UpdateUnityUi(Transform player)
     {
-        bool fullMap = _displayMode == DisplayMode.FullMap;
+        bool fullMap = FullMapVisible;
+        UpdateFullMapHints(fullMap);
         _backgroundObject.SetActive(fullMap);
         _backgroundImage.color = new Color(0.015f, 0.025f, 0.035f,
             _settings.FullMapBackgroundOpacity);
