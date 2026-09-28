@@ -37,10 +37,9 @@ public sealed class ModEntry : MelonMod
     private bool _miniMapOn = true;
     private bool _fullMapOn;
 
-    // Diagnostic state for the open-map action query; see ProbeOpenMapQuery.
-    private bool _openMapProbeArmed;
-    private bool _openMapQueryPressed;
-    private DateTime _nextOpenMapProbeLogUtc = DateTime.MinValue;
+    // State for polling the game's own map key while the full map is open; see PollOpenMapKey.
+    private bool _openMapKeyHeld;
+    private DateTime _nextOpenMapKeyLogUtc = DateTime.MinValue;
 
     private readonly MinimapSettings _settings = new();
     private string _modDirectory = "";
@@ -173,14 +172,10 @@ public sealed class ModEntry : MelonMod
         if (FullMapVisible)
         {
             HandleFullMapInput();
-            ProbeOpenMapQuery();
+            // While the full map is open our input context stops the game from dispatching its own
+            // open-map action, so the same key has to be read through the game's own query instead.
+            PollOpenMapKey();
         }
-        // While the full map is open our input context stops the game from raising its own
-        // open-map action, so pressing the map key again never reached the redirect and the
-        // map could only be closed with Escape. Watch the key directly, through the same
-        // de-duplication so the two paths cannot cancel each other out.
-        if (FullMapVisible && Input.GetKeyDown(_settings.GameMapKey))
-            TryRedirectGameMap();
 
         // The full map owns the cursor and the input context, but only while it is actually on
         // screen: turning a layer off in the settings has to hand the input back as well.
@@ -424,7 +419,6 @@ public sealed class ModEntry : MelonMod
         {
             _fullMapZoom = 1f;
             _fullMapCenterValid = false;
-            _openMapProbeArmed = false;
         }
         _miniMapOn = mini;
         _fullMapOn = full;
@@ -489,7 +483,7 @@ public sealed class ModEntry : MelonMod
             mod.CloseFullMap();
         else
             mod.OpenFullMap();
-        mod.LoggerInstance.Msg($"Game map key: view is now {mod.DescribeView()}.");
+        mod.LoggerInstance.Msg($"Map key: view is now {mod.DescribeView()}.");
         return true;
     }
 
@@ -531,28 +525,19 @@ public sealed class ModEntry : MelonMod
     // mod cannot be scrolled or dragged until both are handed over. The game's own panels do
     // this through the input context list and the cursor helper, so we use the same two calls
     // rather than inventing a mechanism.
-    // Diagnostic only: this deliberately changes no behaviour.
+    // Closing the full map goes through the game's own map action query rather than a key of ours.
     //
-    // Opening the full map is intercepted at the game's own action, so it follows the player's
-    // key binding automatically. Closing cannot use that path, because the input context we push
-    // to stop the player walking around while reading the map also stops the game dispatching the
-    // action - which is the only reason the manual close key exists. InputManager.GetOpenMapPressed
-    // is public and context-aware, so if it answers correctly with our context on top, the manual
-    // key can be deleted and closing would follow the player's binding too.
+    // Opening is intercepted at ExecuteOpenMapAction, so it already follows whatever the player
+    // bound the map to, including a rebind. Closing could not use that path: the input context we
+    // push to stop the player walking around while reading the map also stops the game dispatching
+    // the action, which is why this used to need a separate hardcoded key - one that ignored
+    // rebinding and had to be kept in sync by hand.
     //
-    // A wrong guess here would either silently do nothing or close the map the instant it opens,
-    // so for now the answer only goes to the log.
-    private void ProbeOpenMapQuery()
+    // Measured 2026-09-28 with the map rebound to N: GetOpenMapPressed returned true on every
+    // press of N while our map was open, and false for the old M. The query does work inside our
+    // own input context, so the manual key is gone.
+    private void PollOpenMapKey()
     {
-        if (!_openMapProbeArmed)
-        {
-            _openMapProbeArmed = true;
-            _openMapQueryPressed = false;
-            LoggerInstance.Msg(
-                $"Open-map probe armed (manual close key is {_settings.GameMapKey}). Press the " +
-                "game's map key; the next line says whether the game's own query sees it.");
-        }
-
         bool pressed;
         try
         {
@@ -560,20 +545,23 @@ public sealed class ModEntry : MelonMod
         }
         catch (Exception ex)
         {
-            if (DateTime.UtcNow >= _nextOpenMapProbeLogUtc)
+            if (DateTime.UtcNow >= _nextOpenMapKeyLogUtc)
             {
-                _nextOpenMapProbeLogUtc = DateTime.UtcNow.AddSeconds(5);
-                LoggerInstance.Warning($"Open-map probe: GetOpenMapPressed threw: {ex.Message}");
+                _nextOpenMapKeyLogUtc = DateTime.UtcNow.AddSeconds(5);
+                LoggerInstance.Warning($"Could not poll the game's map key: {ex.Message}");
             }
             return;
         }
 
-        if (pressed == _openMapQueryPressed)
+        bool rising = pressed && !_openMapKeyHeld;
+        _openMapKeyHeld = pressed;
+        if (!rising)
             return;
-        _openMapQueryPressed = pressed;
-        LoggerInstance.Msg(
-            $"Open-map probe: GetOpenMapPressed -> {pressed} (manual key {_settings.GameMapKey} " +
-            $"down this frame: {Input.GetKeyDown(_settings.GameMapKey)}).");
+
+        // The very press that opened the map also reads as pressed here, so this shares the
+        // opening path's de-duplication window. Without that the map would close on the frame it
+        // opened, which is exactly the failure this query could have caused.
+        TryRedirectGameMap();
     }
 
     private void HandleFullMapInput()
@@ -663,7 +651,7 @@ public sealed class ModEntry : MelonMod
             : "";
         if (_settings.EnableCycleKey && _settings.CycleViewKey != KeyCode.None)
             text += $"{_settings.CycleViewKey} 切换视图      ";
-        return $"{text}{_settings.GameMapKey} / Esc 关闭";
+        return $"{text}地图键 / Esc 关闭";
     }
 
     private void EnsureHintLabel()

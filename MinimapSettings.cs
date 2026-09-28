@@ -16,8 +16,8 @@ internal sealed class MinimapSettings : JsonModSettings
     public bool Enabled = true;
 
     [Name("临时隐藏小地图")]
-    [Description("游戏中按此键临时收起小地图，再按一次恢复。不改变保存的设置，也不影响全屏地图。")]
-    public KeyCode ToggleKey = KeyCode.F8;
+    [Description("游戏中按此键临时收起小地图，再按一次恢复。不改变保存的设置，也不影响全屏地图。默认 X —— 游戏自己占用了 F5/F6/F8/F9/F10，原来的 F8 正好是调试截屏。")]
+    public KeyCode ToggleKey = KeyCode.X;
 
     [Name("HUD 位置")]
     [Description("小地图贴在屏幕的哪个角；玩家 HUD 那个角落被占用时选「自定义」。")]
@@ -125,15 +125,8 @@ internal sealed class MinimapSettings : JsonModSettings
     public bool ShowDiagnostics = false;
 
     [Name("记录校准点")]
-    [Description("站在地图上易识别的地标后按此键，将坐标写入 calibration_points_v2.csv，并保存对应截图。")]
-    public KeyCode RecordPointKey = KeyCode.F9;
-
-    // Provisional: whether this can be removed entirely depends on InputManager.GetOpenMapPressed
-    // working inside our own input context. Until that is measured it stays as the manual
-    // fallback, and it stays out of the player's way in the developer section.
-    [Name("关闭全屏地图的按键")]
-    [Description("暂时保留。全屏地图打开时，按此键关闭。理想情况下这一项应该消失——打开和关闭都跟随游戏自己的地图绑定——但需要先实测游戏的 GetOpenMapPressed 在我们的输入上下文里是否可用。")]
-    public KeyCode GameMapKey = KeyCode.M;
+    [Description("站在地图上易识别的地标后按此键，将坐标写入 calibration_points_v2.csv，并保存对应截图。默认 F11 —— 游戏自己占用了 F5/F6/F8/F9/F10，原来的 F9 正好是截屏。")]
+    public KeyCode RecordPointKey = KeyCode.F11;
 
     [Name("清理已采集的标记（仅报告）")]
     [Description("扫描已采集完的资源标记并写入日志，但不删除。用于确认判据是否正确。")]
@@ -180,7 +173,6 @@ internal sealed class MinimapSettings : JsonModSettings
             SetFieldVisible(nameof(RedirectGameMap), developer);
             SetFieldVisible(nameof(ShowDiagnostics), developer);
             SetFieldVisible(nameof(RecordPointKey), developer);
-            SetFieldVisible(nameof(GameMapKey), developer);
             SetFieldVisible(nameof(CleanHarvestedMarkers), developer);
             SetFieldVisible(nameof(RemoveHarvestedMarkers), developer);
 

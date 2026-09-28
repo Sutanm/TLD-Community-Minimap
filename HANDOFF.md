@@ -2220,5 +2220,103 @@ Panel_ActionsRadial.DoOpenMap()   [public]
 
 **所以先加只读日志探针**，用 M 键 / 放射菜单 / 背包各开一次地图，看谁在调 `Enable(true)`。
 
+---
+
+## 31. 首次实测结果与三个被证伪的旧结论（2026-09-28 晚）
+
+用户 20:22 跑了一次（山间小镇），日志 `MelonLoader\Latest.log`。**零 warning、零 error。**
+
+### 31.1 实测通过的部分
+
+| 项 | 证据 |
+|---|---|
+| 版本字符串 | `社区HUD地图 0.7.0 initialized.` |
+| 二级菜单没崩 | 无异常；`DeveloperMode: true` 已存进配置 |
+| 删除旧字段无害 | 配置里 `GameMapKey` 等仍在，**没有任何报错** |
+| 按键提示条 | `Key hint font: OS font "Microsoft YaHei"` → 提示条创建成功 |
+| **Tab 轮换** | 日志连续 `View cycle: FullMap → None → MiniMap → FullMap …` **完全正确** |
+| **F8 临时隐藏** | `Mini map shown/hidden temporarily` 正常 |
+| **M 开→M 关** | `Map key: view is now None` 正常关闭 |
+
+### 31.2 被证伪的结论一：`GetOpenMapPressed` 可用，关闭键可以删掉
+
+**用户把游戏地图键改成 N 之后**，日志：
+
+```
+Open-map probe: GetOpenMapPressed -> True   (manual key M down this frame: False)
+Open-map probe: GetOpenMapPressed -> True   (manual key M down this frame: False)
+Open-map probe: GetOpenMapPressed -> True   (manual key M down this frame: False)
+```
+
+**按了 4 次 N，`GetOpenMapPressed` 4 次全 `True`，而硬编码的 M 全程 `False`。**
+
+⇒ 游戏自己的动作查询**在我们的输入上下文里完全可用，而且跟随玩家改键**。
+
+**已实现**：`GameMapKey` 设置**已删除**，改为 `PollOpenMapKey()` 读 `GetOpenMapPressed`
+的上升沿来关闭。因为**打开地图的那一次按键在这里也会读到 True**，所以它复用打开路径的
+120 ms 去重窗口——不然地图会在打开的那一帧立刻关掉（这正是当初不敢直接用的原因）。
+
+Esc 仍然永远能关，所以就算这条路径在某种情况下失效，玩家也不会被困住。
+
+### 31.3 被证伪的结论二：游戏进程名是 `tld`，不是 `TheLongDark`
+
+**这是一条一直在起反作用的"防御"。** §10 和 §28.4 都写着"用精确的
+`Get-Process -Name 'TheLongDark'` 检查游戏是否在运行"——**这个名字永远匹配不到**，
+`tld.exe` 的进程名是 `tld`。
+
+后果：`build.ps1` 的游戏运行防线**从来没有生效过**。这次它在游戏运行时照样去覆盖被锁住的
+DLL，只在 `Copy-Item` 抛 IOException 时才暴露出来。
+
+**已修**：改用 `@('tld', 'TheLongDark')`，**不带通配符**（`tld*` 会连 `TLDConsole` 一起命中，
+那是另一个工具，不锁 DLL）。进程名和 PID 会打进错误信息里。
+
+### 31.4 被证伪的结论三：设置文件不是 `Loader.cfg`
+
+实际是 **`TheLongDark\Mods\CommunityMinimap.json`**，每个 mod 一个文件。§4 和 §29.7 写错了。
+
+**而且这有一个重要后果：改代码里的默认值，对已经有配置的玩家无效——JSON 里的旧值优先。**
+
+例如这次把 `ToggleKey` 默认从 `F8` 改成 `X`，但用户的 JSON 里已经写着 `"ToggleKey": "F8"`，
+所以**新默认不会生效**，必须从 JSON 里删掉这几项（或让玩家在界面里改）。
+
+### 31.5 游戏默认键位表（**重要参考，别再猜**）
+
+从游戏的「选项 → 按键设置」抄下来的完整列表：
+
+| 键 | 功能 | 键 | 功能 |
+|---|---|---|---|
+| W/A/S/D | 前进/后退/向左/向右 | F | 状态 |
+| LSHIFT | 冲刺 | I | 背包 |
+| LCTRL | 蹲下 | C | 衣着 |
+| LMB | 互动 / 射击 | K | 制作 |
+| RMB | 放置 / 瞄准 / 投掷 | G | 烹调 |
+| R | 装填 | J | 日志 |
+| H | 放回 | **M** | **地图** |
+| **SPACE** | **放射形菜单** | ESCAPE 🔒 | 暂停菜单 |
+| **TAB** | **生存面板** | 1/2/3/4 | 光源/武器/诱饵/生火 |
+| Z | 自动行走 | F5 🔒 | 快速保存 |
+| Q / E | 向左/向右旋转 | F6 🔒 | 快速读取 |
+| **F8** 🔒 | **调试截屏** | F9 🔒 | 截屏 |
+| **F9** 🔒 | **截屏** | F10 🔒 | 高清截图（屏蔽 HUD） |
+
+🔒 = 游戏内不可改绑。
+
+**空着的键**：`B L N O P T U V X Y`、`F1 F2 F3 F4 F7 F11 F12`（以及大多数标点）。
+
+**由此发现两个真实冲突**（已修）：
+
+| 我们的项 | 原来 | 撞上 | 改为 |
+|---|---|---|---|
+| 临时隐藏小地图 | `F8` | **调试截屏** —— 每次隐藏 HUD 都顺手截一张图 | **`X`** |
+| 记录校准点 | `F9` | **截屏** | **`F11`** |
+
+**选择理由**：`X` 空着、左手够得到、旁边没有破坏性按键（F 排不行——`F7` 紧挨着
+`F6` 快速读取，误按就是读档）。`F11` 给开发者用的校准键，孤立且空着。
+
+**Tab 冲突是已知且用户接受的**：Tab 是生存面板，我们的轮换键也是 Tab，两者同时响应。
+用户明确要 Tab（"就在移动键旁边，用起来真的很顺手"）。**如果以后嫌烦**，可以 patch
+`InputManager.ExecuteSurvivalPanelAction` 在轮换键那一帧吃掉它——但那是替用户做决定，先不做。
+
+
 
 

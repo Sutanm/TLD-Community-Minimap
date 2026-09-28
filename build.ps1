@@ -39,11 +39,16 @@ if (-not (Test-Path -LiteralPath $modSettings)) {
 }
 
 # Overwriting the DLL of a running game does nothing useful and leaves the process with a
-# half-loaded mod, so refuse rather than copy into a live install. The name is matched exactly:
-# a wildcard like 'tld*' also matches TLDConsole.
-$running = @(Get-Process -Name 'TheLongDark' -ErrorAction SilentlyContinue)
+# half-loaded mod, so refuse rather than copy into a live install.
+#
+# The executable is tld.exe, so the process is named 'tld' - NOT 'TheLongDark'. Checking the
+# latter silently never matched and let an install run into the locked file, which surfaced only
+# as an IOException from Copy-Item. The names are matched without wildcards on purpose: 'tld*'
+# would also catch TLDConsole, which is a separate tool that does not lock the mod.
+$running = @(Get-Process -Name @('tld', 'TheLongDark') -ErrorAction SilentlyContinue)
 if ($running.Count -gt 0) {
-    throw "The Long Dark is running (PID $($running[0].Id)). Close it before building and installing."
+    $names = ($running | ForEach-Object { "$($_.ProcessName) (PID $($_.Id))" }) -join ', '
+    throw "The Long Dark is running: $names. Close it before building and installing."
 }
 
 $outputAssembly = Join-Path $projectDirectory 'bin\Release\net6.0\CommunityMinimap.dll'
