@@ -2349,6 +2349,35 @@ Panel_ActionsRadial.DoOpenMap()        ← 放射菜单（顺带量 §30.2 那�
 2. **记录调用者**（`System.Diagnostics.StackTrace`，去重后取前 4 帧）。既然已经猜错过一次，
    这次要看到底是谁调的；IL2CPP 下拿不到托管栈就明说，不假装。
 
+#### 探针结果（一次就定位）
+
+| 时间 | 日志 | 用户操作 |
+|---|---|---|
+| 20:46:58 | `View cycle: FullMap` | 按 Tab |
+| **20:47:22** | **`Panel_Map.Enable(True, True)`** | **木炭勘测** |
+| 20:47:23 | `Vanilla map panel refreshed` | 内置面板确实开了 |
+| 20:47:32 | `Panel_ActionsRadial.DoOpenMap()` + `Enable(True)` | **Space 放射菜单** |
+
+**结论：**
+
+- **勘测 → `Panel_Map.Enable(bool, bool)`，参数 `(true, true)`**
+- **放射菜单 → `Panel_ActionsRadial.DoOpenMap()` + `Panel_Map.Enable(bool)`**
+- **两条路用的重载不同，可以精确分开** —— 所以压制勘测弹窗不会连带压制放射菜单
+- `DoDetailSurvey` / `RevealFogForScene` / `RevealCurrentScene` **一次都没触发**，
+  它们也不在这条路上
+
+**已修**：`InputPatches` 新增 `Panel_Map.Enable(bool, bool)` 前缀，接进 `HandleSurveyMapPopup`。
+`ExecuteOpenMapActionFromObjective` 那个补丁**保留但降级**——它不在勘测路径上（名字里的
+"FromObjective" 是任务目标提示），但剧情模式里确实有目标提示，所以仍接同一套三选项。
+
+**"当前图源"这一档刻意不走 `OpenFullMap()`**，而是直接 `ApplyViewState(_miniMapOn, true)` ——
+`OpenFullMap` 会看"接管游戏地图键"那个设置，而勘测弹图是**独立决定**；
+否则关掉接管会让这一档既吃掉面板又什么都不显示。
+
+**放射菜单那条路（§30.2）现在也有确切答案了**：`Panel_ActionsRadial.DoOpenMap()` →
+`Panel_Map.Enable(bool)`。用户说"不急"，但**要修的话就是同一个补丁换个重载，一行的事**。
+
+
 ### 31.7 修了一个真崩溃：`HandleFullMapInput` 空引用
 
 ```

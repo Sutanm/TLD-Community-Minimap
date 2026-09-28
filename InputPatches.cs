@@ -39,13 +39,29 @@ internal static class InputPatches
         return !ModEntry.TryRedirectGameMap();
     }
 
-    // There is a second way in: the objective prompt path, which is what cartography uses when
-    // charcoal reveals an area. It does not share the player's intent with the map key - the
-    // survey forces the map open whether the player asked for it or not - so it has its own
-    // three-way setting instead of following the key.
+    // The survey popup does not go through InputManager at all.
+    //
+    // A probe over one session settled it: a charcoal survey produced Panel_Map.Enable(true, true)
+    // with no InputManager method anywhere on the path, while the radial menu produced
+    // Panel_ActionsRadial.DoOpenMap() followed by the one-argument Panel_Map.Enable(true). The two
+    // overloads are told apart here, so suppressing the survey popup cannot also suppress the
+    // radial menu.
+    [HarmonyPrefix]
+    [HarmonyPatch(typeof(Panel_Map), nameof(Panel_Map.Enable), new[] { typeof(bool), typeof(bool) })]
+    private static bool RedirectSurveyMapPopup(bool enable)
+    {
+        if (!enable)
+            return true;                      // letting the panel close is always right
+        return !ModEntry.HandleSurveyMapPopup("Panel_Map.Enable(bool, bool)");
+    }
+
+    // Kept from an earlier, wrong guess. The probe showed this method is not on the survey's path
+    // at all - its name says "FromObjective", an objective prompt - but objective prompts do exist
+    // in story mode, so it stays wired to the same three-way answer rather than being dropped.
     [HarmonyPrefix]
     [HarmonyPatch(typeof(InputManager), nameof(InputManager.ExecuteOpenMapActionFromObjective))]
     private static bool RedirectOpenMapFromObjective()
     {
-        return !ModEntry.TryRedirectGameMapFromObjective();
-    }}
+        return !ModEntry.HandleSurveyMapPopup("ExecuteOpenMapActionFromObjective");
+    }
+}

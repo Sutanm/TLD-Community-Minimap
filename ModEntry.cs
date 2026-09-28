@@ -493,11 +493,14 @@ public sealed class ModEntry : MelonMod
         return true;
     }
 
-    // Cartography forces a map open after a survey, through a different action. The player may
-    // want the game's own map there (it is the one that draws what was just revealed), our map,
-    // or nothing at all: our map is lit everywhere already, so that popup carries no new
+    // Cartography forces a map open after a survey. It reaches Panel_Map directly instead of going
+    // through InputManager, which is why patching the objective action did nothing for a whole
+    // session; see InputPatches for the measurement that established the real path.
+    //
+    // The player may want the game's own map there (it draws the fog they just pushed back), our
+    // map, or nothing at all: our map is lit everywhere already, so that popup carries no new
     // information and swallowing it removes an interruption.
-    internal static bool TryRedirectGameMapFromObjective()
+    internal static bool HandleSurveyMapPopup(string source)
     {
         ModEntry mod = s_instance;
         if (mod == null)
@@ -506,17 +509,22 @@ public sealed class ModEntry : MelonMod
         switch (mod._settings.SurveyPopup)
         {
             case 0:
-                // Same de-duplication window as the key path: if the game also raises the plain
-                // open-map action for this one survey, it must not land on top of the panel.
+                // Same de-duplication window as the key path, so one survey cannot both open the
+                // game's panel and be collapsed into the open-map action.
                 s_lastMapRedirectUtc = DateTime.UtcNow;
-                mod.LoggerInstance.Msg("Survey popup: handing the map to the game.");
+                mod.LoggerInstance.Msg($"Survey popup ({source}): handing the map to the game.");
                 return false;
             case 2:
                 s_lastMapRedirectUtc = DateTime.UtcNow;
-                mod.LoggerInstance.Msg("Survey popup: suppressed.");
+                mod.LoggerInstance.Msg($"Survey popup ({source}): suppressed.");
                 return true;
             default:
-                return TryRedirectGameMap();
+                // Deliberately not OpenFullMap: that defers to the map-key takeover setting, and
+                // the survey answer is its own decision. Otherwise turning the takeover off would
+                // leave this branch swallowing the panel and showing nothing at all.
+                mod.ApplyViewState(mod._miniMapOn, true);
+                mod.LoggerInstance.Msg($"Survey popup ({source}): showing our full map.");
+                return true;
         }
     }
 
