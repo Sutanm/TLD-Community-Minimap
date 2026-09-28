@@ -109,11 +109,11 @@ internal sealed class MinimapSettings : JsonModSettings
     // want. It is kept in this section only because most players never need it, and the key row
     // hides when the switch is off rather than being left there to be rebound by accident.
     [Name("启用视图轮换按键")]
-    [Description("打开后，下面那个键可以在 小地图 → 全屏地图 → 不显示 之间轮换。默认 Tab，就在移动键旁边，单手就能按到。不需要就关掉这一项，完全不占用键盘。")]
+    [Description("打开后，下面那个键可以在 小地图 → 全屏地图 → 不显示 之间轮换。不需要就关掉这一项，完全不占用键盘，按键提示条里也不会出现。")]
     public bool EnableCycleKey = true;
 
     [Name("视图轮换按键")]
-    [Description("在 小地图 → 全屏地图 → 不显示 之间轮换。注意游戏自己也用 Tab 打开生存面板（显示时间），两者会同时响应——不想冲突就在这里换一个键。")]
+    [Description("在 小地图 → 全屏地图 → 不显示 之间轮换。游戏自己的默认键位里 Tab 是生存面板（显示时间），如果你把这里也设成 Tab，两者会同时响应——冲突就换成别的键。")]
     public KeyCode CycleViewKey = KeyCode.Tab;
 
     [Name("接管游戏地图键")]
