@@ -9,6 +9,15 @@ internal sealed class MinimapSettings : JsonModSettings
     // Field names are the keys in Loader.cfg, so renaming one silently resets it for everyone
     // who already has a config. Only the [Name] display strings are free to change.
 
+    // First in the menu on purpose: which map you are looking at is the one choice that changes
+    // what everything below it means, so it is answered before the tuning knobs.
+    [Section("地图来源")]
+
+    [Name("地图来源")]
+    [Description("自动模式优先使用已安装的民间高清地图；缺少图片时使用原版制图。原版模式会在正常打开游戏地图时自动刷新。")]
+    [Choice("自动", "民间高清", "原版制图")]
+    public int MapSource = 0;
+
     [Section("小地图")]
 
     [Name("显示小地图")]
@@ -95,13 +104,6 @@ internal sealed class MinimapSettings : JsonModSettings
     [Description("用木炭点亮地图时，游戏会强制打开一次地图。游戏内置＝保持游戏原样；当前图源＝改弹本模组的全屏地图，用你上面选的图源；不弹＝直接吃掉这次弹窗（我们的地图本来就全亮，信息量相同，少一次打扰）。")]
     [Choice("游戏内置", "当前图源", "不弹")]
     public int SurveyPopup = 1;
-
-    [Section("地图来源")]
-
-    [Name("地图来源")]
-    [Description("自动模式优先使用已安装的民间高清地图；缺少图片时使用原版制图。原版模式会在正常打开游戏地图时自动刷新。")]
-    [Choice("自动", "民间高清", "原版制图")]
-    public int MapSource = 0;
 
     [Section("高级")]
 
