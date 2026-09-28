@@ -12,7 +12,7 @@ internal sealed class MinimapSettings : JsonModSettings
     [Section("小地图")]
 
     [Name("显示小地图")]
-    [Description("角落小地图的总开关。关掉它只是不画小地图，全屏地图不受影响，随时可以用游戏地图键（默认 M）打开。")]
+    [Description("角落小地图的总开关，关掉它不会影响全屏地图。全屏地图请按游戏自己的地图键打开（默认 M —— 本模组接管了这个键，你不用改习惯）；打开后用滚轮缩放、按住左键拖动，再按一次 M 或 Esc 关闭。")]
     public bool Enabled = true;
 
     [Name("临时隐藏小地图")]
@@ -69,7 +69,10 @@ internal sealed class MinimapSettings : JsonModSettings
     [Slider(10, 120, 111)]
     public int MarkerIconSize = 44;
 
-    [Section("全屏地图")]
+    // The section header is the only text in this menu that is always on screen - the
+    // per-setting descriptions only appear once the player selects a row - so the one thing a
+    // new player cannot guess goes here rather than only in a description.
+    [Section("全屏地图（按游戏地图键打开，默认 M）")]
 
     [Name("全屏背景不透明度")]
     [Description("调整完整地图周围的深色背景。0% 完全透明，100% 完全不透明。")]
