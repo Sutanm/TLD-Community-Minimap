@@ -20,6 +20,7 @@ namespace CommunityMinimap;
 public sealed class ModEntry : MelonMod
 {
     private static bool s_fullMapActive;
+    private static DateTime s_lastMapRedirectUtc = DateTime.MinValue;
     internal static ModEntry s_instance;
     private static int s_suppressEscapeThroughFrame = -1;
 
@@ -357,6 +358,15 @@ public sealed class ModEntry : MelonMod
             return false;
         if (mod._currentDefinition == null)
             return false;                 // no map for this scene; leave the game alone
+
+        // The game fires this action twice for a single press - the log showed FullMap and
+        // MiniMap in the same millisecond - so a plain toggle opened and closed our map at once
+        // and nothing appeared to happen. Collapse the repeat.
+        DateTime now = DateTime.UtcNow;
+        if ((now - s_lastMapRedirectUtc).TotalMilliseconds < 120.0)
+            return true;
+        s_lastMapRedirectUtc = now;
+
         mod.ToggleDisplayMode();
         return true;
     }
