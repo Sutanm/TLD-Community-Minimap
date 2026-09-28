@@ -1330,3 +1330,110 @@ GitHub 从 2026-09-28 中午起持续不可达（`Failed to connect to github.co
 
 - `380a686` M 键接管
 - `35720f2` 重复触发修复 + 两张图裁剪 + 山间小镇校准更正
+---
+
+## 23. 全屏地图交互：实现与已确认的问题（2026-09-28 下午）
+
+### 23.1 本轮修好的三件事
+
+**① 标记尺寸固定下来（根因是归一化基准选错）**
+
+```csharp
+_vanillaIconMaxUv = 所有图标里的最大值        // ✗ 错
+markerScale = MarkerIconSize / _vanillaIconMaxUv
+```
+
+**只要有一个异常大的元素**（没被 `IsMapIconChrome` 过滤掉的标签或区域块），基准就被撑大，**普通标记被压成 1~2 像素**，滑块调到 48 也不够。
+
+改成**中位数 + 限幅**：
+
+```csharp
+sizes.Sort();
+_vanillaIconMaxUv = sizes[sizes.Count / 2];        // 中位数
+ratioX = Mathf.Clamp(MapUvSize.x * markerScale / MarkerIconSize, 0.6f, 1.8f);
+```
+
+滑块放宽到 `[Slider(10, 120, 111)]`，默认 `MarkerIconSize = 44`。
+
+**② 光标释放（`ShowCursor` 不够）**
+
+`InputManager.ShowCursor(true)` **没有真正解锁光标**。证据：滚轮能缩放（`Input.mouseScrollDelta` 不受锁定影响），但 `Input.mousePosition` 完全不变，所以拖不动。
+
+所以**直接驱动 Unity 状态并且每帧都设**（游戏会重新锁）：
+
+```csharp
+if (Cursor.lockState != CursorLockMode.None) Cursor.lockState = CursorLockMode.None;
+if (!Cursor.visible) Cursor.visible = true;
+```
+
+**③ 输入上下文（静态方法）**
+
+`InputManager.PushContext(MonoBehaviour)` / `PopContext` / `ShowCursor(bool)` **都是静态方法**——编译器报 `CS0176` 才点破的。原来的实例捕获管道已删除。
+
+```csharp
+InputManager.PushContext(_backgroundImage);   // 屏蔽玩家移动/转头
+InputManager.ShowCursor(true);
+```
+
+设置项 `ReleaseMouseOnFullMap`（默认开）。配对由 `_mapContextPushed` 保证只 pop 一次。
+
+**④ 全屏地图缩放与拖拽**
+
+先前全屏模式写死 `uvRect = (0,0,1,1)`。现在与角落小地图**共用同一套可见窗口逻辑**：
+
+- 打开时**以玩家为中心**（`_fullMapCenterValid = false` → 首帧取玩家 uv）
+- **滚轮**缩放 1x~24x（指数手感）
+- **按住左键拖动**平移
+- `Esc` / `M` 关闭并交还输入
+
+用户确认：**标记尺寸、鼠标释放/拖拽均可用。**
+
+### 23.2 待优化（用户提出，明确说优先级不高）
+
+| # | 项 | 说明 |
+|---|---|---|
+| 1 | **Tab 已冗余** | M 被接管后 `MapModeKey = Tab` 意义不大。**待决**：移除，还是保留作为别名（有些玩家已习惯） |
+| 2 | **小地图与大地图加边框** | 让玩家知道地图边界在哪。目前底图有透明边距时完全看不出范围 |
+| 3 | **打开大地图以玩家为中心** | 已实现（见 23.1④），但用户仍提到，**需实测确认是否真的生效** |
+| 4 | 整体手感 | 用户评价"够用，但体感上不算多好"，还有很多体验要打磨 |
+
+### 23.3 待确认：原版底图的透明边距
+
+**用户反馈**：打开全屏地图，"底图显示范围只有中央的方块，不太够用"。
+
+**我的分析**：全屏布局本身没问题——2560×1600 屏幕上，1:1 的图会渲染成 1536×1536（占满高度 96%），左右留白是方形图的必然结果。
+
+**真正的原因很可能是原版底图 PNG 有大片透明边距**：
+
+```
+basemap_LakeRegion.png 不透明区域只占整帧 51.3%
+（x 56..981, y 79..968，而图是 1024×1024）
+```
+
+⇒ **一半的画面是空的**，用户看到的"中央方块/圆形"其实是**区域本身的轮廓**，四周透明，3D 世界透了进来。
+
+**修法**：读底图时算一次 **alpha 包围盒**，作为地图的内容范围，让区域真正铺满视图。**注意**：uv 空间随之改变，标记位置用的是同一套 uv，所以会同步正确；但 widget 比例应按**内容**而非整图计算，否则会有几个百分点的拉伸。
+
+**待用户确认**是"透明边距太多"（按上述修）还是"希望拉伸铺满整屏"（会变形，不推荐）。
+
+### 23.4 主线仍然待做：`MapDetail` 重构
+
+**用户反馈**："玩家用木炭更新了地图，打开原版内置地图也没用，小地图上的标记也没更新，需要切换一次场景才会刷新。"
+
+**根因**：**游戏自己的面板就不重建**——`Panel_Map` 的标记树要等换场景才刷新。我们的标记就是从那个面板读的，所以完全继承了该行为。
+
+**修法**（即 §20.4 的重构）：直接读 `MapDetailManager.s_MapDetails`。
+
+| 收益 | 说明 |
+|---|---|
+| 实时刷新 | `m_IsSurveyed` 勘测即翻 true，不依赖面板重建 |
+| 免疫采集 bug | 自己读 `Harvestable.IsHarvested()` 过滤 |
+| 地名 / 分类 | `m_LocID`（地名）、`m_IconType`、`m_SpriteName` |
+| 图层筛选 | `Panel_Map.ToggleIconDisplayFlag(IconDisplayFilters)` 游戏自带分类 |
+| 位置 | `MapDetail.GetWorldPosition()` → 走我们**已有的校准**，与玩家指针同一链路 |
+
+**这仍然是接手以来性价比最高的一次重构。**
+
+### 23.5 推送状态
+
+GitHub 自 2026-09-28 中午起持续不可达。本地提交完好，积压待推。

@@ -53,6 +53,11 @@ internal sealed class MinimapSettings : JsonModSettings
     [Slider(40, 80, 21)]
     public int MarkerSize = 54;
 
+    [Name("地图标记尺寸")]
+    [Description("原版地图标记（物资、建筑等图标）的屏幕像素大小。固定尺寸，不随缩放变大，因此小地图和全屏地图上看起来一样大。")]
+    [Slider(10, 120, 111)]
+    public int MarkerIconSize = 44;
+
     [Name("玩家指针配色")]
     [Description("切换方向针和内环的强调色；深色外环与暖白中心点保持不变。")]
     [Choice("珊瑚红", "酒红", "淡紫", "青绿色", "琥珀金", "鲜红")]
@@ -67,6 +72,10 @@ internal sealed class MinimapSettings : JsonModSettings
     [Name("接管游戏地图键")]
     [Description("按下游戏原本的“打开地图”键（默认 M）时显示本模组的全屏地图，而不是游戏自带的地图界面。不会修改游戏地图模块本身；关掉此项即恢复游戏原行为。")]
     public bool RedirectGameMap = true;
+
+    [Name("全屏地图释放鼠标")]
+    [Description("打开全屏地图时释放鼠标并接管输入，这样才能用滚轮缩放、按住左键拖动地图。关掉后鼠标仍由游戏锁定，地图只能查看不能移动。")]
+    public bool ReleaseMouseOnFullMap = true;
 
     [Name("切换小地图/完整地图")]
     [Description("在角落小地图和全屏完整地图之间切换；全屏时可按 Esc 返回。若与其他 mod 的按键冲突，改这里。")]

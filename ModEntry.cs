@@ -21,6 +21,12 @@ public sealed class ModEntry : MelonMod
 {
     private static bool s_fullMapActive;
     private static DateTime s_lastMapRedirectUtc = DateTime.MinValue;
+    private bool _mapContextPushed;
+    private float _fullMapZoom = 1f;
+    private Vector2 _fullMapCenter = new(0.5f, 0.5f);
+    private bool _fullMapCenterValid;
+    private bool _fullMapDragging;
+    private Vector2 _fullMapDragLast;
     internal static ModEntry s_instance;
     private static int s_suppressEscapeThroughFrame = -1;
 
@@ -89,6 +95,7 @@ public sealed class ModEntry : MelonMod
     private readonly List<VanillaIcon> _pendingVanillaIcons = new();
     private DateTime _nextVanillaIconRefreshUtc = DateTime.MinValue;
     private long _vanillaIconSignature;
+    private float _vanillaIconMaxUv = 1f;
 
     private sealed class VanillaIcon
     {
@@ -131,6 +138,8 @@ public sealed class ModEntry : MelonMod
             ToggleDisplayMode();
         if (Input.GetKeyDown(_settings.RecordPointKey))
             RecordCalibrationPoint();
+        if (_displayMode == DisplayMode.FullMap)
+            HandleFullMapInput();
 
         var scene = UnitySceneManager.GetActiveScene();
         if (scene.handle != _observedSceneHandle)
@@ -345,6 +354,17 @@ public sealed class ModEntry : MelonMod
             ? DisplayMode.FullMap
             : DisplayMode.MiniMap;
         s_fullMapActive = _displayMode == DisplayMode.FullMap;
+        if (s_fullMapActive)
+        {
+            // open looking at the player, so the map is useful before it is touched
+            _fullMapZoom = 1f;
+            _fullMapCenterValid = false;
+            ApplyMapInputContext();
+        }
+        else
+        {
+            ReleaseMapInputContext();
+        }
         LoggerInstance.Msg($"Map display mode: {_displayMode}.");
     }
 
@@ -376,7 +396,91 @@ public sealed class ModEntry : MelonMod
         _displayMode = DisplayMode.MiniMap;
         s_fullMapActive = false;
         s_suppressEscapeThroughFrame = Time.frameCount + 1;
+        ReleaseMapInputContext();
         LoggerInstance.Msg("Full map closed with Escape.");
+    }
+
+    // The game locks the mouse and keeps player input live during play, so a map drawn by the
+    // mod cannot be scrolled or dragged until both are handed over. The game's own panels do
+    // this through the input context list and the cursor helper, so we use the same two calls
+    // rather than inventing a mechanism.
+    private void HandleFullMapInput()
+    {
+        if (!_settings.ReleaseMouseOnFullMap)
+            return;
+
+        // InputManager.ShowCursor(true) alone left the cursor locked, so drive the Unity
+        // state directly as well and keep doing it: the game re-applies its own lock.
+        if (Cursor.lockState != CursorLockMode.None)
+            Cursor.lockState = CursorLockMode.None;
+        if (!Cursor.visible)
+            Cursor.visible = true;
+        float wheel = Input.mouseScrollDelta.y;
+        if (Mathf.Abs(wheel) > 0.01f)
+        {
+            _fullMapZoom = Mathf.Clamp(_fullMapZoom * Mathf.Exp(wheel * 0.18f), 1f, 24f);
+            _fullMapCenterValid = true;
+        }
+
+        Vector2 mouse = Input.mousePosition;
+        if (Input.GetMouseButtonDown(0))
+        {
+            _fullMapDragging = true;
+            _fullMapDragLast = mouse;
+        }
+        else if (Input.GetMouseButtonUp(0))
+        {
+            _fullMapDragging = false;
+        }
+
+        if (!_fullMapDragging)
+            return;
+
+        Vector2 delta = mouse - _fullMapDragLast;
+        _fullMapDragLast = mouse;
+        if (delta.sqrMagnitude < 0.01f)
+            return;
+
+        // one widget pixel is span/size of the visible window in uv, and the window follows the
+        // pointer, so dragging right reveals what is to the left
+        Vector2 widget = _mapRect.rect.size;
+        if (widget.x < 1f || widget.y < 1f)
+            return;
+        float span = Mathf.Clamp(1f / Mathf.Max(1f, _fullMapZoom), 0.05f, 1f);
+        _fullMapCenter += new Vector2(-delta.x / widget.x * span, -delta.y / widget.y * span);
+        _fullMapCenterValid = true;
+    }
+
+    private void ApplyMapInputContext()
+    {
+        if (!_settings.ReleaseMouseOnFullMap)
+            return;
+        try
+        {
+            InputManager.PushContext(_backgroundImage);
+            InputManager.ShowCursor(true);
+            _mapContextPushed = true;
+        }
+        catch (Exception ex)
+        {
+            LoggerInstance.Warning($"Could not take over input for the full map: {ex.Message}");
+        }
+    }
+
+    private void ReleaseMapInputContext()
+    {
+        if (!_mapContextPushed)
+            return;
+        _mapContextPushed = false;
+        try
+        {
+            InputManager.ShowCursor(false);
+            InputManager.PopContext(_backgroundImage);
+        }
+        catch (Exception ex)
+        {
+            LoggerInstance.Warning($"Could not hand input back: {ex.Message}");
+        }
     }
 
     internal static bool ShouldSuppressGameEscape()
@@ -606,8 +710,6 @@ public sealed class ModEntry : MelonMod
         _mapImage.color = new Color(1f, 1f, 1f, fullMap ? 1f : _settings.Opacity);
 
         Vector2 mapSize = fullMap ? ApplyFullMapLayout() : ApplyMiniMapLayout();
-        if (fullMap)
-            _mapImage.uvRect = new Rect(0f, 0f, 1f, 1f);
 
         bool hasPosition = TryPlayerToMapUv(player.position, out Vector2 uv);
         if (!hasPosition)
@@ -621,7 +723,21 @@ public sealed class ModEntry : MelonMod
         Rect visibleUv;
         if (fullMap)
         {
-            visibleUv = new Rect(0f, 0f, 1f, 1f);
+            // The full map starts centred on the player and can be zoomed and dragged, so it
+            // shares the visible-window maths with the corner map instead of always showing
+            // the whole image.
+            float span = Mathf.Clamp(1f / Mathf.Max(1f, _fullMapZoom), 0.05f, 1f);
+            float half = span * 0.5f;
+            if (!_fullMapCenterValid)
+            {
+                _fullMapCenter = uv;
+                _fullMapCenterValid = true;
+            }
+            _fullMapCenter = new Vector2(
+                Mathf.Clamp(_fullMapCenter.x, half, 1f - half),
+                Mathf.Clamp(_fullMapCenter.y, half, 1f - half));
+            visibleUv = new Rect(_fullMapCenter.x - half, _fullMapCenter.y - half, span, span);
+            _mapImage.uvRect = visibleUv;
         }
         else
         {
@@ -673,9 +789,14 @@ public sealed class ModEntry : MelonMod
             icon.Rect.anchoredPosition = new Vector2(
                 ((icon.MapUv.x - visibleUv.x) / visibleUv.width - 0.5f) * mapSize.x,
                 ((icon.MapUv.y - visibleUv.y) / visibleUv.height - 0.5f) * mapSize.y);
+            float markerScale = _settings.MarkerIconSize / Mathf.Max(1e-6f, _vanillaIconMaxUv);
+            float ratioX = Mathf.Clamp(icon.MapUvSize.x * markerScale / _settings.MarkerIconSize,
+                0.6f, 1.8f);
+            float ratioY = Mathf.Clamp(icon.MapUvSize.y * markerScale / _settings.MarkerIconSize,
+                0.6f, 1.8f);
             icon.Rect.sizeDelta = new Vector2(
-                icon.MapUvSize.x / visibleUv.width * mapSize.x,
-                icon.MapUvSize.y / visibleUv.height * mapSize.y);
+                ratioX * _settings.MarkerIconSize,
+                ratioY * _settings.MarkerIconSize);
         }
     }
 
@@ -990,6 +1111,28 @@ public sealed class ModEntry : MelonMod
         ClearVanillaIcons();
         _vanillaIcons.AddRange(_pendingVanillaIcons);
         _pendingVanillaIcons.Clear();
+
+        // Remember the largest marker so each one can be drawn at a constant on-screen size
+        // that keeps the set's proportions. Sizing them as a fraction of the visible span
+        // instead made them scale with the zoom, so the same marker looked several times
+        // bigger on the zoomed corner map than on the full map.
+                // Normalise against the median icon rather than the largest. A single oversized
+        // element (a label or an area blob that slipped past the chrome filter) would
+        // otherwise set the scale and shrink every real marker to a pixel or two.
+        _vanillaIconMaxUv = 0f;
+        if (_vanillaIcons.Count > 0)
+        {
+            var sizes = new List<float>(_vanillaIcons.Count);
+            for (int i = 0; i < _vanillaIcons.Count; i++)
+            {
+                Vector2 size = _vanillaIcons[i].MapUvSize;
+                sizes.Add(Mathf.Max(size.x, size.y));
+            }
+            sizes.Sort();
+            _vanillaIconMaxUv = sizes[sizes.Count / 2];
+        }
+        if (_vanillaIconMaxUv <= 1e-5f)
+            _vanillaIconMaxUv = 1f;
         _markerRoot.transform.SetAsLastSibling();
         LoggerInstance.Msg(
             $"Captured {_vanillaIcons.Count} vanilla map marker layers " +
