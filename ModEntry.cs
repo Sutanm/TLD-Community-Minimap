@@ -30,19 +30,16 @@ public sealed class ModEntry : MelonMod
     internal static ModEntry s_instance;
     private static int s_suppressEscapeThroughFrame = -1;
 
-    // The corner HUD and the full-screen map used to be one two-state switch, so hiding the
-    // corner map also took the full map away and vice versa. They are two independent layers
-    // now: the corner map is the persistent layer, the full map is a modal overlay that the
-    // game's own map key can always open, whatever the corner layer is doing.
-    private bool _miniMapOn = true;
+    // The corner HUD and the full-screen map are two independent layers: the corner map sits
+    // behind a plain on/off setting, the full map is a modal overlay that the game's own map key
+    // always opens. Hiding one never takes the other with it, which is what the single two-state
+    // DisplayMode used to do.
     private bool _fullMapOn;
-    private int _tabStage;
 
-    private static readonly (bool Mini, bool Full)[] CycleMiniOnly = { (true, false), (false, false) };
-    private static readonly (bool Mini, bool Full)[] CycleFullOnly = { (false, true), (false, false) };
-    private static readonly (bool Mini, bool Full)[] CycleMiniFullNone =
-        { (true, false), (false, true), (false, false) };
-    private static readonly (bool Mini, bool Full)[] CycleMiniFull = { (true, false), (false, true) };
+    // Diagnostic state for the open-map action query; see ProbeOpenMapQuery.
+    private bool _openMapProbeArmed;
+    private bool _openMapQueryPressed;
+    private DateTime _nextOpenMapProbeLogUtc = DateTime.MinValue;
 
     private readonly MinimapSettings _settings = new();
     private string _modDirectory = "";
@@ -132,6 +129,9 @@ public sealed class ModEntry : MelonMod
         s_instance = this;
         HarmonyInstance.PatchAll();
         _settings.AddToModSettings("社区HUD地图", MenuType.Both);
+        // The settings GUI does not exist yet, so the visibility rules have to be applied once by
+        // hand or the developer-only rows show up for everyone until something changes.
+        _settings.ApplyVisibility(null, null);
         _modDirectory = Path.Combine(MelonEnvironment.ModsDirectory, "CommunityMinimap");
         _mapsDirectory = Path.Combine(_modDirectory, "maps");
         _calibrationPath = Path.Combine(_modDirectory, "calibrations.json");
@@ -141,7 +141,7 @@ public sealed class ModEntry : MelonMod
             message => LoggerInstance.Warning(message));
         _calibrationLastWriteUtc = File.GetLastWriteTimeUtc(_calibrationPath);
         _sceneCatalogAfterUtc = DateTime.UtcNow.AddSeconds(5);
-        LoggerInstance.Msg("社区HUD地图 0.6.2 initialized.");
+        LoggerInstance.Msg("社区HUD地图 0.7.0 initialized.");
         LoggerInstance.Msg($"Map directory: {_mapsDirectory}");
     }
 
@@ -151,18 +151,24 @@ public sealed class ModEntry : MelonMod
         TryReloadCalibrations();
 
         if (Input.GetKeyDown(_settings.ToggleKey))
+        {
+            // Only the corner map: the full map is a modal overlay and must keep working while
+            // the corner map is hidden, which is the whole point of the two being separate.
             _temporarilyHidden = !_temporarilyHidden;
+            LoggerInstance.Msg($"Mini map {(_temporarilyHidden ? "hidden" : "shown")} temporarily.");
+        }
         if (FullMapVisible && Input.GetKeyDown(KeyCode.Escape))
             LeaveFullMap();
-        else if (Input.GetKeyDown(_settings.MapModeKey))
-            CycleViewMode();
         if (Input.GetKeyDown(_settings.RecordPointKey))
         {
             RecordCalibrationPoint();
             DumpMapDetails();
         }
         if (FullMapVisible)
+        {
             HandleFullMapInput();
+            ProbeOpenMapQuery();
+        }
         // While the full map is open our input context stops the game from raising its own
         // open-map action, so pressing the map key again never reached the redirect and the
         // map could only be closed with Escape. Watch the key directly, through the same
@@ -246,9 +252,10 @@ public sealed class ModEntry : MelonMod
                 _loadAfterUtc = DateTime.UtcNow.AddSeconds(5);
         }
 
+        // The temporary hide key is already folded into MiniMapVisible; testing it again here
+        // would also hide the full map, which is exactly what the two layers were split to avoid.
         bool shouldShow = _textureReady && _currentDefinition != null && playerReady &&
-                          (MiniMapVisible || FullMapVisible) &&
-                          !_temporarilyHidden && !vanillaMapOpen;
+                          (MiniMapVisible || FullMapVisible) && !vanillaMapOpen;
         SetUiVisible(shouldShow);
         if (!shouldShow)
             return;
@@ -395,78 +402,38 @@ public sealed class ModEntry : MelonMod
         }
     }
 
-    // A layer can be switched on by the Tab cycle and still be switched off in the settings, so
-    // every read goes through the settings as well as the layer flag.
-    private bool MiniMapVisible => _miniMapOn && _settings.Enabled;
-    private bool FullMapVisible => _fullMapOn && _settings.FullMapEnabled;
+    // Two independent layers. The corner map answers to its own setting and to the temporary
+    // hide key; the full map answers only to the game's map key.
+    private bool MiniMapVisible => _settings.Enabled && !_temporarilyHidden;
+    private bool FullMapVisible => _fullMapOn;
 
     private string DescribeView() => FullMapVisible ? "FullMap"
         : MiniMapVisible ? "MiniMap" : "None";
 
-    // The entries the Tab key walks through, with the layers the player turned off removed.
-    // "None" is always in the list, so a player who disabled both layers still gets a Tab that
-    // simply does nothing instead of an error.
-    private (bool Mini, bool Full)[] GetTabCycle()
+    private void OpenFullMap()
     {
-        (bool Mini, bool Full)[] source = _settings.TabCycleMode switch
-        {
-            0 => CycleMiniOnly,
-            1 => CycleFullOnly,
-            2 => CycleMiniFullNone,
-            _ => CycleMiniFull,
-        };
-
-        var allowed = new List<(bool Mini, bool Full)>(source.Length);
-        foreach ((bool mini, bool full) in source)
-        {
-            if (mini && !_settings.Enabled)
-                continue;
-            if (full && !_settings.FullMapEnabled)
-                continue;
-            allowed.Add((mini, full));
-        }
-        return allowed.ToArray();
-    }
-
-    private void ApplyViewState(bool mini, bool full)
-    {
-        // Opening the full map resets it onto the player: a map that reopens wherever it was
-        // last dragged is disorienting, and the player is the one thing on it that moved.
-        if (full && !_fullMapOn)
+        if (!_settings.RedirectGameMap)
+            return;
+        // Opening resets it onto the player: a map that reopens wherever it was last dragged is
+        // disorienting, and the player is the one thing on it that moved.
+        if (!_fullMapOn)
         {
             _fullMapZoom = 1f;
             _fullMapCenterValid = false;
+            _openMapProbeArmed = false;
         }
-        _miniMapOn = mini;
-        _fullMapOn = full;
-    }
-
-    private void CycleViewMode()
-    {
-        (bool Mini, bool Full)[] cycle = GetTabCycle();
-        if (cycle.Length == 0)
-            return;
-
-        _tabStage = (_tabStage + 1) % cycle.Length;
-        ApplyViewState(cycle[_tabStage].Mini, cycle[_tabStage].Full);
-        LoggerInstance.Msg($"Tab: view is now {DescribeView()} ({_tabStage + 1}/{cycle.Length}).");
-    }
-
-    private void OpenFullMap()
-    {
-        if (!_settings.FullMapEnabled)
-            return;
-        ApplyViewState(_miniMapOn, true);
+        _fullMapOn = true;
     }
 
     private void CloseFullMap()
     {
-        ApplyViewState(_miniMapOn, false);
+        _fullMapOn = false;
     }
 
-    // The game's own map key lives in muscle memory far more than our Tab does, so by default
-    // the game's "open map" action is intercepted and our full map is shown instead. That never
-    // touches Panel_Map: the action is skipped, so the game's panel is not opened at all.
+    // The game's own map key lives in muscle memory, so the game's "open map" action is
+    // intercepted and our full map is shown instead. That never touches Panel_Map: the action is
+    // skipped, so the game's panel is not opened at all. Note this hooks the action rather than
+    // a key, so a player who rebinds the map key is followed automatically.
     internal static bool TryRedirectGameMap()
     {
         ModEntry mod = s_instance;
@@ -474,8 +441,6 @@ public sealed class ModEntry : MelonMod
             return false;
         if (mod._currentDefinition == null)
             return false;                 // no map for this scene; leave the game alone
-        if (!mod._settings.FullMapEnabled && !mod._fullMapOn)
-            return false;                 // the player disabled our full map; use the game's
 
         // The game fires this action twice for a single press - the log showed FullMap and
         // MiniMap in the same millisecond - so a plain toggle opened and closed our map at once
@@ -536,6 +501,51 @@ public sealed class ModEntry : MelonMod
     // mod cannot be scrolled or dragged until both are handed over. The game's own panels do
     // this through the input context list and the cursor helper, so we use the same two calls
     // rather than inventing a mechanism.
+    // Diagnostic only: this deliberately changes no behaviour.
+    //
+    // Opening the full map is intercepted at the game's own action, so it follows the player's
+    // key binding automatically. Closing cannot use that path, because the input context we push
+    // to stop the player walking around while reading the map also stops the game dispatching the
+    // action - which is the only reason the manual close key exists. InputManager.GetOpenMapPressed
+    // is public and context-aware, so if it answers correctly with our context on top, the manual
+    // key can be deleted and closing would follow the player's binding too.
+    //
+    // A wrong guess here would either silently do nothing or close the map the instant it opens,
+    // so for now the answer only goes to the log.
+    private void ProbeOpenMapQuery()
+    {
+        if (!_openMapProbeArmed)
+        {
+            _openMapProbeArmed = true;
+            _openMapQueryPressed = false;
+            LoggerInstance.Msg(
+                $"Open-map probe armed (manual close key is {_settings.GameMapKey}). Press the " +
+                "game's map key; the next line says whether the game's own query sees it.");
+        }
+
+        bool pressed;
+        try
+        {
+            pressed = InputManager.GetOpenMapPressed(_backgroundImage);
+        }
+        catch (Exception ex)
+        {
+            if (DateTime.UtcNow >= _nextOpenMapProbeLogUtc)
+            {
+                _nextOpenMapProbeLogUtc = DateTime.UtcNow.AddSeconds(5);
+                LoggerInstance.Warning($"Open-map probe: GetOpenMapPressed threw: {ex.Message}");
+            }
+            return;
+        }
+
+        if (pressed == _openMapQueryPressed)
+            return;
+        _openMapQueryPressed = pressed;
+        LoggerInstance.Msg(
+            $"Open-map probe: GetOpenMapPressed -> {pressed} (manual key {_settings.GameMapKey} " +
+            $"down this frame: {Input.GetKeyDown(_settings.GameMapKey)}).");
+    }
+
     private void HandleFullMapInput()
     {
         if (!_settings.ReleaseMouseOnFullMap)
@@ -1111,6 +1121,23 @@ public sealed class ModEntry : MelonMod
             case 2: anchor = new Vector2(1f, 0f); offset = new Vector2(-margin, margin); break;
             case 3: anchor = new Vector2(0f, 0f); offset = new Vector2(margin, margin); break;
             default: anchor = new Vector2(1f, 1f); offset = new Vector2(-margin, -margin); break;
+        }
+
+        if (_settings.HudPosition == 4)
+        {
+            // Custom placement: the percentages describe where the centre of the map goes, which
+            // is easier to reason about than a corner plus an offset when the goal is "get out of
+            // the way of that HUD element".
+            anchor = new Vector2(0f, 0f);
+            offset = new Vector2(
+                Screen.width * Mathf.Clamp(_settings.MiniMapPositionX, 0, 100) / 100f,
+                Screen.height * Mathf.Clamp(_settings.MiniMapPositionY, 0, 100) / 100f);
+            _mapRect.anchorMin = anchor;
+            _mapRect.anchorMax = anchor;
+            _mapRect.pivot = new Vector2(0.5f, 0.5f);
+            _mapRect.anchoredPosition = offset;
+            _mapRect.sizeDelta = size;
+            return size;
         }
 
         _mapRect.anchorMin = anchor;
