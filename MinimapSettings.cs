@@ -53,9 +53,13 @@ internal sealed class MinimapSettings : JsonModSettings
     [Slider(40, 80, 21)]
     public int MarkerSize = 54;
 
-    [Name("清理已采集的标记")]
-    [Description("修复游戏自身的问题：采集完资源后，地图上对应的标记不会消失。开启后由模组主动移除这些残留标记；若与其他同类修复模组冲突可关闭。")]
+    [Name("清理已采集的标记（仅报告）")]
+    [Description("扫描已采集完的资源标记并写入日志，但不删除。用于确认判据是否正确。")]
     public bool CleanHarvestedMarkers = true;
+
+    [Name("真正删除已采集标记")]
+    [Description("确认上一项的日志数量正确后才打开。会从游戏数据里移除这些标记；若标记大面积消失，关掉并重载场景即可恢复。")]
+    public bool RemoveHarvestedMarkers = false;
 
     [Name("地图标记尺寸")]
     [Description("原版地图标记（物资、建筑等图标）的屏幕像素大小。固定尺寸，不随缩放变大，因此小地图和全屏地图上看起来一样大。")]

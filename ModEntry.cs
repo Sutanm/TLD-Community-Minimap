@@ -1245,12 +1245,23 @@ public sealed class ModEntry : MelonMod
             }
 
             if (stale == null)
+            {
+                LoggerInstance.Msg($"Harvested sweep: none of {details.Count} entries look collected.");
                 return;
+            }
+
+            if (!_settings.RemoveHarvestedMarkers)
+            {
+                LoggerInstance.Msg(
+                    $"Harvested sweep (report only): {stale.Count} of {details.Count} entries look collected; " +
+                    $"first: sprite='{stale[0].m_SpriteName}' loc='{stale[0].m_LocID}'.");
+                return;
+            }
 
             for (int i = 0; i < stale.Count; i++)
                 MapDetailManager.Unregister(stale[i]);
 
-            LoggerInstance.Msg($"Removed {stale.Count} fully harvested map markers.");
+            LoggerInstance.Msg($"Removed {stale.Count} of {details.Count} fully harvested map markers.");
         }
         catch (Exception ex)
         {
@@ -1258,10 +1269,20 @@ public sealed class ModEntry : MelonMod
         }
     }
 
+    // Only a harvested object that is also loaded counts as picked up. A harvestable that has
+    // simply not been streamed in yet reports harvested too, which is what made the first
+    // version wipe almost every marker at once.
+    private static bool IsCollected(Harvestable harvestable)
+    {
+        GameObject go = harvestable.gameObject;
+        if (ReferenceEquals(go, null) || !go.activeInHierarchy)
+            return false;
+        return harvestable.IsHarvested();
+    }
+
     private static bool AllHarvestablesCollected(MapDetail detail)
     {
         bool any = false;
-
         var array = detail.m_HarvestablesForMapVisibility;
         if (array != null)
         {
@@ -1271,7 +1292,7 @@ public sealed class ModEntry : MelonMod
                 if (ReferenceEquals(harvestable, null))
                     continue;
                 any = true;
-                if (!harvestable.IsHarvested())
+                if (!IsCollected(harvestable))
                     return false;
             }
         }
@@ -1285,7 +1306,7 @@ public sealed class ModEntry : MelonMod
                 if (ReferenceEquals(harvestable, null))
                     continue;
                 any = true;
-                if (!harvestable.IsHarvested())
+                if (!IsCollected(harvestable))
                     return false;
             }
         }
