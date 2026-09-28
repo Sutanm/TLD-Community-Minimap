@@ -64,15 +64,19 @@ internal sealed class MinimapSettings : JsonModSettings
 
     [Section("快捷键与校准")]
 
+    [Name("接管游戏地图键")]
+    [Description("按下游戏原本的“打开地图”键（默认 M）时显示本模组的全屏地图，而不是游戏自带的地图界面。不会修改游戏地图模块本身；关掉此项即恢复游戏原行为。")]
+    public bool RedirectGameMap = true;
+
     [Name("切换小地图/完整地图")]
-    [Description("在角落小地图和全屏完整地图之间切换；全屏时可按 Esc 返回。")]
+    [Description("在角落小地图和全屏完整地图之间切换；全屏时可按 Esc 返回。若与其他 mod 的按键冲突，改这里。")]
     public KeyCode MapModeKey = KeyCode.Tab;
 
     [Name("快速显示/隐藏")]
-    [Description("不改变保存设置，仅临时显示或隐藏 HUD。")]
+    [Description("不改变保存设置，仅临时显示或隐藏 HUD。若与其他 mod 的按键冲突，改这里。")]
     public KeyCode ToggleKey = KeyCode.F8;
 
     [Name("记录校准点")]
-    [Description("站在地图上易识别的地标后按此键，将坐标写入 calibration_points_v2.csv，并保存对应截图。")]
+    [Description("站在地图上易识别的地标后按此键，将坐标写入 calibration_points_v2.csv，并保存对应截图。若与其他 mod 的按键冲突，改这里。")]
     public KeyCode RecordPointKey = KeyCode.F9;
 }

@@ -20,6 +20,7 @@ namespace CommunityMinimap;
 public sealed class ModEntry : MelonMod
 {
     private static bool s_fullMapActive;
+    internal static ModEntry s_instance;
     private static int s_suppressEscapeThroughFrame = -1;
 
     private enum DisplayMode
@@ -57,6 +58,7 @@ public sealed class ModEntry : MelonMod
     // lookup has been failing and report it once.
     private string _baseMapNullScene = "";
     private DateTime _baseMapNullSinceUtc = DateTime.MinValue;
+    private bool _baseMapNullLogged;
     private DateTime _elementLoadAfterUtc = DateTime.MinValue;
     private string _elementsLoadedForScene = "";
     private string _observedSceneName = "";
@@ -97,6 +99,7 @@ public sealed class ModEntry : MelonMod
 
     public override void OnInitializeMelon()
     {
+        s_instance = this;
         HarmonyInstance.PatchAll();
         _settings.AddToModSettings("社区HUD地图", MenuType.Both);
         _modDirectory = Path.Combine(MelonEnvironment.ModsDirectory, "CommunityMinimap");
@@ -342,6 +345,20 @@ public sealed class ModEntry : MelonMod
             : DisplayMode.MiniMap;
         s_fullMapActive = _displayMode == DisplayMode.FullMap;
         LoggerInstance.Msg($"Map display mode: {_displayMode}.");
+    }
+
+    // The game's own map key lives in muscle memory far more than our Tab does, so by default
+    // the game's "open map" action is intercepted and our full map is shown instead. That never
+    // touches Panel_Map: the action is skipped, so the game's panel is not opened at all.
+    internal static bool TryRedirectGameMap()
+    {
+        ModEntry mod = s_instance;
+        if (mod == null || !mod._settings.RedirectGameMap)
+            return false;
+        if (mod._currentDefinition == null)
+            return false;                 // no map for this scene; leave the game alone
+        mod.ToggleDisplayMode();
+        return true;
     }
 
     private void LeaveFullMap()
@@ -1253,10 +1270,12 @@ public sealed class ModEntry : MelonMod
                 {
                     _baseMapNullScene = sceneName;
                     _baseMapNullSinceUtc = DateTime.UtcNow;
+                    _baseMapNullLogged = false;
                 }
-                else if ((DateTime.UtcNow - _baseMapNullSinceUtc).TotalSeconds > 3.0)
+                else if (!_baseMapNullLogged &&
+                         (DateTime.UtcNow - _baseMapNullSinceUtc).TotalSeconds > 3.0)
                 {
-                    _baseMapNullScene = "";
+                    _baseMapNullLogged = true;
                     LoggerInstance.Warning(
                         $"No region spec for {sceneName}: GameManager.TryGetCurrentRegion() " +
                         "stayed null for 3s, so there is no vanilla base map here.");
@@ -1264,6 +1283,7 @@ public sealed class ModEntry : MelonMod
                 return;
             }
             _baseMapNullScene = "";
+            _baseMapNullLogged = false;
 
             if (!region.HasMiniMapTexture)
             {

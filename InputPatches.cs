@@ -28,4 +28,14 @@ internal static class InputPatches
         result = false;
         return false;
     }
+
+    // Every "open the map" path funnels through this one action: the map key, objective prompts
+    // and anything else that asks for the map. Returning false skips the original, so the game's
+    // map panel is never opened - we show our own full map instead. Panel_Map stays untouched.
+    [HarmonyPrefix]
+    [HarmonyPatch(typeof(InputManager), nameof(InputManager.ExecuteOpenMapAction))]
+    private static bool RedirectOpenMap()
+    {
+        return !ModEntry.TryRedirectGameMap();
+    }
 }

@@ -114,6 +114,48 @@
       ]
     },
     {
+      "mapId": "mountain_town",
+      "imageWidth": 4360,
+      "imageHeight": 4401,
+      "points": [
+        {
+          "worldX": 1076.891,
+          "worldZ": 1736.303,
+          "mapX": 1552.3,
+          "mapY": 1408.9,
+          "label": "米尔顿信用合作社"
+        },
+        {
+          "worldX": 1126.202,
+          "worldZ": 1710.941,
+          "mapX": 1641.2,
+          "mapY": 1456.8,
+          "label": "米尔顿邮局"
+        },
+        {
+          "worldX": 699.761,
+          "worldZ": 2102.211,
+          "mapX": 874.5,
+          "mapY": 720.8,
+          "label": "米尔顿教堂"
+        },
+        {
+          "worldX": 600.531,
+          "worldZ": 1560.022,
+          "mapX": 687.8,
+          "mapY": 1732.0,
+          "label": "棚屋"
+        },
+        {
+          "worldX": 1829.091,
+          "worldZ": 1773.007,
+          "mapX": 2914.2,
+          "mapY": 1349.9,
+          "label": "地堡"
+        }
+      ]
+    },
+    {
       "mapId": "mystery_lake",
       "imageWidth": 4583,
       "imageHeight": 4539,
