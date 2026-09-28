@@ -79,6 +79,10 @@ internal sealed class MinimapSettings : JsonModSettings
     [Slider(0f, 1f, 21, NumberFormat = "{0:P0}")]
     public float FullMapBackgroundOpacity = 0.97f;
 
+    [Name("接管游戏地图键")]
+    [Description("按游戏自己的「打开地图」动作时显示本模组的全屏地图，而不是游戏内置的地图界面。它拦的是游戏的动作而不是某个按键，所以你在游戏里改过绑定也照样跟随。不会修改游戏地图模块本身；关掉此项即恢复游戏原行为。")]
+    public bool RedirectGameMap = true;
+
     [Name("释放鼠标（缩放与拖动）")]
     [Description("打开全屏地图时释放鼠标并接管输入，这样才能用滚轮缩放、按住左键拖动地图。关掉后鼠标仍由游戏锁定，地图只能查看不能移动。")]
     public bool ReleaseMouseOnFullMap = true;
@@ -115,10 +119,6 @@ internal sealed class MinimapSettings : JsonModSettings
     [Name("视图轮换按键")]
     [Description("在 小地图 → 全屏地图 → 不显示 之间轮换。游戏自己的默认键位里 Tab 是生存面板（显示时间），如果你把这里也设成 Tab，两者会同时响应——冲突就换成别的键。")]
     public KeyCode CycleViewKey = KeyCode.Tab;
-
-    [Name("接管游戏地图键")]
-    [Description("按游戏自己的「打开地图」动作时显示本模组的全屏地图，而不是游戏内置的地图界面。它拦的是游戏的动作而不是某个按键，所以你在游戏里改过绑定也照样跟随。不会修改游戏地图模块本身；关掉此项即恢复游戏原行为。")]
-    public bool RedirectGameMap = true;
 
     [Name("显示坐标诊断")]
     [Description("在小地图下方显示场景名、玩家世界坐标和朝向，供地图配准使用。")]
@@ -170,7 +170,6 @@ internal sealed class MinimapSettings : JsonModSettings
 
         try
         {
-            SetFieldVisible(nameof(RedirectGameMap), developer);
             SetFieldVisible(nameof(ShowDiagnostics), developer);
             SetFieldVisible(nameof(RecordPointKey), developer);
             SetFieldVisible(nameof(CleanHarvestedMarkers), developer);

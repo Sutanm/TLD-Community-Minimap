@@ -375,15 +375,18 @@ public sealed class ModEntry : MelonMod
         _observedPreferCommunity = preferCommunity;
 
         // Whichever source we are leaving, the texture it produced is destroyed when the other one
-        // loads. That makes the "already requested this scene" marker a lie, and leaving it set
-        // skipped the base map request on the way back: the HUD vanished and only a scene change,
-        // which resets the marker, brought it back.
+        // loads, and the markers captured for it are thrown away too. Both "already done for this
+        // scene" markers then become lies, and leaving them set meant coming back skipped the
+        // request and the capture: the HUD vanished with its markers and only a scene change,
+        // which resets them, brought either back.
         _baseMapRequestedScene = "";
         _baseMapPending = false;
+        _elementsLoadedForScene = "";
+        _vanillaIconSignature = 0;
+        ClearVanillaIcons();
 
         if (preferCommunity)
         {
-            ClearVanillaIcons();
             _usingVanillaMap = false;
             _vanillaProjectionScene = "";
             bool alreadyLoaded = _currentDefinition != null &&
