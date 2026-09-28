@@ -154,6 +154,12 @@ public sealed class ModEntry : MelonMod
         if (Input.GetKeyDown(_settings.RecordPointKey))
             DumpMapDetails();        if (_displayMode == DisplayMode.FullMap)
             HandleFullMapInput();
+        // While the full map is open our input context stops the game from raising its own
+        // open-map action, so pressing the map key again never reached the redirect and the
+        // map could only be closed with Escape. Watch the key directly, through the same
+        // de-duplication so the two paths cannot cancel each other out.
+        if (_displayMode == DisplayMode.FullMap && Input.GetKeyDown(_settings.GameMapKey))
+            TryRedirectGameMap();
         if (DateTime.UtcNow >= _nextMarkerCleanupUtc)
         {
             _nextMarkerCleanupUtc = DateTime.UtcNow.AddSeconds(2);

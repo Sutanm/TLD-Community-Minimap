@@ -81,6 +81,10 @@ internal sealed class MinimapSettings : JsonModSettings
     [Description("按下游戏原本的“打开地图”键（默认 M）时显示本模组的全屏地图，而不是游戏自带的地图界面。不会修改游戏地图模块本身；关掉此项即恢复游戏原行为。")]
     public bool RedirectGameMap = true;
 
+    [Name("游戏地图键（用于关闭）")]
+    [Description("全屏地图打开时，按此键关闭。默认 M，与游戏默认一致；若你在游戏里改过地图按键，这里也改一下。")]
+    public KeyCode GameMapKey = KeyCode.M;
+
     [Name("全屏地图释放鼠标")]
     [Description("打开全屏地图时释放鼠标并接管输入，这样才能用滚轮缩放、按住左键拖动地图。关掉后鼠标仍由游戏锁定，地图只能查看不能移动。")]
     public bool ReleaseMouseOnFullMap = true;
