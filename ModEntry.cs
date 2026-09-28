@@ -108,6 +108,7 @@ public sealed class ModEntry : MelonMod
     private readonly Dictionary<string, IconRef> _iconBySpriteName = new(StringComparer.Ordinal);
     private UIAtlas _mapIconAtlas;
     private float _vanillaIconMaxUv = 1f;
+    private DateTime _nextMarkerCleanupUtc = DateTime.MinValue;
 
     private sealed class VanillaIcon
     {
@@ -153,6 +154,11 @@ public sealed class ModEntry : MelonMod
         if (Input.GetKeyDown(_settings.RecordPointKey))
             DumpMapDetails();        if (_displayMode == DisplayMode.FullMap)
             HandleFullMapInput();
+        if (DateTime.UtcNow >= _nextMarkerCleanupUtc)
+        {
+            _nextMarkerCleanupUtc = DateTime.UtcNow.AddSeconds(2);
+            CleanHarvestedMapMarkers();
+        }
 
         var scene = UnitySceneManager.GetActiveScene();
         if (scene.handle != _observedSceneHandle)
@@ -1211,6 +1217,82 @@ public sealed class ModEntry : MelonMod
             LoggerInstance.Warning($"MapDetail dump failed: {ex.Message}");
         }
     }
+    // The game leaves a harvested resource in MapDetailManager.s_MapDetails and on the map, so
+    // collected markers never disappear by themselves. Unregister is the game's own counterpart
+    // to Register, which is cleaner than editing the list by hand the way other mods do.
+    // Entries are collected first and removed afterwards: mutating the list while iterating it
+    // throws.
+    private void CleanHarvestedMapMarkers()
+    {
+        if (!_settings.CleanHarvestedMarkers)
+            return;
+
+        List<MapDetail> stale = null;
+        try
+        {
+            var details = MapDetailManager.s_MapDetails;
+            if (details == null)
+                return;
+            for (int i = 0; i < details.Count; i++)
+            {
+                MapDetail detail = details[i];
+                if (ReferenceEquals(detail, null) || !detail.m_IsSurveyed)
+                    continue;
+                if (!AllHarvestablesCollected(detail))
+                    continue;
+                stale ??= new List<MapDetail>();
+                stale.Add(detail);
+            }
+
+            if (stale == null)
+                return;
+
+            for (int i = 0; i < stale.Count; i++)
+                MapDetailManager.Unregister(stale[i]);
+
+            LoggerInstance.Msg($"Removed {stale.Count} fully harvested map markers.");
+        }
+        catch (Exception ex)
+        {
+            LoggerInstance.Warning($"Harvested marker cleanup failed: {ex.Message}");
+        }
+    }
+
+    private static bool AllHarvestablesCollected(MapDetail detail)
+    {
+        bool any = false;
+
+        var array = detail.m_HarvestablesForMapVisibility;
+        if (array != null)
+        {
+            for (int i = 0; i < array.Length; i++)
+            {
+                Harvestable harvestable = array[i];
+                if (ReferenceEquals(harvestable, null))
+                    continue;
+                any = true;
+                if (!harvestable.IsHarvested())
+                    return false;
+            }
+        }
+
+        var shared = detail.m_HarvestablesSharingIcon;
+        if (shared != null)
+        {
+            for (int i = 0; i < shared.Count; i++)
+            {
+                Harvestable harvestable = shared[i];
+                if (ReferenceEquals(harvestable, null))
+                    continue;
+                any = true;
+                if (!harvestable.IsHarvested())
+                    return false;
+            }
+        }
+
+        return any;
+    }
+
     private static bool IsMapIconChrome(string name) =>
         string.Equals(name, "HoverWidget", StringComparison.Ordinal) ||
         string.Equals(name, "Label", StringComparison.Ordinal) ||
