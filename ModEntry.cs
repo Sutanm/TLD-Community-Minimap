@@ -1198,6 +1198,50 @@ public sealed class ModEntry : MelonMod
                 $"({(resolved + atlasResolved) * 100 / Mathf.Max(1, withSprite)}% total); " +
                 $"atlas present: {!ReferenceEquals(_mapIconAtlas, null)}; " +
                 $"{details.Count - withSprite} carry no sprite name (labels and areas).");
+
+            // Which harvestable flags actually mean "collected". IsHarvested alone matched every
+            // unloaded object, while requiring the object to be active matched none, so print the
+            // combinations next to whether the game itself still has the marker on the map.
+            int shownHarvest = 0;
+            for (int i = 0; i < details.Count && shownHarvest < 30; i++)
+            {
+                MapDetail hd = details[i];
+                if (ReferenceEquals(hd, null))
+                    continue;
+                var arr = hd.m_HarvestablesForMapVisibility;
+                var shared = hd.m_HarvestablesSharingIcon;
+                int total = 0;
+                if (!ReferenceEquals(arr, null)) total += arr.Length;
+                if (!ReferenceEquals(shared, null)) total += shared.Count;
+                if (total == 0)
+                    continue;
+                shownHarvest++;
+
+                string flags = "";
+                if (!ReferenceEquals(arr, null))
+                {
+                    for (int k = 0; k < arr.Length && k < 4; k++)
+                    {
+                        Harvestable h = arr[k];
+                        if (ReferenceEquals(h, null)) { flags += "[null]"; continue; }
+                        GameObject hgo = h.gameObject;
+                        bool gone = ReferenceEquals(hgo, null);
+                        flags += $"[h={h.IsHarvested()} gone={gone} act={(!gone && hgo.activeInHierarchy)}]";
+                    }
+                }
+
+                bool drawn = false;
+                try
+                {
+                    GameObject dgo = hd.gameObject;
+                    drawn = !ReferenceEquals(dgo, null) && dgo.activeInHierarchy;
+                }
+                catch { }
+
+                LoggerInstance.Msg(
+                    $"  H[{i}] sprite='{hd.m_SpriteName}' surveyed={hd.m_IsSurveyed} " +
+                    $"drawn={drawn} n={total} {flags}");
+            }
             int shown = 0;
             for (int i = 0; i < details.Count && shown < 40; i++)
             {
@@ -1213,8 +1257,7 @@ public sealed class ModEntry : MelonMod
             }
         }
         catch (Exception ex)
-        {
-            LoggerInstance.Warning($"MapDetail dump failed: {ex.Message}");
+        {            LoggerInstance.Warning($"MapDetail dump failed: {ex.Message}");
         }
     }
     // The game leaves a harvested resource in MapDetailManager.s_MapDetails and on the map, so
