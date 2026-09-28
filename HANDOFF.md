@@ -2612,6 +2612,61 @@ bool show = _usingVanillaMap;    // 标记只在原版图源下绘制
 3. 如果你希望它消失而现在不消失，**那是游戏的 bug**——我们要做的是"**在我们的 HUD 上替它修**"，
    而不是"刷新不及时"。**这两件事的实现完全不同。**
 
+---
+
+## 35. 标记丢失的真正成因（2026-09-28 深夜，已修）
+
+**现象**：切换图源后标记丢失，只剩内置地图**点亮区域**的标记。用户怀疑是"偶发现象"。
+
+### 35.1 成因是确定的，不是偶发
+
+`CaptureVanillaIconsRecursive`：
+
+```csharp
+alpha = sprite.enabled ? sprite.alpha * sprite.color.a : 0f;   // enabled=false → 直接丢弃
+```
+
+**而 `Panel_Map.RefreshIconVisibility()` 正是靠 `enabled` 画迷雾的。**
+
+| 状态 | 抓到的标记数 |
+|---|---|
+| 面板**从没打开过** | **162** ← 迷雾还没应用 |
+| 面板**打开过一次之后** | **28** ← 只剩点亮区域 |
+
+**证据就在 20:42 那次的日志里，一直在那儿**：
+
+```
+[20:42:13.477] Captured 162 vanilla map marker layers (panel-free).
+[20:42:53.310] Captured 28  vanilla map marker layers (panel-free).
+[20:43:16.866] Captured 28  vanilla map marker layers (panel-free).
+```
+
+`keepExistingWhenEmpty` **挡不住**，因为 28 不是空。
+
+**为什么感觉是偶发**：`TryRefreshVanillaIcons` 只在**签名变化时**才重抓
+（`if (signature == _vanillaIconSignature) return;`）。所以成因确定，
+但**触发时机取决于玩家行为**，于是看起来像运气。
+
+### 35.2 两处修复
+
+1. **切换图源不再销毁标记、不再强制重抓。**（这一条是我上一轮引入的回归：我清了
+   `_elementsLoadedForScene` 逼它重抓，正好踩进上面那个坑。）保留它还顺带避开另一个坑——
+   `LoadMapElementsForScene` 是**追加**的，重抓会让每个标记**翻倍**。
+2. **抓取结果比现有集合小就拒绝**，并写日志
+   `Kept N markers: the re-capture returned only M`。理由：**游戏根本不会删除标记**（§20.2），
+   所以"变少"只可能是迷雾。
+
+### 35.3 记下的架构问题
+
+**现在"抓取"和"可见性"是混在一起的**——抓取时用 `enabled` 判断，而那是渲染期的概念。
+
+**正确的分层：抓取只管收集，可见性在绘制时决定。**
+这正好是**迷雾模式（§30.1）需要的地基**：那时迷雾会变成"画不画"的问题，而不是"抓不抓"的问题。
+
+**未验证**：修复 ② 靠"保留较大的集合"，代价是**可能留住过期标记**。
+当前与"游戏从不删标记"等价，所以没有实际损失；但**一旦开始做迷雾或采集清理，这条必须重新审。**
+
+
 
 
 
