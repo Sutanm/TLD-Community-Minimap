@@ -8,3 +8,8 @@ obj/
 maps/
 prepared-maps/
 calibration_points.csv
+
+# Renders produced by the scripts in tools/. Regenerate them rather than storing megabytes of
+# PNG in the repository; the scripts and the data they read are what belongs in version control.
+tools/marker-overlay-preview.png
+tools/marker-crop-*.png
