@@ -1,3 +1,4 @@
+using System;
 using HarmonyLib;
 using Il2Cpp;
 
@@ -43,9 +44,10 @@ internal static class InputPatches
     //
     // A probe over one session settled it: a charcoal survey produced Panel_Map.Enable(true, true)
     // with no InputManager method anywhere on the path, while the radial menu produced
-    // Panel_ActionsRadial.DoOpenMap() followed by the one-argument Panel_Map.Enable(true). The two
-    // overloads are told apart here, so suppressing the survey popup cannot also suppress the
-    // radial menu.
+    // Panel_ActionsRadial.DoOpenMap() followed by the one-argument Panel_Map.Enable(true).
+    //
+    // The overload is not survey-specific though - the inventory's map button calls it too - so
+    // HandleSurveyMapPopup only answers when a survey happened moments ago.
     [HarmonyPrefix]
     [HarmonyPatch(typeof(Panel_Map), nameof(Panel_Map.Enable), new[] { typeof(bool), typeof(bool) })]
     private static bool RedirectSurveyMapPopup(bool enable)
@@ -53,6 +55,22 @@ internal static class InputPatches
         if (!enable)
             return true;                      // letting the panel close is always right
         return !ModEntry.HandleSurveyMapPopup("Panel_Map.Enable(bool, bool)");
+    }
+
+    // Charcoal surveying marks each revealed location as surveyed. There is no single "a survey
+    // happened" event, so this is the signal the survey-popup setting keys off: a map panel that
+    // opens within a few seconds of this is the forced popup, and one that opens later is the
+    // player opening the map themselves.
+    //
+    // Without a signal the two are indistinguishable, because the inventory's map button calls
+    // the same Panel_Map.Enable overload as the survey - and answering both locked the built-in
+    // map away behind the "suppress" and "our map" settings.
+    [HarmonyPostfix]
+    [HarmonyPatch(typeof(MapDetail), nameof(MapDetail.Surveyed))]
+    private static void NoteSurvey()
+    {
+        ModEntry.s_lastSurveyUtc = DateTime.UtcNow;
+        PanelProbe.Report("MapDetail.Surveyed()");
     }
 
     // Kept from an earlier, wrong guess. The probe showed this method is not on the survey's path

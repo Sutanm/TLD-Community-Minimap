@@ -64,7 +64,7 @@ internal static class PanelProbe
         Report($"{name}({detail})");
     }
 
-    private static void Report(string call)
+    internal static void Report(string call)
     {
         // Some of these are plausibly called every frame while the panel is alive; one line per
         // quarter second per method is enough to read the sequence without flooding the log.

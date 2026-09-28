@@ -2392,6 +2392,55 @@ Panel_ActionsRadial.DoOpenMap()        ← 放射菜单（顺带量 §30.2 那�
 **修法**：`OnUpdate` 里三处都加上"UI 不存在就别碰"的判断——全屏地图输入、按键轮询、
 输入上下文对账。全屏地图的**状态**仍然可以存在（切场景回来还在），只是没有 UI 时不做任何操作。
 
+### 31.8 用户实测：勘测弹图成功，但牵出两个新 bug
+
+#### Bug A：`Panel_Map.Enable(bool, bool)` 不是勘测专用
+
+**现象**：设成「不弹」或「当前图源」后，**从背包点地图也看不了内置地图**，只有设成「游戏内置」才行。
+
+**原因**：**背包的地图按钮走的是同一个重载。** 我又一次把"勘测走这个"当成了"只有勘测走这个"。
+
+**修法：给勘测加一个时间信号。** patch `MapDetail.Surveyed()`（勘测会把每个揭示的地点标记为已勘测），
+记下时间戳；`Enable(bool,bool)` 只在**距上次勘测 3 秒内**才交给三选项回答，否则**一律放行**。
+
+```csharp
+double sinceSurvey = (DateTime.UtcNow - s_lastSurveyUtc).TotalSeconds;
+if (sinceSurvey > SurveyPopupWindowSeconds)   // 3.0
+    return false;      // 玩家自己开的，别碰
+```
+
+**这个设计是"向安全侧失败"**：如果 `Surveyed()` 哪天不触发了，行为退化成"内置地图照常打开"，
+**不会再把玩家的地图锁死**——而这次的 bug 正是锁死了。
+
+`MapDetail.Surveyed()` 有没有真的触发，探针里加了 `MapDetail.Surveyed()` 这一行日志确认。
+
+#### Bug B：切换图源后 HUD 永久消失，必须换场景
+
+**现象**：社区地图 → 原版地图，小地图和大地图**都不显示了**，切场景才恢复。
+
+**原因**（`ApplyMapSourceSelection` + `TryRequestVanillaBaseMap`）：
+
+```csharp
+if (_baseMapPending || string.Equals(_baseMapRequestedScene, sceneName, ...))
+    return;      // 「这个场景已经请求过了」→ 直接跳过
+```
+
+切到社区图时 `LoadCurrentMapIntoUnityUi` 会 **`Destroy` 掉那张原版底图**，
+但 `_baseMapRequestedScene` 还写着这个场景名。切回原版时请求被跳过，
+`_textureReady` 永远是 false → HUD 消失。只有换场景会重置这个标记，所以才"必须切场景才恢复"。
+
+**修法**：`ApplyMapSourceSelection` 里**换图源就清空 `_baseMapRequestedScene` 和 `_baseMapPending`**——
+不管往哪个方向切，离开的那个图源产生的贴图都会被销毁，所以"已请求过"这个标记本身就是谎话。
+
+#### 教训（第三次同类）
+
+**"某条路径走 X"不等于"只有那条路径走 X"。** 这已经是第三次：
+Tab 冲突 → 勘测走了错误的方法 → `Enable(bool,bool)` 被当成勘测专用。
+
+**共同的根因是同一个：把"观察到的一次"当成"规律"。** 防御手段也一样：
+**凡是拦截类的改动，都要想清楚"如果还有别的调用者会怎样"，并且默认向不拦截的方向失败。**
+
+
 
 
 

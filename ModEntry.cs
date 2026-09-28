@@ -30,6 +30,13 @@ public sealed class ModEntry : MelonMod
     internal static ModEntry s_instance;
     private static int s_suppressEscapeThroughFrame = -1;
 
+    // Stamped by the MapDetail.Surveyed patch. A charcoal survey marks each revealed location, and
+    // the forced map panel follows within a second or so; that gap is the only way to tell the
+    // survey popup apart from the player opening the map from the inventory, because both arrive
+    // as the same Panel_Map.Enable call.
+    internal static DateTime s_lastSurveyUtc = DateTime.MinValue;
+    private const double SurveyPopupWindowSeconds = 3.0;
+
     // The corner HUD and the full-screen map are two independent layers: the corner map sits
     // behind a plain on/off setting, the full map is a modal overlay that the game's own map key
     // always opens. Hiding one never takes the other with it, which is what the single two-state
@@ -366,6 +373,14 @@ public sealed class ModEntry : MelonMod
     {
         _observedMapSource = _settings.MapSource;
         _observedPreferCommunity = preferCommunity;
+
+        // Whichever source we are leaving, the texture it produced is destroyed when the other one
+        // loads. That makes the "already requested this scene" marker a lie, and leaving it set
+        // skipped the base map request on the way back: the HUD vanished and only a scene change,
+        // which resets the marker, brought it back.
+        _baseMapRequestedScene = "";
+        _baseMapPending = false;
+
         if (preferCommunity)
         {
             ClearVanillaIcons();
@@ -497,14 +512,25 @@ public sealed class ModEntry : MelonMod
     // through InputManager, which is why patching the objective action did nothing for a whole
     // session; see InputPatches for the measurement that established the real path.
     //
-    // The player may want the game's own map there (it draws the fog they just pushed back), our
-    // map, or nothing at all: our map is lit everywhere already, so that popup carries no new
-    // information and swallowing it removes an interruption.
+    // Panel_Map.Enable(bool, bool) is NOT survey-specific, though - the inventory's map button
+    // calls the same overload. Answering it unconditionally locked the built-in map away behind
+    // the "suppress" and "our map" settings, so the setting only answers for a panel that opens
+    // shortly after a survey. Everything else is the player deliberately asking for the game's
+    // map, and is left alone.
     internal static bool HandleSurveyMapPopup(string source)
     {
         ModEntry mod = s_instance;
         if (mod == null)
             return false;
+
+        double sinceSurvey = (DateTime.UtcNow - s_lastSurveyUtc).TotalSeconds;
+        if (sinceSurvey > SurveyPopupWindowSeconds)
+        {
+            mod.LoggerInstance.Msg(
+                $"Map panel opened from the UI ({source}); no survey in the last " +
+                $"{SurveyPopupWindowSeconds:F0}s, so the game's map is left alone.");
+            return false;
+        }
 
         switch (mod._settings.SurveyPopup)
         {
