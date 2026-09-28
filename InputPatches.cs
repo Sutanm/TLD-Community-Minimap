@@ -38,4 +38,13 @@ internal static class InputPatches
     {
         return !ModEntry.TryRedirectGameMap();
     }
-}
+
+    // There is a second way in: the objective prompt path, which is what cartography uses when
+    // charcoal reveals an area. Without this the game's own map still appears after surveying,
+    // which both breaks the takeover and rebuilds the panel behind our back.
+    [HarmonyPrefix]
+    [HarmonyPatch(typeof(InputManager), nameof(InputManager.ExecuteOpenMapActionFromObjective))]
+    private static bool RedirectOpenMapFromObjective()
+    {
+        return !ModEntry.TryRedirectGameMap();
+    }}
