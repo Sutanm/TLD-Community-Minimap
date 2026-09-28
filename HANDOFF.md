@@ -1437,3 +1437,59 @@ basemap_LakeRegion.png 不透明区域只占整帧 51.3%
 ### 23.5 推送状态
 
 GitHub 自 2026-09-28 中午起持续不可达。本地提交完好，积压待推。
+---
+
+## 24. `MapDetail` 实测结果（2026-09-28，重大进展）
+
+在 Mountain Town 按 F9，把 `MapDetailManager.s_MapDetails` 全量打出：
+
+```
+MapDetail dump: 816 entries.
+[0]  sprite='icoMap_churchMilton' loc='GAMEPLAY_mtChurch'      type=TopIcon     surveyed=False discovered=False unlocked=False world=(688.6,288.4,2102.0) target=(0,0,0)
+[2]  sprite=''                    loc='GAMEPLAY_mtSchool'      type=Text        surveyed=True  ...        world=(981.7,266.8,1727.1)
+[7]  sprite='icoMap_crossroads'   loc='SCENENAME_MiltonHouse'  type=DetailIcon  surveyed=True  ...        world=(1131.6,263.4,1755.1)
+[10] sprite=''                    loc='GAMEPLAY_mtTownCentre'  type=Text        surveyed=True  unlocked=True
+[18] sprite='icoMap_crossroads'   loc='GAMEPLAY_mtCreditUnion' type=DetailIcon  surveyed=True
+[21] sprite='icoMap_cattails'     loc='GAMEPLAY_CattailPlant'  type=DetailEntry surveyed=False ... (大量重复)
+```
+
+### 24.1 确认可用的字段
+
+| 字段 | 结论 |
+|---|---|
+| **`GetWorldPosition()`** | ✅ **有值**，直接给世界坐标 → **可以走我们已有的校准**，与玩家指针同一条链路 |
+| `m_TargetPosition` | ❌ 恒为 `(0,0,0)`，**不可用**，必须用 `GetWorldPosition()` |
+| **`m_SpriteName`** | ✅ **语义化图标名**（`icoMap_churchMilton`、`icoMap_cattails`、`icoMap_crossroads`…） |
+| **`m_LocID`** | ✅ 本地化 key（`GAMEPLAY_mtChurch`、`SCENENAME_MiltonHouse`）→ **可做地名提示/搜索** |
+| `m_IconType` | 渲染分类，不是语义：`TopIcon` / `DetailIcon` / `DetailEntry` / **`Text`** / `Area` |
+| `m_IsSurveyed` | ✅ **"已揭示"标志**——勘测即翻 true，正可用于实时刷新 |
+| `m_IsUnlocked` | 部分条目为 true（如 `mtTownCentre`） |
+
+### 24.2 关键发现
+
+1. **`type=Text` 是地名标签**（`m_SpriteName` 为空）——**做标记时要滤掉**，但它们**免费提供了地名数据**。
+2. **`world` 全部有值**——所以标记位置**不需要再刮 UI**，直接 `GetWorldPosition()` → 我们的校准 → uv ✓。
+3. **条目数 816**，绝大多数是重复的资源条目（香蒲之类）——需要按类型/精灵名聚合或过滤。
+4. **`surveyed` 标志实时变化**——这就是"木炭更新后要切场景才刷新"的正解：**不再依赖面板重建**。
+
+### 24.3 唯一剩下的问题：图标从哪来
+
+`m_SpriteName` 只是**字符串**，不是精灵本体。要画出图标需要拿到贴图。**突破口**：刮 UI 时 `UISprite` 本身有 `spriteName` 属性，可以在现有刮取逻辑里**顺便建立 `名字 → (贴图, UV)` 字典**，之后由 `s_MapDetails` 驱动位置和可见性。
+
+> 若某个新勘测的地名还没有对应的 UI 对象（字典里查不到），退化为通用标记即可。
+
+### 24.4 重构后的收益（一次解决五件事）
+
+| 收益 | 说明 |
+|---|---|
+| 实时刷新 | 读 `m_IsSurveyed`，不需要换场景 |
+| 免疫采集 bug | 自己读 `Harvestable.IsHarvested()` 过滤 |
+| 地名 | `m_LocID` 可本地化显示 |
+| 过滤/图层 | 按 `m_IconType`（滤掉 Text）与精灵名分类 |
+| 位置链路统一 | `GetWorldPosition()` → 与玩家指针**共用同一份校准** |
+
+### 24.5 已装的诊断
+
+`DumpMapDetails()` 挂在 **F9** 上（与校准点记录同时触发），日志打印前 40 条。保留着，重构过程中还要反复对照。
+
+**编译通过本身已确认**：`MapDetailManager.s_MapDetails`、`GetWorldPosition()`、`m_SpriteName`、`m_LocID`、`m_IconType`、`m_IsSurveyed`、`m_IsDiscovered`、`m_IsUnlocked`、`m_TargetPosition` **全部可从我们的模组访问**。
