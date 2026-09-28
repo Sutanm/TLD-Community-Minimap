@@ -12,7 +12,7 @@ internal sealed class MinimapSettings : JsonModSettings
     [Section("小地图")]
 
     [Name("显示小地图")]
-    [Description("角落小地图的总开关，关掉它不会影响全屏地图。全屏地图请按游戏自己的地图键打开（默认 M —— 本模组接管了这个键，你不用改习惯）；打开后用滚轮缩放、按住左键拖动，再按一次 M 或 Esc 关闭。")]
+    [Description("角落小地图的总开关，关掉它不会影响全屏地图。全屏地图请按游戏自己的地图键打开；打开后用滚轮缩放、按住左键拖动。")]
     public bool Enabled = true;
 
     [Name("临时隐藏小地图")]
@@ -20,7 +20,7 @@ internal sealed class MinimapSettings : JsonModSettings
     public KeyCode ToggleKey = KeyCode.F8;
 
     [Name("HUD 位置")]
-    [Description("小地图贴在屏幕的哪个角；玩家 HUD 那个角落被占用时选「自定义」自己摆。")]
+    [Description("小地图贴在屏幕的哪个角；玩家 HUD 那个角落被占用时选「自定义」。")]
     [Choice("右上", "左上", "右下", "左下", "自定义")]
     public int HudPosition = 1;
 
@@ -105,6 +105,17 @@ internal sealed class MinimapSettings : JsonModSettings
     [Description("打开后显示地图配准、标记诊断等开发用选项。关掉则隐藏它们，值不会丢失。")]
     public bool DeveloperMode = false;
 
+    // The cycle key is deliberately not a developer-only row: it is a convenience the player may
+    // want. It is kept in this section only because most players never need it, and the key row
+    // hides when the switch is off rather than being left there to be rebound by accident.
+    [Name("启用视图轮换按键")]
+    [Description("打开后，下面那个键可以在 小地图 → 全屏地图 → 不显示 之间轮换。默认 Tab，就在移动键旁边，单手就能按到。不需要就关掉这一项，完全不占用键盘。")]
+    public bool EnableCycleKey = true;
+
+    [Name("视图轮换按键")]
+    [Description("在 小地图 → 全屏地图 → 不显示 之间轮换。注意游戏自己也用 Tab 打开生存面板（显示时间），两者会同时响应——不想冲突就在这里换一个键。")]
+    public KeyCode CycleViewKey = KeyCode.Tab;
+
     [Name("接管游戏地图键")]
     [Description("按游戏自己的「打开地图」动作时显示本模组的全屏地图，而不是游戏内置的地图界面。它拦的是游戏的动作而不是某个按键，所以你在游戏里改过绑定也照样跟随。不会修改游戏地图模块本身；关掉此项即恢复游戏原行为。")]
     public bool RedirectGameMap = true;
@@ -143,9 +154,11 @@ internal sealed class MinimapSettings : JsonModSettings
         // separate confirmed-value map so a change can be cancelled, so the field it exposes
         // during a change is not necessarily the new one.
         if (field.Name == nameof(DeveloperMode) && newValue is bool developerMode)
-            ApplyVisibility(developerMode, null);
+            ApplyVisibility(developerMode, null, null);
         else if (field.Name == nameof(HudPosition) && newValue is int position)
-            ApplyVisibility(null, position);
+            ApplyVisibility(null, position, null);
+        else if (field.Name == nameof(EnableCycleKey) && newValue is bool cycleEnabled)
+            ApplyVisibility(null, null, cycleEnabled);
     }
 
     // OnChange is driven by the settings GUI, which does not exist yet when the mod loads, so
@@ -153,13 +166,14 @@ internal sealed class MinimapSettings : JsonModSettings
     protected override void OnConfirm()
     {
         base.OnConfirm();
-        ApplyVisibility(null, null);
+        ApplyVisibility(null, null, null);
     }
 
-    internal void ApplyVisibility(bool? developerMode, int? hudPosition)
+    internal void ApplyVisibility(bool? developerMode, int? hudPosition, bool? cycleKeyEnabled)
     {
         bool developer = developerMode ?? DeveloperMode;
         bool customPosition = (hudPosition ?? HudPosition) == 4;
+        bool cycleKey = cycleKeyEnabled ?? EnableCycleKey;
 
         try
         {
@@ -175,6 +189,8 @@ internal sealed class MinimapSettings : JsonModSettings
             SetFieldVisible(nameof(MiniMapPositionX), customPosition);
             SetFieldVisible(nameof(MiniMapPositionY), customPosition);
             SetFieldVisible(nameof(Margin), !customPosition);
+
+            SetFieldVisible(nameof(CycleViewKey), cycleKey);
 
             RefreshGUI();
         }

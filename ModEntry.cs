@@ -34,6 +34,7 @@ public sealed class ModEntry : MelonMod
     // behind a plain on/off setting, the full map is a modal overlay that the game's own map key
     // always opens. Hiding one never takes the other with it, which is what the single two-state
     // DisplayMode used to do.
+    private bool _miniMapOn = true;
     private bool _fullMapOn;
 
     // Diagnostic state for the open-map action query; see ProbeOpenMapQuery.
@@ -131,7 +132,7 @@ public sealed class ModEntry : MelonMod
         _settings.AddToModSettings("社区HUD地图", MenuType.Both);
         // The settings GUI does not exist yet, so the visibility rules have to be applied once by
         // hand or the developer-only rows show up for everyone until something changes.
-        _settings.ApplyVisibility(null, null);
+        _settings.ApplyVisibility(null, null, null);
         _modDirectory = Path.Combine(MelonEnvironment.ModsDirectory, "CommunityMinimap");
         _mapsDirectory = Path.Combine(_modDirectory, "maps");
         _calibrationPath = Path.Combine(_modDirectory, "calibrations.json");
@@ -156,6 +157,11 @@ public sealed class ModEntry : MelonMod
             // the corner map is hidden, which is the whole point of the two being separate.
             _temporarilyHidden = !_temporarilyHidden;
             LoggerInstance.Msg($"Mini map {(_temporarilyHidden ? "hidden" : "shown")} temporarily.");
+        }
+        if (_settings.EnableCycleKey && _settings.CycleViewKey != KeyCode.None &&
+            Input.GetKeyDown(_settings.CycleViewKey))
+        {
+            CycleView();
         }
         if (FullMapVisible && Input.GetKeyDown(KeyCode.Escape))
             LeaveFullMap();
@@ -402,32 +408,56 @@ public sealed class ModEntry : MelonMod
         }
     }
 
-    // Two independent layers. The corner map answers to its own setting and to the temporary
-    // hide key; the full map answers only to the game's map key.
-    private bool MiniMapVisible => _settings.Enabled && !_temporarilyHidden;
+    // Two independent layers. The corner map answers to its own setting, to the view cycle and to
+    // the temporary hide key; the full map answers to the game's map key and to the view cycle.
+    private bool MiniMapVisible => _miniMapOn && _settings.Enabled && !_temporarilyHidden;
     private bool FullMapVisible => _fullMapOn;
 
     private string DescribeView() => FullMapVisible ? "FullMap"
         : MiniMapVisible ? "MiniMap" : "None";
 
-    private void OpenFullMap()
+    private void ApplyViewState(bool mini, bool full)
     {
-        if (!_settings.RedirectGameMap)
-            return;
         // Opening resets it onto the player: a map that reopens wherever it was last dragged is
         // disorienting, and the player is the one thing on it that moved.
-        if (!_fullMapOn)
+        if (full && !_fullMapOn)
         {
             _fullMapZoom = 1f;
             _fullMapCenterValid = false;
             _openMapProbeArmed = false;
         }
-        _fullMapOn = true;
+        _miniMapOn = mini;
+        _fullMapOn = full;
+    }
+
+    // Corner map -> full map -> nothing -> corner map.
+    //
+    // The next state is derived from the current one rather than from a stored index, because
+    // the game's map key moves between the same states: an index would go stale and skip one.
+    // Going to the full map deliberately leaves the corner map switched on underneath, so
+    // closing the full map with the game key returns to the corner map instead of to nothing.
+    private void CycleView()
+    {
+        if (_fullMapOn)
+            ApplyViewState(false, false);
+        else if (_miniMapOn)
+            ApplyViewState(true, true);
+        else
+            ApplyViewState(_settings.Enabled, !_settings.Enabled);
+
+        LoggerInstance.Msg($"View cycle: {DescribeView()}.");
+    }
+
+    private void OpenFullMap()
+    {
+        if (!_settings.RedirectGameMap)
+            return;
+        ApplyViewState(_miniMapOn, true);
     }
 
     private void CloseFullMap()
     {
-        _fullMapOn = false;
+        ApplyViewState(_miniMapOn, false);
     }
 
     // The game's own map key lives in muscle memory, so the game's "open map" action is
@@ -631,6 +661,8 @@ public sealed class ModEntry : MelonMod
         string text = _settings.ReleaseMouseOnFullMap
             ? "滚轮 缩放      左键拖动 平移      "
             : "";
+        if (_settings.EnableCycleKey && _settings.CycleViewKey != KeyCode.None)
+            text += $"{_settings.CycleViewKey} 切换视图      ";
         return $"{text}{_settings.GameMapKey} / Esc 关闭";
     }
 
