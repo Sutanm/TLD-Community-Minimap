@@ -3073,3 +3073,85 @@ Largest groups: icoMap_cattails=251, icoMap_rosehips=127, icoMap_limb=72,
 §38.3 的最终 uv 一致性**仍然未知**，非 MountainTown 区域的基准**也仍然未知**。
 `[layers]` 行确认了 mini 和 full 在 `自动` 下确实各持一份 **4360x4198 的独立贴图**，
 但**原版/社区混合**那个真正会暴露跨层覆盖的配置**还没试过**。
+
+---
+
+## 40. 第二次实测（2026-09-29 22:04 会话）
+
+日志 `MelonLoader\Logs\26-9-29_22-4-43.log`。用户反馈：**小地图切场景时会闪一下全图**。
+
+### 40.1 ✅ 图源分离第一次被真正验证（§37.1 的核心断言成立）
+
+用户在会话中把小地图图源改成了**原版**。22:05:42 那行是决定性的：
+
+```
+mini: src=vanilla using=vanilla tex=1024x1024
+      bounds=(-325,-325,650x650) proj=MountainTownRegion baseReq='MountainTownRegion' elems='MountainTownRegion'
+full: src=automatic using=community tex=4360x4198
+      bounds=(-1024,-1024,2048x2048) proj=- baseReq='' elems=''
+```
+
+两个图层**同时持有不同的贴图、不同的基准、不同的投影状态**，互不覆盖。
+⇒ §38.5 里担心的那个跨层覆盖（大地图那次 `ApplyMapSourceSelection` 清空共享的
+`VanillaProjectionScene`）**在实测里没有发生**。
+⇒ 小地图走原版 base map（`1024x1024`，全区可用、不需要校准）、
+大地图走民间高清（`4360x4198`）—— **这正是 §37.1 描述的最终形态，且已跑通。**
+
+**尚未验证**：反过来（小地图=社区、大地图=原版）那一半。
+
+### 40.2 ⚠️ framing 探针在「接管地图键」开着时永远不会触发（**结构性**）
+
+两次会话 `vanillaPanelOpen` 全为 `False`，`Framing probe` 一行都没有。原因不是探针坏了：
+
+**探针读的是游戏自己的 `Panel_Map` 里的 `_RegionMap` 控件，而「接管游戏地图键」
+（`RedirectGameMap`，默认开）会拦掉那个动作 —— 游戏面板从头到尾就没打开过。**
+
+⇒ 要拿到 §38.3 的数据，**必须先把「接管游戏地图键」关掉**，然后正常按游戏地图键。
+这和探针的 dev 开关是两个独立的开关，之前没说清楚，记在这里。
+
+### 40.3 小地图切场景闪全图（**已修，待复验**）
+
+`UpdateUnityUi` 在 `!hasPosition && !fullMap` 时把 `uvRect` 设成整张图再返回 ——
+那是 §37.4 为「未校准区域的全屏地图也能缩放」写的，但副作用是**小地图在拿到投影之前
+会先画一遍全图**，然后才跳到玩家为中心。切场景、校准重载这类瞬间都会闪一下。
+
+⇒ 修法：那个窗口里把 `_mapImage.enabled` 关掉，一有投影就恢复。
+全屏地图**不动**（它的缩放平移是纯 uv 运算，本来就不需要校准）。
+
+### 40.4 仍需注意
+
+- 社区图源的加载日志现在会带上图层名，因为连续两行 `Loaded 山间小镇` 分不清是
+  **预热**（§39.1）还是**重复加载**（§39.1 缺陷一）。修完缺陷一之后那两行
+  （22:05:07.261 与 22:05:09.071，相隔 1.8 秒）**是预热，不是重复**。
+- §39.2 的图集问题**依旧存在**：本次 `Marker census` 仍然是 `Resolvable: 0`、
+  `atlas present: False`。默认配置下标记重写依然被卡住。
+
+### 40.5 图集获取已与图层解耦（**已修，待复验**）
+
+新增 `PopulateIconTableOnce(sceneName)`，在 `OnUpdate` 里**无条件**调用
+（只要求有定义、玩家就绪、游戏面板没开着），不再受 `!preferCommunity` 限制。
+
+它做的就是原版路径那次一次性面板调用**减去一切与贴图有关的东西** ——
+它要的是**图集**，不是 base map，所以**不再等贴图**：
+
+```csharp
+panel.ForceUpdateRegion();
+panel.LoadMapElementsForScene(sceneName);
+_elementsLoadedForScene = sceneName;          // 全局一次性闸门，防追加语义重复
+CaptureVanillaIcons(mapElements, true, true); // 填 _iconBySpriteName 和 _mapIconAtlas
+```
+
+原版路径不受影响：它先跑到，全局闸门已置位，这里直接 no-op。
+
+**复验时要看的新日志行**：
+
+```
+Icon table [MountainTownRegion]: N sprite names, atlas present: True
+```
+
+以及随后的 `Marker census` 里 `Resolvable` 应该不再是 0。
+**这两行没出现或 atlas 仍为 False，标记重写就不能开工。**
+
+> **来源：AI 推断** —— 「`ForceUpdateRegion` + `LoadMapElementsForScene` 在社区图源下
+> 也能安全地把图集填上」是推断。依据是它俩本来就是与图源无关的游戏 API，
+> 且 §25.3 实测过面板关闭时精灵的 `atlas` 有值。**但这一步本身没有实测过。**
