@@ -4320,6 +4320,8 @@ public sealed class ModEntry : MelonMod
     // The dark plate is a separate object behind the text, because adding Image to the text object
     // stopped its Text component from being created at all.
     private GameObject _hoverPlateRoot;
+    // The plate is sized from the text, so it is re-measured whenever the shown name changes.
+    private bool _plateWidthDirty = true;
     // Font size in force on the existing label objects, so a settings change is applied once.
     private int _appliedLabelFontSize = -1;
     // Set when the tooltip could not be constructed, so the failure costs one log line rather than an
@@ -4514,26 +4516,16 @@ public sealed class ModEntry : MelonMod
                         hoverUv.y >= visibleUv.yMin && hoverUv.y <= visibleUv.yMax;
         }
 
-        // Nearest named thing to the pointer, in uv. A radius rather than exact hit testing, because
-        // markers and labels are small on screen and exact overlap would be frustrating.
+        // Nearest ICON to the pointer, in uv. Place names are deliberately not candidates: their text
+        // is already on the map, so repeating it in a tooltip says nothing new - which is what made a
+        // tooltip appear over a name that was already visible. A radius rather than exact hit testing,
+        // because markers are small on screen and exact overlap would be frustrating.
         float best = float.MaxValue;
         string bestText = null;
         Vector2 bestUv = default;
         if (haveHover)
         {
             const float radius = 0.02f;
-            for (int i = 0; i < _mapLabels.Count; i++)
-            {
-                MapLabel label = _mapLabels[i];
-                float distance = Vector2.Distance(label.MapUv, hoverUv);
-                if (distance < best && distance <= radius)
-                {
-                    best = distance;
-                    bestText = label.Text;
-                    bestUv = label.MapUv;
-                }
-            }
-
             for (int i = 0; i < _vanillaIcons.Count; i++)
             {
                 VanillaIcon icon = _vanillaIcons[i];
@@ -4639,30 +4631,51 @@ public sealed class ModEntry : MelonMod
             _hoverLabelText.fontSize != _settings.LabelFontSize)
         {
             _hoverLabelText.fontSize = _settings.LabelFontSize;
+            // The preferred width depends on the font size, so the plate has to be re-measured.
+            _plateWidthDirty = true;
         }
 
-        // Same reasoning for the string: Unity rebuilds the text mesh on assignment even when the
-        // value is identical.
+        // The text is set before the plate is measured, because the plate is sized to the text.
+        // A fixed plate looked wrong: a four-character name sat in a wide empty box.
         if (!string.Equals(_hoverLabelText.text, text, StringComparison.Ordinal))
+        {
             _hoverLabelText.text = text;
+            _plateWidthDirty = true;
+        }
 
         // Sits just above the thing it names, the way the game's own hover label does. Written only
         // when it moved, for the same reason as everywhere else: a RectTransform write dirties the
         // layout even when the value is identical.
         var tooltipPosition = new Vector2(
             ((mapUv.x - visibleUv.x) / visibleUv.width - 0.5f) * mapSize.x,
-            ((mapUv.y - visibleUv.y) / visibleUv.height - 0.5f) * mapSize.y + 22f);
+            ((mapUv.y - visibleUv.y) / visibleUv.height - 0.5f) * mapSize.y + _settings.LabelFontSize + 6f);
         if (_hoverLabelRect.anchoredPosition != tooltipPosition)
             _hoverLabelRect.anchoredPosition = tooltipPosition;
         if (!_hoverLabelRoot.activeSelf)
             _hoverLabelRoot.SetActive(true);
 
-        // The plate is a separate object, so it is positioned and shown alongside the text.
+        // The plate is a separate object, so it is positioned and sized alongside the text.
         if (!ReferenceEquals(_hoverPlateRoot, null))
         {
             RectTransform plateRect = _hoverPlateRoot.GetComponent<RectTransform>();
-            if (!ReferenceEquals(plateRect, null) && plateRect.anchoredPosition != tooltipPosition)
-                plateRect.anchoredPosition = tooltipPosition;
+            if (!ReferenceEquals(plateRect, null))
+            {
+                if (plateRect.anchoredPosition != tooltipPosition)
+                    plateRect.anchoredPosition = tooltipPosition;
+
+                // Sized from the text itself rather than guessed per character count, so the same
+                // call is right for a short name and a long one. preferredWidth is only meaningful
+                // after the text has been set, hence the dirty flag.
+                if (_plateWidthDirty)
+                {
+                    _plateWidthDirty = false;
+                    float width = _hoverLabelText.preferredWidth + 16f;
+                    float height = _settings.LabelFontSize + 8f;
+                    var size = new Vector2(width, height);
+                    if (plateRect.sizeDelta != size)
+                        plateRect.sizeDelta = size;
+                }
+            }
             if (!_hoverPlateRoot.activeSelf)
                 _hoverPlateRoot.SetActive(true);
         }
