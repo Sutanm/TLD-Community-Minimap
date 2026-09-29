@@ -2986,3 +2986,90 @@ MountainTownSandbox_RegionMap   bounds=(x:-325.00, y:-325.00, width:650.00, heig
 这四条**都不需要改设置**（dev 模式已开、图源是 `自动`）。
 若要看分离本身，额外把小地图图源设成原版、全屏设成民间高清即可 ——
 那也是唯一会暴露跨层覆盖的配置。
+
+---
+
+## 39. 第一次实测（2026-09-29 21:58 会话）：三个发现
+
+日志 `MelonLoader\Logs\26-9-29_21-58-37.log`。区域 MountainTownRegion（山间小镇）。
+用户实测反馈：**按 M 打开全屏地图，白屏约 2 秒。**
+
+### 39.1 白屏：两个叠加的缺陷（**已修，待复验**）
+
+日志里的证据是 `Loaded 山间小镇: 4360x4198` 出现了**两次**，相隔 4.5 秒：
+
+```
+[21:59:25.511] Loaded 山间小镇: 4360x4198.     ← 场景载入后正常加载
+[21:59:29.011] Map key: view is now FullMap.   ← 用户按 M
+[21:59:30.088] Loaded 山间小镇: 4360x4198.     ← 贴图已在内存里，却又解码了一次
+```
+
+**缺陷一：共享的加载时钟被反复推后。** `_loadAfterUtc` 是**全局**的（只有活动图层会被
+加载循环服务），但两个图层都会写它。`ApplyMapSourceSelection` 进入时**无条件**把它设成
+`UtcNow`，紧接着 `OnUpdate` 里那段「场景切换后延后一秒」的补丁又把它推后 ——
+于是「已经装好了」这个状态被丢掉，内存里的贴图被重新读盘解码。
+⇒ 修法：`RequestMapLoad()` 只允许把时钟**提前**，不允许推后。
+
+**缺陷二：旧贴图在 UI 还指着它的时候就被销毁。** `LoadCurrentMapIntoUnityUi` 先
+`layer.Texture = texture`，紧接着 `Destroy(previousTexture)`。但共享的 `_mapImage`
+要到这一帧的 `UpdateUnityUi` 才改绑，中间这段窗口里 widget 指向已销毁贴图 ——
+**画出来就是一块白**。这正是「白屏」而不是「卡顿」的原因，也说明了为什么只在
+**可见图层重载**时出现。
+⇒ 修法：`RetireTexture()` 把旧贴图挂到 `_retiredTextures`，下一帧开头
+`SweepRetiredTextures()` 才真正销毁。
+
+> 缺陷二是分离**放大**出来的：以前只有一份贴图，重载路径一样悬空，但重载本身很少发生。
+
+**顺带**：`LoadCurrentMapIntoUnityUi` 现在也会**预热不在屏幕上的那一层**
+（`_warmUpDone`，每场景一次、活动层就绪之后、场景载入 4 秒后）。
+按需惰性加载正是白屏的成因，所以第一次切视图不该再付解码的钱。
+
+### 39.2 图集和图标表在最常见的配置下是空的（**未修，阻塞标记重写**）
+
+```
+[21:59:43.612] Marker census (F11): ... Resolvable: 0
+               (0 from the scraped table, 0 via the atlas), unresolvable 802.
+[21:59:43.613] MapDetail summary: ... atlas present: False
+```
+
+**根因不是意外，是路径根本没跑**：`_mapIconAtlas` 和 `_iconBySpriteName` 只在
+`CaptureVanillaIcons` 里填充，而那条路径挂在 `TryLoadVanillaElementsWithoutPanel` 上，
+后者在 `OnUpdate` 里被 `if (!preferCommunity && ...)` 挡着。
+⇒ **图源选「自动」（有民间高清图）时，原版图集永远不会被取到。**
+
+这直接顶到 §37.2 的设计第 2 条（「图标解析依赖 `_mapIconAtlas`，而图集是刮取时拿到的，
+第一次抓取前没有图集」）。**§25.3 那个「100% 可解析」是在原版图源下测的，
+不能外推到默认配置。**
+
+⇒ 标记重写需要一个**与图层无关**的图集获取路径：场景载入时无条件调一次
+`ForceUpdateRegion()` + `LoadMapElementsForScene()` 把图集和图标表填上
+（两者都幂等：后者是追加语义，所以必须保持 §38.5 那个全局「只请求一次」的闸门）。
+**这一步必须先在实测里确认图集真的到手，才能开始建对象。**
+
+### 39.3 密度问题比 §37.2 预想的小得多
+
+```
+Marker census: 816 entries; 14 without a sprite name; 33 distinct sprite names.
+Projected onto the map: 802, not projected: 0.
+Largest groups: icoMap_cattails=251, icoMap_rosehips=127, icoMap_limb=72,
+                icoMap_sapling=52, icoMap_oldmansbeard=45, icoMap_reishi=39,
+                icoMap_burdock=32, icoMap_crossroads=24.
+```
+
+关键在 `Census (F11)` 同一时刻那一行：**802 个带精灵名的标记里只有 39 个 surveyed。**
+
+而最大的那几组（香蒲 251、玫瑰果 127、树枝 72、树苗 52、老人须 45、灵芝 39、牛蒡 32）
+**全都是可采集资源** —— 也就是迷雾模式下**本来就该隐藏**的那些。
+
+⇒ 「723 个对象会把地图铺成图标墙」这个担心，**在跟随游戏勘测进度的可见性规则下基本不成立**。
+**但这不是现在就能下的结论**：§39.2 的图集还没拿到，`m_IsSurveyed` 与
+`m_IsUnlocked` 该按什么组合判定也还没测（§25.6 待观察）。
+⇒ 真要下这个结论，需要一个**只统计、不绘制**的可见性过滤版本的普查
+（按 surveyed/unlocked 分组给出条数）。
+
+### 39.4 还剩一条没验到
+
+用户只跑到切图源就退出了，所以 **`Framing probe` 一行都没有**（那需要开着地图面板）。
+§38.3 的最终 uv 一致性**仍然未知**，非 MountainTown 区域的基准**也仍然未知**。
+`[layers]` 行确认了 mini 和 full 在 `自动` 下确实各持一份 **4360x4198 的独立贴图**，
+但**原版/社区混合**那个真正会暴露跨层覆盖的配置**还没试过**。
