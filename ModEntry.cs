@@ -338,6 +338,7 @@ public sealed class ModEntry : MelonMod
         // several early returns below and none of them may skip this.
         SweepRetiredTextures();
         PollRegionAssetProbes();
+        PollPrefabProbes();
         TryExportSceneCatalog();
         TryReloadCalibrations();
 
@@ -3403,9 +3404,31 @@ public sealed class ModEntry : MelonMod
 
                 // Loading needs the game's Addressables operation; if the shape is not what this
                 // expects the property is reported by name and type and left alone.
+                //
+                // A prefab reference resolves to null when loaded as a texture and comes back as a
+                // GameObject instead, which is why m_RegionMap reported null while holding the most
+                // promising lead: the map panel builds its 2048x2048 image from this prefab, since
+                // neither texture the region owns is bigger than 1024.
+                bool prefabish = property.Name.IndexOf("Prefab", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                 property.Name.IndexOf("RegionMap", StringComparison.OrdinalIgnoreCase) >= 0;
                 try
                 {
                     dynamic reference = raw;
+                    if (prefabish)
+                    {
+                        var prefabHandle = reference.LoadAssetAsync<GameObject>();
+                        _pendingPrefabProbes.Add(new PrefabProbe
+                        {
+                            Name = property.Name,
+                            Scene = sceneName,
+                            Handle = prefabHandle,
+                            RequestedUtc = DateTime.UtcNow,
+                        });
+                        LoggerInstance.Msg($"Region asset probe [{sceneName}]: {property.Name} " +
+                                           "load requested as a prefab.");
+                        continue;
+                    }
+
                     var handle = reference.LoadAssetAsync<Texture2D>();
                     _pendingAssetProbes.Add(new AssetProbe
                     {
@@ -3438,7 +3461,103 @@ public sealed class ModEntry : MelonMod
         public DateTime RequestedUtc;
     }
 
+    private sealed class PrefabProbe
+    {
+        public string Name;
+        public string Scene;
+        public AsyncOperationHandle<GameObject> Handle;
+        public DateTime RequestedUtc;
+    }
+
     private readonly List<AssetProbe> _pendingAssetProbes = new();
+    private readonly List<PrefabProbe> _pendingPrefabProbes = new();
+
+    // Reports each prefab probe once its load settles, and lists every texture it carries.
+    //
+    // The region owns only 1024x1024 textures, so the panel's 2048x2048 image has to come from
+    // somewhere else - and this prefab is the only remaining candidate, since the panel builds its
+    // map from a region map object. Listing the textures inside it, at their real sizes, is what
+    // decides whether a clean full-resolution base map can be exported without lighting the map.
+    private void PollPrefabProbes()
+    {
+        for (int i = _pendingPrefabProbes.Count - 1; i >= 0; i--)
+        {
+            PrefabProbe probe = _pendingPrefabProbes[i];
+            bool timedOut = (DateTime.UtcNow - probe.RequestedUtc).TotalSeconds > 15.0;
+            if (!probe.Handle.IsDone && !timedOut)
+                continue;
+
+            _pendingPrefabProbes.RemoveAt(i);
+            try
+            {
+                if (timedOut && !probe.Handle.IsDone)
+                {
+                    LoggerInstance.Warning(
+                        $"Region prefab probe [{probe.Scene}]: {probe.Name} timed out.");
+                    continue;
+                }
+
+                GameObject prefab = probe.Handle.Result;
+                if (ReferenceEquals(prefab, null))
+                {
+                    LoggerInstance.Msg(
+                        $"Region prefab probe [{probe.Scene}]: {probe.Name} resolved to null.");
+                    continue;
+                }
+
+                LoggerInstance.Msg(
+                    $"Region prefab probe [{probe.Scene}]: {probe.Name} = '{prefab.name}'.");
+
+                // Every texture the prefab's widgets reference, with its real size.
+                var widgets = prefab.GetComponentsInChildren<UITexture>(true);
+                if (widgets == null || widgets.Length == 0)
+                {
+                    LoggerInstance.Msg(
+                        $"Region prefab probe [{probe.Scene}]: {probe.Name} has no UITexture.");
+                    continue;
+                }
+
+                for (int w = 0; w < widgets.Length; w++)
+                {
+                    UITexture widget = widgets[w];
+                    if (ReferenceEquals(widget, null))
+                        continue;
+                    Texture texture = widget.mainTexture;
+                    string size = ReferenceEquals(texture, null)
+                        ? "null"
+                        : $"{texture.width}x{texture.height}";
+                    LoggerInstance.Msg(
+                        $"Region prefab probe [{probe.Scene}]: {probe.Name} widget " +
+                        $"'{widget.name}' texture={size} size={widget.width}x{widget.height} " +
+                        $"uvRect={widget.uvRect}.");
+
+                    if (!ReferenceEquals(texture, null) && texture.width > 1024)
+                    {
+                        Texture2D owned = CaptureTexture(texture);
+                        string path = Path.Combine(_modDirectory,
+                            $"prefab_{SanitizeFileName(probe.Name)}_" +
+                            $"{SanitizeFileName(widget.name)}.png");
+                        if (!File.Exists(path))
+                        {
+                            WriteTextureToPng(owned, path);
+                            LoggerInstance.Msg($"Exported prefab texture: {path}");
+                        }
+                        UnityEngine.Object.Destroy(owned);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggerInstance.Warning(
+                    $"Region prefab probe [{probe.Scene}]: {probe.Name} failed: {ex.Message}");
+            }
+            finally
+            {
+                try { UnityEngine.AddressableAssets.Addressables.Release(probe.Handle); }
+                catch { }
+            }
+        }
+    }
 
     // Reports each asset probe once its load settles, exports the texture, and releases the handle.
     private void PollRegionAssetProbes()
