@@ -154,6 +154,9 @@ public sealed class ModEntry : MelonMod
     // scene|source of the last marker build, so a rebuild happens when either changes and not
     // otherwise.
     private string _markersBuiltForScene = "";
+    // Region whose panel texture has already been measured and exported, so the diagram is written
+    // once instead of on every panel refresh.
+    private string _panelTextureMeasuredForScene = "";
 
     private readonly Dictionary<string, IconRef> _iconBySpriteName = new(StringComparer.Ordinal);
     private UIAtlas _mapIconAtlas;
@@ -1874,6 +1877,13 @@ public sealed class ModEntry : MelonMod
             _vanillaIconSignature = 0;
             _nextVanillaIconRefreshUtc = DateTime.MinValue;
 
+            // The one comparison that has never been made. The panel draws a 2048x2048 texture with
+            // its own uvRect, while the base-map path feeds the HUD a different 1024x1024 texture -
+            // and the projection derived here is handed to both. If those two images do not cover
+            // the same pixels, one of them must be misplaced, which is exactly the report: markers
+            // scattered off a map that otherwise looks correct. Measured, not reasoned about.
+            MeasureAndExportPanelTexture(main, sceneName);
+
             // The region base map normally supplies the terrain on its own. Only when it could
             // not be loaded do we fall back to this surveyed texture, which is the path that
             // requires the player to have opened the panel.
@@ -3054,6 +3064,56 @@ public sealed class ModEntry : MelonMod
                 UnityEngine.Object.Destroy(_vanillaIcons[i].Root);
         }
         _vanillaIcons.Clear();
+    }
+
+    // Captures the panel's own map texture, measures where its opaque content actually sits, and
+    // writes one PNG per region for offline comparison against the base map the HUD is given.
+    //
+    // The panel's uvRect is applied to this image, so the content box here is in the SAME space the
+    // projection's output uv indexes. Comparing it with the base map's content box settles whether
+    // the two are the same picture; nothing so far has tested that, and every explanation attempted
+    // for the misplaced markers assumed it was true.
+    private void MeasureAndExportPanelTexture(UITexture main, string sceneName)
+    {
+        try
+        {
+            if (string.Equals(_panelTextureMeasuredForScene, sceneName, StringComparison.Ordinal))
+                return;
+
+            Texture source = main.mainTexture;
+            if (ReferenceEquals(source, null))
+            {
+                LoggerInstance.Warning($"Panel texture [{sceneName}]: mainTexture is null.");
+                return;
+            }
+
+            LoggerInstance.Msg(
+                $"Panel texture [{sceneName}]: {source.width}x{source.height}, " +
+                $"uvRect={main.uvRect}, drawing={main.drawingDimensions}, " +
+                $"widget={main.width}x{main.height}.");
+
+            // The asset itself is not CPU-readable and belongs to Addressables, so measure a copy.
+            Texture2D owned = CaptureTexture(source);
+            Rect content = MeasureOpaqueUv(owned);
+            LoggerInstance.Msg(
+                $"Panel texture content [{sceneName}]: {owned.width}x{owned.height} " +
+                $"uv=({content.x:F4},{content.y:F4},{content.width:F4},{content.height:F4}) " +
+                $"pixels={content.width * owned.width:F0}x{content.height * owned.height:F0}.");
+
+            string path = Path.Combine(_modDirectory,
+                $"panelmap_{SanitizeFileName(sceneName)}.png");
+            if (!File.Exists(path))
+            {
+                WriteTextureToPng(owned, path);
+                LoggerInstance.Msg($"Exported panel map texture: {path}");
+            }
+
+            _panelTextureMeasuredForScene = sceneName;
+        }
+        catch (Exception ex)
+        {
+            LoggerInstance.Warning($"Panel texture measurement [{sceneName}] failed: {ex.Message}");
+        }
     }
 
     private void UseCapturedVanillaMap(Texture2D texture, string sceneName, MapLayer layer)
