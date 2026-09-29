@@ -154,6 +154,8 @@ public sealed class ModEntry : MelonMod
     // scene|source of the last marker build, so a rebuild happens when either changes and not
     // otherwise.
     private string _markersBuiltForScene = "";
+    // Rate limit for rebuilding the marker set while the region's entry count is still growing.
+    private DateTime _nextMarkerRebuildUtc = DateTime.MinValue;
     // Place names, which the marker build skips because they carry no sprite name.
     private readonly List<MapLabel> _mapLabels = new();
     // Region whose panel texture has already been measured and exported, so the diagram is written
@@ -523,32 +525,39 @@ public sealed class ModEntry : MelonMod
             // the vanilla source was up stay in vanilla uv and land in the wrong place the moment
             // the community map is on screen, even though both are "the same scene".
             string projection = active.UsingVanilla ? "vanilla" : "community";
-            string markerScene = scene.name + "|" + _settings.MarkerSource + "|" + projection;
+            // The entry count is part of the key because s_MapDetails keeps growing after a scene
+            // starts: the same region was logged at 769 entries right after load and at 816 once it
+            // had settled, and an earlier session climbed 709, 711, 712, 717, 723. A build that ran
+            // once at 769 therefore misses everything that streams in afterwards, which is where the
+            // place names live.
+            int detailCount = 0;
+            try
+            {
+                var details = MapDetailManager.s_MapDetails;
+                if (!ReferenceEquals(details, null))
+                    detailCount = details.Count;
+            }
+            catch { }
+
+            string markerScene = scene.name + "|" + _settings.MarkerSource + "|" + projection +
+                                 "|" + detailCount;
             if (_markersBuiltForScene != markerScene)
             {
-                _markersBuiltForScene = markerScene;
-                if (_settings.MarkerSource == MinimapSettings.MarkerSourceMapDetails)
+                // Rebuilding is expensive - hundreds of objects - and the entry count can wobble by a
+                // few as the region streams, so a build is only repeated after the count has settled
+                // for a moment, or when it has grown enough to matter.
+                if (_markersBuiltForScene.EndsWith("|" + detailCount, StringComparison.Ordinal))
                 {
-                    if (ReferenceEquals(_mapIconAtlas, null) && _iconBySpriteName.Count == 0)
-                        _markersBuiltForScene = "";
-                    else
-                    {
-                        RebuildMarkersFromMapDetails();
-                        // Place names come from the same map data and are rebuilt on the same
-                        // trigger, so the two can never disagree about which region they describe.
-                        RebuildLabelsFromMapDetails();
-                    }
+                    // Same count as last time: nothing to do.
+                }
+                else if (DateTime.UtcNow < _nextMarkerRebuildUtc)
+                {
+                    // Too soon; leave the current set in place and re-check on a later frame.
                 }
                 else
                 {
-                    // Old path, kept behind the setting so the rewrite can be compared against it.
-                    // It needs a panel to scrape; with none the icon list stays as it was.
-                    Panel_Map scrapePanel = InterfaceManager.GetPanel<Panel_Map>();
-                    Transform scrapeRoot = ReferenceEquals(scrapePanel, null)
-                        ? null
-                        : FindChildByName(scrapePanel.transform, "MapElements");
-                    if (!ReferenceEquals(scrapeRoot, null))
-                        CaptureVanillaIcons(scrapeRoot, false, true);
+                    _nextMarkerRebuildUtc = DateTime.UtcNow.AddSeconds(2);
+                    BuildMarkersAndLabels(scene.name, markerScene);
                 }
             }
         }
@@ -4180,6 +4189,23 @@ public sealed class ModEntry : MelonMod
                         s_locStringMethod = method;
                         LoggerInstance.Msg(
                             $"Localization: using {fullName}.{wanted}(string) for map labels.");
+
+                        // Prove the lookup actually returns text before the label build depends on
+                        // it. A method that exists but answers with the key, or with nothing, would
+                        // otherwise look identical to a build that never ran.
+                        try
+                        {
+                            string probe = method.Invoke(null, new object[] { "GAMEPLAY_mtTownCentre" })
+                                as string;
+                            LoggerInstance.Msg(
+                                $"Localization probe: GetText(\"GAMEPLAY_mtTownCentre\") = " +
+                                $"{(string.IsNullOrEmpty(probe) ? "<empty>" : $"'{probe}'")}.");
+                        }
+                        catch (Exception ex)
+                        {
+                            LoggerInstance.Warning(
+                                $"Localization probe call failed: {ex.GetType().Name}: {ex.Message}");
+                        }
                         return;
                     }
                 }
@@ -4328,6 +4354,36 @@ public sealed class ModEntry : MelonMod
             label.Rect.anchoredPosition = new Vector2(
                 ((label.MapUv.x - visibleUv.x) / visibleUv.width - 0.5f) * mapSize.x,
                 ((label.MapUv.y - visibleUv.y) / visibleUv.height - 0.5f) * mapSize.y);
+        }
+    }
+
+    // Builds the marker set and the place names for one scene, and records which build is current.
+    private void BuildMarkersAndLabels(string sceneName, string buildKey)
+    {
+        _markersBuiltForScene = buildKey;
+        if (_settings.MarkerSource == MinimapSettings.MarkerSourceMapDetails)
+        {
+            if (ReferenceEquals(_mapIconAtlas, null) && _iconBySpriteName.Count == 0)
+            {
+                // No atlas yet: come back once the icon table has been filled.
+                _markersBuiltForScene = "";
+                return;
+            }
+            RebuildMarkersFromMapDetails();
+            // Place names come from the same map data and are rebuilt on the same trigger, so the
+            // two can never disagree about which region they describe.
+            RebuildLabelsFromMapDetails();
+        }
+        else
+        {
+            // Old path, kept behind the setting so the rewrite can be compared against it. It needs
+            // a panel to scrape; with none the icon list stays as it was.
+            Panel_Map scrapePanel = InterfaceManager.GetPanel<Panel_Map>();
+            Transform scrapeRoot = ReferenceEquals(scrapePanel, null)
+                ? null
+                : FindChildByName(scrapePanel.transform, "MapElements");
+            if (!ReferenceEquals(scrapeRoot, null))
+                CaptureVanillaIcons(scrapeRoot, false, true);
         }
     }
 
