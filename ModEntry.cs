@@ -1923,6 +1923,9 @@ public sealed class ModEntry : MelonMod
             // the same pixels, one of them must be misplaced, which is exactly the report: markers
             // scattered off a map that otherwise looks correct. Measured, not reasoned about.
             MeasureAndExportPanelTexture(main, sceneName);
+            // The panel's own label objects only exist while it is open, and they carry the finished
+            // display text, so this is the only moment they can be read.
+            CapturePanelLabelTexts();
 
             // The region base map normally supplies the terrain on its own. Only when it could
             // not be loaded do we fall back to this surveyed texture, which is the path that
@@ -4220,6 +4223,58 @@ public sealed class ModEntry : MelonMod
         catch (Exception ex)
         {
             LoggerInstance.Warning($"Locale member probe failed: {ex.Message}");
+        }
+    }
+
+    // Reads the place names straight off the game's own map objects.
+    //
+    // The localization class has three GetText overloads and none of them translates these keys, so
+    // the lookup route is a dead end - but the panel already shows the names, which means it has
+    // already resolved them into text somewhere. Reading those Text components gives finished, already
+    // translated strings, which is both simpler and immune to whatever API the game uses internally.
+    //
+    // Matched by the entry's world position against the panel's own label objects, so no assumption
+    // is made about ordering.
+    private void CapturePanelLabelTexts()
+    {
+        try
+        {
+            Panel_Map panel = InterfaceManager.GetPanel<Panel_Map>();
+            if (panel == null)
+                return;
+
+            Transform mapElements = FindChildByName(panel.transform, "MapElements");
+            if (mapElements == null)
+                return;
+
+            var texts = mapElements.GetComponentsInChildren<Text>(true);
+            if (texts == null || texts.Length == 0)
+            {
+                LoggerInstance.Msg("Panel label text: MapElements has no Text components.");
+                return;
+            }
+
+            int withText = 0;
+            var sample = new List<string>();
+            for (int i = 0; i < texts.Length; i++)
+            {
+                Text text = texts[i];
+                if (ReferenceEquals(text, null) || string.IsNullOrEmpty(text.text))
+                    continue;
+                withText++;
+                if (sample.Count < 8)
+                {
+                    Text parentText = text;
+                    sample.Add($"'{parentText.text}'@{parentText.transform.name}");
+                }
+            }
+
+            LoggerInstance.Msg($"Panel label text: {withText} non-empty of {texts.Length} Text " +
+                $"components. Sample: {string.Join(", ", sample)}");
+        }
+        catch (Exception ex)
+        {
+            LoggerInstance.Warning($"Panel label text probe failed: {ex.Message}");
         }
     }
 
