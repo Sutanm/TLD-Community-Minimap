@@ -337,6 +337,7 @@ public sealed class ModEntry : MelonMod
         // First thing, so the previous frame has definitely finished drawing with them. There are
         // several early returns below and none of them may skip this.
         SweepRetiredTextures();
+        PollRegionAssetProbes();
         TryExportSceneCatalog();
         TryReloadCalibrations();
 
@@ -3259,6 +3260,7 @@ public sealed class ModEntry : MelonMod
 
             layer.BaseMapRequestedScene = sceneName;
             ProbeRegionTextures(region, sceneName);
+            ProbeRegionAssetReferences(region, sceneName);
             layer.BaseMapHandle = region.GetMiniMapTextureAsync();
             layer.BaseMapPending = true;
             layer.BaseMapRequestUtc = DateTime.UtcNow;
@@ -3357,6 +3359,145 @@ public sealed class ModEntry : MelonMod
         if (raw is Texture texture)
             return $"Texture {texture.width}x{texture.height} ({texture.GetType().Name})";
         return raw.GetType().Name;
+    }
+
+    // Loads each AssetReferenceTexture2D the region exposes and reports the size that comes back.
+    //
+    // This is the question that decides whether a clean full-resolution base map can be exported at
+    // all. GetMiniMapTextureAsync returns a 1024x1024 DXT5 texture - measured - while the map panel
+    // draws a 2048x2048 image, so the HUD is being handed a different, smaller asset. If loading the
+    // reference directly yields the larger asset, the HUD can be given that instead, with no fog to
+    // light up and no marker objects to hide, which is what the panel route cannot offer.
+    //
+    // The reference is an asset, not a texture, so the size only becomes known after the load
+    // completes; polling a handle needs a frame, so the results are reported from a scheduled check.
+    private void ProbeRegionAssetReferences(RegionSpecification region, string sceneName)
+    {
+        if (!_settings.DeveloperMode)
+            return;
+        try
+        {
+            Type type = region.GetType();
+            foreach (System.Reflection.PropertyInfo property in type.GetProperties(
+                         System.Reflection.BindingFlags.Public |
+                         System.Reflection.BindingFlags.NonPublic |
+                         System.Reflection.BindingFlags.Instance))
+            {
+                string kind = property.PropertyType.Name;
+                if (!kind.Contains("AssetReference"))
+                    continue;
+
+                object raw = null;
+                try { raw = property.GetValue(region); }
+                catch (Exception ex)
+                {
+                    LoggerInstance.Msg($"Region asset probe [{sceneName}]: {property.Name} " +
+                                       $"unreadable: {ex.Message}");
+                    continue;
+                }
+                if (raw == null)
+                {
+                    LoggerInstance.Msg($"Region asset probe [{sceneName}]: {property.Name} = null.");
+                    continue;
+                }
+
+                // Loading needs the game's Addressables operation; if the shape is not what this
+                // expects the property is reported by name and type and left alone.
+                try
+                {
+                    dynamic reference = raw;
+                    var handle = reference.LoadAssetAsync<Texture2D>();
+                    _pendingAssetProbes.Add(new AssetProbe
+                    {
+                        Name = property.Name,
+                        Scene = sceneName,
+                        Handle = handle,
+                        RequestedUtc = DateTime.UtcNow,
+                    });
+                    LoggerInstance.Msg($"Region asset probe [{sceneName}]: {property.Name} " +
+                                       "load requested.");
+                }
+                catch (Exception ex)
+                {
+                    LoggerInstance.Msg($"Region asset probe [{sceneName}]: {property.Name} " +
+                                       $"could not be loaded ({ex.GetType().Name}: {ex.Message}).");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            LoggerInstance.Warning($"Region asset probe [{sceneName}] failed: {ex.Message}");
+        }
+    }
+
+    private sealed class AssetProbe
+    {
+        public string Name;
+        public string Scene;
+        public AsyncOperationHandle<Texture2D> Handle;
+        public DateTime RequestedUtc;
+    }
+
+    private readonly List<AssetProbe> _pendingAssetProbes = new();
+
+    // Reports each asset probe once its load settles, exports the texture, and releases the handle.
+    private void PollRegionAssetProbes()
+    {
+        for (int i = _pendingAssetProbes.Count - 1; i >= 0; i--)
+        {
+            AssetProbe probe = _pendingAssetProbes[i];
+            bool timedOut = (DateTime.UtcNow - probe.RequestedUtc).TotalSeconds > 15.0;
+            if (!probe.Handle.IsDone && !timedOut)
+                continue;
+
+            _pendingAssetProbes.RemoveAt(i);
+            try
+            {
+                if (timedOut && !probe.Handle.IsDone)
+                {
+                    LoggerInstance.Warning(
+                        $"Region asset probe [{probe.Scene}]: {probe.Name} timed out.");
+                    continue;
+                }
+
+                Texture2D texture = probe.Handle.Result;
+                if (ReferenceEquals(texture, null))
+                {
+                    LoggerInstance.Msg(
+                        $"Region asset probe [{probe.Scene}]: {probe.Name} resolved to null.");
+                    continue;
+                }
+
+                LoggerInstance.Msg(
+                    $"Region asset probe [{probe.Scene}]: {probe.Name} = " +
+                    $"{texture.width}x{texture.height}, format={texture.format}.");
+
+                // Only worth exporting when it beats what the HUD already gets, otherwise this just
+                // writes the same thumbnail again under a second name.
+                if (texture.width > 1024 || texture.height > 1024)
+                {
+                    Texture2D owned = CaptureTexture(texture);
+                    string path = Path.Combine(_modDirectory,
+                        $"asset_{SanitizeFileName(probe.Name)}_{SanitizeFileName(probe.Scene)}.png");
+                    if (!File.Exists(path))
+                    {
+                        WriteTextureToPng(owned, path);
+                        LoggerInstance.Msg($"Exported region asset: {path}");
+                    }
+                    UnityEngine.Object.Destroy(owned);
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggerInstance.Warning(
+                    $"Region asset probe [{probe.Scene}]: {probe.Name} result failed: {ex.Message}");
+            }
+            finally
+            {
+                try { UnityEngine.AddressableAssets.Addressables.Release(probe.Handle); }
+                catch { }
+            }
+        }
     }
 
     private void PollVanillaBaseMap(string sceneName, MapLayer layer)
