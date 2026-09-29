@@ -1514,6 +1514,13 @@ public sealed class ModEntry : MelonMod
             // works on an uncalibrated region, and hiding it was what made scrolling do nothing.
             _mapImage.enabled = false;
             _markerRoot.SetActive(false);
+            // Labels too: without a projection their positions are meaningless and leaving them on
+            // would strand text over a map that is not being drawn.
+            for (int i = 0; i < _mapLabels.Count; i++)
+            {
+                if (_mapLabels[i].Root.activeSelf)
+                    _mapLabels[i].Root.SetActive(false);
+            }
             return;
         }
 
@@ -4486,7 +4493,9 @@ public sealed class ModEntry : MelonMod
             }
         }
 
-        // The pointer only means something while the cursor is actually free to move over the map.
+        // The pointer only means something while the cursor is actually free to move over the map, and
+        // only the full map takes the cursor. On the corner map the labels still need placing, which is
+        // why the hover work is gated here rather than the whole method being skipped.
         bool hoverMode = _settings.HoverMapLabels && FullMapVisible &&
                          _settings.ReleaseMouseOnFullMap;
         Vector2 hoverUv = default;
@@ -4540,18 +4549,9 @@ public sealed class ModEntry : MelonMod
             }
         }
 
-        if (hoverMode)
-        {
-            // Place names stay hidden in this mode; the tooltip carries whichever name is nearest.
-            for (int i = 0; i < _mapLabels.Count; i++)
-                _mapLabels[i].Root.SetActive(false);
-            ShowHoverLabel(bestText, bestUv, visibleUv, mapSize);
-            return;
-        }
-
-        if (!ReferenceEquals(_hoverLabelRoot, null))
-            _hoverLabelRoot.SetActive(false);
-
+        // Place names are drawn whether or not the pointer is over anything: they are part of the map,
+        // not a tooltip. An earlier version hid them in hover mode, which was a misreading - the two
+        // are independent, and the game shows its own place names permanently.
         for (int i = 0; i < _mapLabels.Count; i++)
         {
             MapLabel label = _mapLabels[i];
@@ -4569,6 +4569,22 @@ public sealed class ModEntry : MelonMod
                 ((label.MapUv.y - visibleUv.y) / visibleUv.height - 0.5f) * mapSize.y);
             if (label.Rect.anchoredPosition != position)
                 label.Rect.anchoredPosition = position;
+        }
+
+        // The tooltip is the only part that depends on the pointer.
+        if (hoverMode)
+            ShowHoverLabel(bestText, bestUv, visibleUv, mapSize);
+        else if (!ReferenceEquals(_hoverLabelRoot, null))
+            _hoverLabelRoot.SetActive(false);
+
+        // The plate follows the tooltip exactly: shown only when there is a name to show, and
+        // suppressible on its own because the text is legible either way.
+        if (!ReferenceEquals(_hoverPlateRoot, null))
+        {
+            bool plateWanted = hoverMode && !string.IsNullOrEmpty(bestText) &&
+                               _settings.ShowHoverPlate;
+            if (_hoverPlateRoot.activeSelf != plateWanted)
+                _hoverPlateRoot.SetActive(plateWanted);
         }
     }
 

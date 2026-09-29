@@ -118,6 +118,10 @@ internal sealed class MinimapSettings : JsonModSettings
     [Slider(12, 40, 29)]
     public int LabelFontSize = 20;
 
+    [Name("悬停提示的深色底片")]
+    [Description("悬停提示文字背后的深色方块。关掉后只剩文字，文字自带浅色描边，通常也看得清。")]
+    public bool ShowHoverPlate = true;
+
     [Name("资源")]
     [Description("可采集的植物、树枝、鸟巢与动物尸体等资源标记。数量最多的一类。")]
     public bool ShowMarkerResources = true;
