@@ -107,10 +107,8 @@ public sealed class ModEntry : MelonMod
 
     // Region-wide, not per-layer: both layers ask the same Panel_Map the same question about the
     // same scene, so the vanilla projection is one fact about the region rather than one per layer.
-    // The layer split must not overwrite it from the other layer, which is why it is not in MapLayer.
-    private string _vanillaProjectionScene = "";
-    private Rect _vanillaMapLocalBounds = new(-1024f, -1024f, 2048f, 2048f);
-    private Rect _vanillaTextureUv = new(0f, 0f, 1f, 1f);
+    // It is held per layer inside MapLayer so one layer's source switch cannot disturb the framing
+    // the other one is already projecting with.
 
     private GameObject _uiRoot;
     private GameObject _backgroundObject;
@@ -172,6 +170,13 @@ public sealed class ModEntry : MelonMod
         public string BaseMapRequestedScene = "";
         public DateTime BaseMapRequestUtc = DateTime.MinValue;
         public string ElementsLoadedForScene = "";
+        // The vanilla projection this layer is holding. The values are region-wide and both layers
+        // compute the same ones, but they are stored per layer on purpose: the panel path writes
+        // bounds and uv, the base-map path writes different defaults, and switching ONE layer's
+        // source must not change the framing the other layer is already projecting with.
+        public string VanillaProjectionScene = "";
+        public Rect VanillaMapLocalBounds = new(-1024f, -1024f, 2048f, 2048f);
+        public Rect VanillaTextureUv = new(0f, 0f, 1f, 1f);
     }
 
     // Indexed by the LayerId constants below. Two fixed slots: this is a two-layer feature, not a
@@ -180,17 +185,12 @@ public sealed class ModEntry : MelonMod
     private const int LayerFull = 1;
     private readonly MapLayer[] _layers = { new MapLayer(), new MapLayer() };
 
-    private MapLayer MiniLayer => _layers[LayerMini];
-    private MapLayer FullLayer => _layers[LayerFull];
-
     // Which layer the single UI object is currently showing. The full map is a modal overlay, so
     // while it is up it is the only thing on screen; otherwise the corner map owns the object.
     // Everything that reads map state to draw or project goes through here rather than naming a
     // field, because those reads are exactly what the split has to keep straight.
     private int ActiveLayerId => _fullMapOn ? LayerFull : LayerMini;
     private MapLayer ActiveLayer => _layers[ActiveLayerId];
-
-    private MapLayer LayerById(int layerId) => _layers[layerId];
 
     public override void OnInitializeMelon()
     {
@@ -424,7 +424,6 @@ public sealed class ModEntry : MelonMod
             return;
 
         ClearVanillaIcons();
-        _vanillaProjectionScene = "";
         _layersDirty = true;
 
         MapDefinition definition = MapCatalog.Find(sceneName);
@@ -473,16 +472,28 @@ public sealed class ModEntry : MelonMod
     // Kept for the callers that only ask about the layer being drawn.
     private bool ShouldUseCommunityMap() => LayerWantsCommunity(ActiveLayer);
 
-    // Behaviour-preserving stage of the split: both layers read the same setting, so nothing the
-    // player sees changes. Flipping this to the per-layer setting is the whole of stage two.
+    // Stage two of the split: each layer reads its own setting, so the corner map and the full map
+    // can show different sources at the same time. Both default to automatic, which keeps an
+    // untouched install behaving exactly as it did before the pair existed.
     private void ReadLayerSettings()
     {
         for (int i = 0; i < _layers.Length; i++)
         {
+            int source = i == LayerMini ? _settings.MiniMapSource : _settings.FullMapSource;
             MapLayer layer = _layers[i];
-            layer.Source = i == LayerMini ? _settings.MiniMapSource : _settings.FullMapSource;
+            if (layer.Source == source)
+                continue;
+            layer.Source = source;
+            LoggerInstance.Msg($"Layer '{LayerName(i)}' source set to {DescribeSource(source)}.");
         }
     }
+
+    private static string DescribeSource(int source) => source switch
+    {
+        1 => "community",
+        2 => "vanilla",
+        _ => "automatic",
+    };
 
     // Re-applies a layer's source after the setting changed. Kept per-layer because each one has to
     // drop its own loaded map and re-request; with two layers on one setting this runs for both,
@@ -510,7 +521,7 @@ public sealed class ModEntry : MelonMod
         if (preferCommunity)
         {
             layer.UsingVanilla = false;
-            _vanillaProjectionScene = "";
+            layer.VanillaProjectionScene = "";
             bool alreadyLoaded = layer.Definition != null &&
                                  layer.LoadedMapId == layer.Definition.Id &&
                                  !ReferenceEquals(layer.Texture, null);
@@ -523,7 +534,7 @@ public sealed class ModEntry : MelonMod
         else
         {
             bool capturedForScene = layer.UsingVanilla &&
-                                    string.Equals(_vanillaProjectionScene, sceneName,
+                                    string.Equals(layer.VanillaProjectionScene, sceneName,
                                         StringComparison.Ordinal) &&
                                     !ReferenceEquals(layer.Texture, null);
             layer.TextureReady = capturedForScene;
@@ -1322,8 +1333,8 @@ public sealed class ModEntry : MelonMod
             if (panel == null || ReferenceEquals(layer.Texture, null))
                 return false;
             Vector3 mapPosition = panel.WorldPositionToMapPosition(
-                _vanillaProjectionScene, worldPosition);
-            uv = VanillaMapPositionToUv(mapPosition, _vanillaMapLocalBounds, _vanillaTextureUv);
+                layer.VanillaProjectionScene, worldPosition);
+            uv = VanillaMapPositionToUv(mapPosition, layer.VanillaMapLocalBounds, layer.VanillaTextureUv);
             return true;
         }
         catch (Exception ex)
@@ -1568,9 +1579,18 @@ public sealed class ModEntry : MelonMod
                 return false;
 
             Vector4 drawing = main.drawingDimensions;
-            _vanillaMapLocalBounds = new Rect(drawing.x, drawing.y,
+            Rect capturedBounds = new(drawing.x, drawing.y,
                 drawing.z - drawing.x, drawing.w - drawing.y);
-            _vanillaTextureUv = main.uvRect;
+            Rect capturedUv = main.uvRect;
+            // The panel is a fact about the region, so every vanilla layer records the same
+            // framing; each keeps its own copy so switching one layer's source cannot disturb it.
+            for (int i = 0; i < _layers.Length; i++)
+            {
+                MapLayer target = _layers[i];
+                target.VanillaMapLocalBounds = capturedBounds;
+                target.VanillaTextureUv = capturedUv;
+                target.VanillaProjectionScene = sceneName;
+            }
             EnsureUnityUi();
             _vanillaIconSignature = 0;
             _nextVanillaIconRefreshUtc = DateTime.MinValue;
@@ -1600,7 +1620,7 @@ public sealed class ModEntry : MelonMod
             Vector3 widgetScale = regionMap.localScale;
             LoggerInstance.Msg(
                 $"Vanilla map panel refreshed from {regionMap.name}; " +
-                $"bounds={_vanillaMapLocalBounds}, uv={_vanillaTextureUv}, " +
+                $"bounds={capturedBounds}, uv={capturedUv}, " +
                 $"widget={main.width}x{main.height}, " +
                 $"rotation=({widgetEuler.x:F1},{widgetEuler.y:F1},{widgetEuler.z:F1}), " +
                 $"scale=({widgetScale.x:F3},{widgetScale.y:F3},{widgetScale.z:F3}), " +
@@ -2354,7 +2374,7 @@ public sealed class ModEntry : MelonMod
     }
 
     private Vector2 VanillaLocalToTextureUv(float x, float y) =>
-        VanillaMapPositionToUv(new Vector3(x, y, 0f), _vanillaMapLocalBounds, _vanillaTextureUv);
+        VanillaMapPositionToUv(new Vector3(x, y, 0f), ActiveLayer.VanillaMapLocalBounds, ActiveLayer.VanillaTextureUv);
 
     private void ClearVanillaIcons()
     {
@@ -2372,7 +2392,7 @@ public sealed class ModEntry : MelonMod
         Texture2D previous = layer.Texture;
         layer.Texture = texture;
         layer.LoadedMapId = "__vanilla__" + sceneName;
-        _vanillaProjectionScene = sceneName;
+        layer.VanillaProjectionScene = sceneName;
         layer.UsingVanilla = true;
         layer.TextureReady = true;
         if (!ReferenceEquals(previous, null))
@@ -2639,11 +2659,12 @@ public sealed class ModEntry : MelonMod
         Texture2D previous = layer.Texture;
         layer.Texture = texture;
         layer.LoadedMapId = "__basemap__" + sceneName;
-        _vanillaProjectionScene = sceneName;
-        // The base map shares the surveyed map's framing, verified by direct overlay of the
-        // two textures, so the same projection bounds apply.
-        _vanillaMapLocalBounds = new Rect(-325f, -325f, 650f, 650f);
-        _vanillaTextureUv = new Rect(0f, 0f, 1f, 1f);
+        layer.VanillaProjectionScene = sceneName;
+        // The base map shares the surveyed map's framing; section 38.1 confirmed the panel path
+        // reports exactly these bounds for MountainTownRegion. Recorded per layer, so the two
+        // layers never disagree about the framing they are projecting with.
+        layer.VanillaMapLocalBounds = new Rect(-325f, -325f, 650f, 650f);
+        layer.VanillaTextureUv = new Rect(0f, 0f, 1f, 1f);
         layer.UsingVanilla = true;
         layer.TextureReady = true;
         if (!ReferenceEquals(previous, null) && !ReferenceEquals(previous, texture))

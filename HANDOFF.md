@@ -2905,7 +2905,52 @@ MountainTownSandbox_RegionMap   bounds=(x:-325.00, y:-325.00, width:650.00, heig
 | MountainTownRegion 的同框确认 | ✅ 已从旧日志挖出（§38.1） |
 | 其余区域 | ⏳ 等一次实测：在**一个**非 MountainTown 区域开一次地图 |
 | 最终 uv 一致性 | ⏳ 同上，探针已在游戏里 |
-| 图源分离的实现 | **未开工**（等上面的数据定型基准的处理方式） |
+| 图源分离的实现 | ✅ **已实现并安装**，见 §38.5 |
 
 > **来源：AI 推断** —— `WindowRegionMap` 可能覆盖整张世界地图这一条是推断，**未验证**。
 > 它只用来解释「为什么要多测几个区域」，不作为任何实现依据。
+
+### 38.5 图源分离：已实现（2026-09-29，**尚未实测**）
+
+两阶段做的，因为「先验证再动手」把承重假设卡住了：
+
+**阶段一（行为保持不变）** —— 把 §37.1 列的十个共享字段搬进 `MapLayer` 槽位：
+
+| 从 | 到 |
+|---|---|
+| `_currentDefinition` / `_currentTexture` / `_loadedMapId` | `MapLayer.Definition` / `.Texture` / `.LoadedMapId` |
+| `_usingVanillaMap` / `_textureReady` | `MapLayer.UsingVanilla` / `.TextureReady` |
+| `_baseMapRequestedScene` / `_baseMapPending` / `_baseMapHandle` / `_baseMapRequestUtc` | `MapLayer` 同名成员 |
+| `_elementsLoadedForScene` | `MapLayer.ElementsLoadedForScene`（**外加**一个全局的同名标记） |
+| `_vanillaProjectionScene` / `_vanillaMapLocalBounds` / `_vanillaTextureUv` | `MapLayer.Vanilla*` |
+
+活动图层由 `FullMapVisible` 决定：`ActiveLayerId => _fullMapOn ? LayerFull : LayerMini`。
+所有「为了画而读地图状态」的地方都走 `ActiveLayer`。
+
+**阶段二** —— `ReadLayerSettings()` 改成一层读一项
+（`MiniMapSource` / `FullMapSource`），两项默认都是 `自动`，
+⇒ **不碰设置的安装看起来和分离前一模一样**。
+
+**两条刻意的设计决定**（都不是推断，是代码结构上的必然）：
+
+1. **`_elementsLoadedForScene` 保留为全局。** 它是「这些标记已经请求过了」的标记，
+   而 `LoadMapElementsForScene` 是**追加**语义 —— 按图层各调一次会让每个标记**翻倍**
+   （§35.2 已经踩过）。`MapLayer.ElementsLoadedForScene` 是另一个事实
+   （「这一层已经有标记了」），**不授权第二次调用**。
+2. **原版投影状态放进 `MapLayer`，虽然它的值是全区域共享的。**
+   曾经想放全局（「两层问的是同一个 `Panel_Map`，是区域的事实」），但这样有个真 bug：
+   阶段二下如果小地图=原版、大地图=社区，大地图那次 `ApplyMapSourceSelection`
+   会把**共享的** `VanillaProjectionScene` 清空，而小地图正在用它投影。
+   ⇒ 值冗余、所有权分开。
+3. **`_loadAfterUtc` 仍是全局。** 它现在只服务社区层的按需加载，
+   而活动图层决定是谁在拖后腿；若将来两层都需要各自的加载延迟，这里要再拆。
+
+**还没做**：§37.1 步骤 3 的「两层都保留已载入的贴图、切换时不重新解码」
+只做了**一半** —— 每层各持自己的 `Texture2D`，不会被对方销毁，
+但**惰性加载**意味着没显示过的图层仍然是空的，切过去时要现读盘解码。
+§37.1 已经指出这是 200–400ms 的卡顿，**这一块没解决**。
+
+**`MapSource` 这个旧键作废了。** 设置文件里原来那一项不再被读取，
+`MiniMapSource` / `FullMapSource` 会以默认值 `0` 出现。
+`ModSettings.dll` 没有暴露存档路径，所以没写迁移；
+对当前用户无影响（他的 `MapSource` 本来就是 `0`）。
