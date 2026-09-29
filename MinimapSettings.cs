@@ -14,10 +14,17 @@ internal sealed class MinimapSettings : JsonModSettings
     // what everything below it means, so it is answered before the tuning knobs.
     [Section("地图来源")]
 
-    [Name("地图来源")]
-    [Description("自动模式优先使用已安装的民间高清地图；缺少图片时使用原版制图。原版模式会在正常打开游戏地图时自动刷新。")]
+    // Two layers, two sources. They start on the same value so an existing install looks exactly
+    // the way it did before the split; the point of the pair is that they can now be told apart.
+    [Name("小地图图源")]
+    [Description("左上角小地图用哪套图。自动模式优先使用已安装的民间高清地图；缺少图片时使用原版制图。原版制图全区都能用，但只有它带游戏自己的地图标记。")]
     [Choice("自动", "民间高清", "原版制图")]
-    public int MapSource = 0;
+    public int MiniMapSource = 0;
+
+    [Name("全屏地图图源")]
+    [Description("按游戏地图键打开的全屏地图用哪套图。自动模式优先使用已安装的民间高清地图；缺少图片时使用原版制图。")]
+    [Choice("自动", "民间高清", "原版制图")]
+    public int FullMapSource = 0;
 
     [Section("小地图")]
 

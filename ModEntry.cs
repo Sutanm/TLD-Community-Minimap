@@ -75,22 +75,22 @@ public sealed class ModEntry : MelonMod
     private DateTime _calibrationLastWriteUtc = DateTime.MinValue;
     private DateTime _nextCalibrationCheckUtc = DateTime.MinValue;
     private bool _temporarilyHidden;
-    private bool _textureReady;
     private bool _uiVisible;
     private int _observedSceneHandle = int.MinValue;
     private DateTime _loadAfterUtc = DateTime.MaxValue;
     private DateTime _sceneCatalogAfterUtc = DateTime.MaxValue;
     private int _sceneCatalogAttempts;
     private bool _sceneCatalogExported;
-    private int _observedMapSource = -1;
-    private bool _observedPreferCommunity;
     private bool _capturedThisVanillaMapOpen;
     private bool _vanillaMapWasOpen;
     private DateTime _vanillaCaptureAfterUtc = DateTime.MaxValue;
-    private AsyncOperationHandle<Texture2D> _baseMapHandle;
-    private bool _baseMapPending;
-    private string _baseMapRequestedScene = "";
-    private DateTime _baseMapRequestUtc = DateTime.MinValue;
+    // Set when the scene changes so both layers re-resolve their source on the next update even
+    // though their setting did not change.
+    private bool _layersDirty;
+    // Global, not per-layer: LoadMapElementsForScene APPENDS to the panel's marker containers, so
+    // calling it once per layer would duplicate every marker. The per-layer marker in MapLayer is a
+    // separate fact ("this layer already has its markers") and never licenses a second call.
+    private string _elementsLoadedForScene = "";
 
     // Some scenes get no base map at all. We cannot tell "the game has no region here" from
     // "the region just is not ready yet" without saying so out loud, so track how long the
@@ -99,16 +99,15 @@ public sealed class ModEntry : MelonMod
     private DateTime _baseMapNullSinceUtc = DateTime.MinValue;
     private bool _baseMapNullLogged;
     private DateTime _elementLoadAfterUtc = DateTime.MinValue;
-    private string _elementsLoadedForScene = "";
     private string _observedSceneName = "";
     // Panel_Map lays its marker objects out at a hard-coded 0.33 root scale. Elements created
     // through LoadMapElementsForScene never go through that layout, so their measured bounds
     // come out exactly 3x too large; measured 52.0 vs 17.3, 32.0 vs 10.7, 47.8 vs 15.9.
     private const float PanelFreeIconScale = 1f / 3f;
-    private MapDefinition _currentDefinition;
-    private string _loadedMapId = "";
-    private Texture2D _currentTexture;
-    private bool _usingVanillaMap;
+
+    // Region-wide, not per-layer: both layers ask the same Panel_Map the same question about the
+    // same scene, so the vanilla projection is one fact about the region rather than one per layer.
+    // The layer split must not overwrite it from the other layer, which is why it is not in MapLayer.
     private string _vanillaProjectionScene = "";
     private Rect _vanillaMapLocalBounds = new(-1024f, -1024f, 2048f, 2048f);
     private Rect _vanillaTextureUv = new(0f, 0f, 1f, 1f);
@@ -150,6 +149,48 @@ public sealed class ModEntry : MelonMod
         public Vector2 MapUv;
         public Vector2 MapUvSize;
     }
+
+    // The corner HUD and the full-screen map are two independent layers, so each carries its own
+    // map source, its own texture and its own in-flight request markers. They share one UI object
+    // (the layout only changes its anchors and size) and one region-wide vanilla projection.
+    //
+    // Source: the requested setting, 0 automatic / 1 community / 2 vanilla.
+    // UsingVanilla: whether the texture actually in Texture came from the game rather than from the
+    // maps folder. In automatic mode that is discovered, not chosen, so it is stored rather than
+    // recomputed from Source.
+    private sealed class MapLayer
+    {
+        public int Source;
+        public int RequestedSource = -1;
+        public MapDefinition Definition;
+        public string LoadedMapId = "";
+        public Texture2D Texture;
+        public bool UsingVanilla;
+        public bool TextureReady;
+        public AsyncOperationHandle<Texture2D> BaseMapHandle;
+        public bool BaseMapPending;
+        public string BaseMapRequestedScene = "";
+        public DateTime BaseMapRequestUtc = DateTime.MinValue;
+        public string ElementsLoadedForScene = "";
+    }
+
+    // Indexed by the LayerId constants below. Two fixed slots: this is a two-layer feature, not a
+    // collection, and the identifiers are used directly as array indices.
+    private const int LayerMini = 0;
+    private const int LayerFull = 1;
+    private readonly MapLayer[] _layers = { new MapLayer(), new MapLayer() };
+
+    private MapLayer MiniLayer => _layers[LayerMini];
+    private MapLayer FullLayer => _layers[LayerFull];
+
+    // Which layer the single UI object is currently showing. The full map is a modal overlay, so
+    // while it is up it is the only thing on screen; otherwise the corner map owns the object.
+    // Everything that reads map state to draw or project goes through here rather than naming a
+    // field, because those reads are exactly what the split has to keep straight.
+    private int ActiveLayerId => _fullMapOn ? LayerFull : LayerMini;
+    private MapLayer ActiveLayer => _layers[ActiveLayerId];
+
+    private MapLayer LayerById(int layerId) => _layers[layerId];
 
     public override void OnInitializeMelon()
     {
@@ -240,12 +281,28 @@ public sealed class ModEntry : MelonMod
         if (scene.handle != _observedSceneHandle)
             ObserveScene(scene.handle, scene.name);
 
-        bool preferCommunity = ShouldUseCommunityMap();
-        if (_settings.MapSource != _observedMapSource ||
-            preferCommunity != _observedPreferCommunity)
+        // Resolve both layers' sources from the settings, then let each one notice on its own that
+        // its answer changed. Per-layer rather than one global check, because a layer that is not
+        // being drawn still has to end up with the right texture ready before it is shown.
+        ReadLayerSettings();
+        for (int i = 0; i < _layers.Length; i++)
         {
-            ApplyMapSourceSelection(scene.name, preferCommunity);
+            MapLayer layer = _layers[i];
+            bool layerPreferCommunity = LayerWantsCommunity(layer);
+            if (layer.RequestedSource != layer.Source || _layersDirty)
+                ApplyMapSourceSelection(scene.name, layer, i, layerPreferCommunity);
         }
+        _layersDirty = false;
+
+        bool preferCommunity = ShouldUseCommunityMap();
+        MapLayer active = ActiveLayer;
+
+        // A scene change clears each layer's loaded map, so the community image has to be re-read
+        // from disk. The original code waited a second before that first attempt to let the scene
+        // finish coming up; preserve that, because reading a 4400px JPEG during the load tail is
+        // exactly the stall it was there to avoid.
+        if (preferCommunity && !active.TextureReady && _loadAfterUtc == DateTime.MaxValue)
+            _loadAfterUtc = DateTime.UtcNow.AddSeconds(1);
 
         bool playerReady = GameManager.m_Instance != null &&
                            !GameManager.IsMainMenuActive() &&
@@ -298,20 +355,20 @@ public sealed class ModEntry : MelonMod
 
         // The region's own base map is available without opening the game map panel, so the
         // HUD appears on scene load exactly like the community-map source.
-        if (!preferCommunity && _currentDefinition != null && playerReady)
+        if (!preferCommunity && active.Definition != null && playerReady)
         {
-            TryRequestVanillaBaseMap(scene.name);
-            PollVanillaBaseMap(scene.name);
-            if (!vanillaMapOpen && _textureReady)
-                TryLoadVanillaElementsWithoutPanel(scene.name);
+            TryRequestVanillaBaseMap(scene.name, active);
+            PollVanillaBaseMap(scene.name, active);
+            if (!vanillaMapOpen && active.TextureReady)
+                TryLoadVanillaElementsWithoutPanel(scene.name, active);
         }
 
         TryRefreshVanillaIcons();
 
-        if (preferCommunity && !_textureReady && _currentDefinition != null && playerReady &&
+        if (preferCommunity && !active.TextureReady && active.Definition != null && playerReady &&
             DateTime.UtcNow >= _loadAfterUtc)
         {
-            if (LoadCurrentMapIntoUnityUi())
+            if (LoadCurrentMapIntoUnityUi(active))
                 _loadAfterUtc = DateTime.MaxValue;
             else
                 _loadAfterUtc = DateTime.UtcNow.AddSeconds(5);
@@ -319,7 +376,7 @@ public sealed class ModEntry : MelonMod
 
         // The temporary hide key is already folded into MiniMapVisible; testing it again here
         // would also hide the full map, which is exactly what the two layers were split to avoid.
-        bool shouldShow = _textureReady && _currentDefinition != null && playerReady &&
+        bool shouldShow = AnyLayerReady() && active.Definition != null && playerReady &&
                           (MiniMapVisible || FullMapVisible) && !vanillaMapOpen;
         SetUiVisible(shouldShow);
         if (!shouldShow)
@@ -363,67 +420,77 @@ public sealed class ModEntry : MelonMod
         // Additive scene loads (TracksRegion_WILDLIFE, _SANDBOX, ...) re-fire scene
         // initialisation for the same region. Rebuilding the map there would drop the loaded
         // texture and markers, so only a genuine scene change resets state.
-        if (!sceneChanged && _currentDefinition != null)
+        if (!sceneChanged && ActiveLayer.Definition != null)
             return;
 
         ClearVanillaIcons();
-        _usingVanillaMap = false;
         _vanillaProjectionScene = "";
-        _currentDefinition = MapCatalog.Find(sceneName);
+        _layersDirty = true;
 
-        if (_currentDefinition == null)
+        MapDefinition definition = MapCatalog.Find(sceneName);
+        for (int i = 0; i < _layers.Length; i++)
         {
-            _textureReady = false;
+            MapLayer layer = _layers[i];
+            layer.UsingVanilla = false;
+            layer.TextureReady = false;
+            layer.BaseMapRequestedScene = "";
+            layer.BaseMapPending = false;
+            layer.ElementsLoadedForScene = "";
+            layer.RequestedSource = -1;
+            // Both layers follow the same region: there is one map per scene, and which source to
+            // draw it from is the per-layer part, not which map it is.
+            layer.Definition = definition;
+        }
+
+        if (definition == null)
+        {
             _loadAfterUtc = DateTime.MaxValue;
-            _baseMapRequestedScene = "";
             LoggerInstance.Msg($"Active scene has no map definition: {sceneName} (handle {handle}).");
             return;
         }
 
-        bool preferCommunity = ShouldUseCommunityMap();
-        _observedMapSource = _settings.MapSource;
-        _observedPreferCommunity = preferCommunity;
-        if (preferCommunity && _loadedMapId == _currentDefinition.Id &&
-            !ReferenceEquals(_currentTexture, null))
-        {
-            _textureReady = true;
-            _loadAfterUtc = DateTime.MaxValue;
-        }
-        else if (preferCommunity)
-        {
-            _textureReady = false;
-            _loadAfterUtc = DateTime.UtcNow.AddSeconds(1);
-        }
-        else
-        {
-            _textureReady = false;
-            _loadAfterUtc = DateTime.MaxValue;
-        }
-
-        _baseMapRequestedScene = "";
-        _elementsLoadedForScene = "";
         _elementLoadAfterUtc = DateTime.UtcNow;
         _vanillaIconSignature = 0;
         _nextVanillaIconRefreshUtc = DateTime.MinValue;
+        _loadAfterUtc = DateTime.MaxValue;
 
         LoggerInstance.Msg(
-            $"Active scene mapped: {sceneName} -> {_currentDefinition.DisplayName} " +
-            $"({_currentDefinition.FileName}, calibrated={_currentDefinition.IsCalibrated}).");
+            $"Active scene mapped: {sceneName} -> {definition.DisplayName} " +
+            $"({definition.FileName}, calibrated={definition.IsCalibrated}).");
     }
 
-    private bool ShouldUseCommunityMap()
+    // Automatic mode prefers the community map but only when the image is actually on disk, so the
+    // answer depends on which definition the layer is holding rather than on a global one.
+    private bool LayerWantsCommunity(MapLayer layer)
     {
-        if (_settings.MapSource == 1)
+        if (layer.Source == 1)
             return true;
-        if (_settings.MapSource == 2 || _currentDefinition == null)
+        if (layer.Source == 2 || layer.Definition == null)
             return false;
-        return File.Exists(Path.Combine(_mapsDirectory, _currentDefinition.FileName));
+        return File.Exists(Path.Combine(_mapsDirectory, layer.Definition.FileName));
     }
 
-    private void ApplyMapSourceSelection(string sceneName, bool preferCommunity)
+    // Kept for the callers that only ask about the layer being drawn.
+    private bool ShouldUseCommunityMap() => LayerWantsCommunity(ActiveLayer);
+
+    // Behaviour-preserving stage of the split: both layers read the same setting, so nothing the
+    // player sees changes. Flipping this to the per-layer setting is the whole of stage two.
+    private void ReadLayerSettings()
     {
-        _observedMapSource = _settings.MapSource;
-        _observedPreferCommunity = preferCommunity;
+        for (int i = 0; i < _layers.Length; i++)
+        {
+            MapLayer layer = _layers[i];
+            layer.Source = i == LayerMini ? _settings.MiniMapSource : _settings.FullMapSource;
+        }
+    }
+
+    // Re-applies a layer's source after the setting changed. Kept per-layer because each one has to
+    // drop its own loaded map and re-request; with two layers on one setting this runs for both,
+    // which is what the old single-layer version did.
+    private void ApplyMapSourceSelection(string sceneName, MapLayer layer, int layerId,
+        bool preferCommunity)
+    {
+        layer.RequestedSource = layer.Source;
 
         // Whichever source we are leaving, the texture it produced is destroyed when the other one
         // loads, so the "already requested this scene" marker becomes a lie and has to be cleared
@@ -436,35 +503,62 @@ public sealed class ModEntry : MelonMod
         // it plainly: 162 markers on scene load, 28 after the panel was opened once.
         // The markers also stay valid across a switch because they are only drawn while the
         // vanilla source is active, and LoadMapElementsForScene appends rather than replaces, so
-        // keeping _elementsLoadedForScene also avoids duplicating every marker.
-        _baseMapRequestedScene = "";
-        _baseMapPending = false;
+        // keeping ElementsLoadedForScene also avoids duplicating every marker.
+        layer.BaseMapRequestedScene = "";
+        layer.BaseMapPending = false;
 
         if (preferCommunity)
         {
-            _usingVanillaMap = false;
+            layer.UsingVanilla = false;
             _vanillaProjectionScene = "";
-            bool alreadyLoaded = _currentDefinition != null &&
-                                 _loadedMapId == _currentDefinition.Id &&
-                                 !ReferenceEquals(_currentTexture, null);
-            _textureReady = alreadyLoaded;
+            bool alreadyLoaded = layer.Definition != null &&
+                                 layer.LoadedMapId == layer.Definition.Id &&
+                                 !ReferenceEquals(layer.Texture, null);
+            layer.TextureReady = alreadyLoaded;
             _loadAfterUtc = alreadyLoaded
                 ? DateTime.MaxValue
                 : DateTime.UtcNow;
-            LoggerInstance.Msg("Map source selected: community map.");
+            LoggerInstance.Msg($"Map source selected [{LayerName(layerId)}]: community map.");
         }
         else
         {
-            bool capturedForScene = _usingVanillaMap &&
+            bool capturedForScene = layer.UsingVanilla &&
                                     string.Equals(_vanillaProjectionScene, sceneName,
                                         StringComparison.Ordinal) &&
-                                    !ReferenceEquals(_currentTexture, null);
-            _textureReady = capturedForScene;
+                                    !ReferenceEquals(layer.Texture, null);
+            layer.TextureReady = capturedForScene;
             _loadAfterUtc = DateTime.MaxValue;
             LoggerInstance.Msg(capturedForScene
-                ? "Map source selected: vanilla surveyed map."
-                : "Map source selected: vanilla surveyed map; open the game map once to refresh it.");
+                ? $"Map source selected [{LayerName(layerId)}]: vanilla surveyed map."
+                : $"Map source selected [{LayerName(layerId)}]: vanilla surveyed map; " +
+                  "open the game map once to refresh it.");
         }
+    }
+
+    private static string LayerName(int layerId) => layerId == LayerMini ? "mini" : "full";
+
+    // True while any layer that wants the vanilla source already holds a texture. Used by the
+    // panel-fallback path, which must not overwrite a good base map with the surveyed one.
+    private bool AnyVanillaLayerReady()
+    {
+        for (int i = 0; i < _layers.Length; i++)
+        {
+            if (_layers[i].UsingVanilla && _layers[i].TextureReady)
+                return true;
+        }
+        return false;
+    }
+
+    // The HUD is worth showing while either layer has something to draw. The visible layer is
+    // still the one that decides what is drawn; this only decides whether to unhide the canvas.
+    private bool AnyLayerReady()
+    {
+        for (int i = 0; i < _layers.Length; i++)
+        {
+            if (_layers[i].TextureReady)
+                return true;
+        }
+        return false;
     }
 
     private static bool TryGetOpenVanillaMap(out Panel_Map panel)
@@ -542,7 +636,7 @@ public sealed class ModEntry : MelonMod
         ModEntry mod = s_instance;
         if (mod == null || !mod._settings.RedirectGameMap)
             return false;
-        if (mod._currentDefinition == null)
+        if (mod.ActiveLayer.Definition == null)
             return false;                 // no map for this scene; leave the game alone
 
         // The game fires this action twice for a single press - the log showed FullMap and
@@ -873,9 +967,9 @@ public sealed class ModEntry : MelonMod
                (s_fullMapActive || Time.frameCount <= s_suppressEscapeThroughFrame);
     }
 
-    private bool LoadCurrentMapIntoUnityUi()
+    private bool LoadCurrentMapIntoUnityUi(MapLayer layer)
     {
-        string mapPath = Path.Combine(_mapsDirectory, _currentDefinition.FileName);
+        string mapPath = Path.Combine(_mapsDirectory, layer.Definition.FileName);
         if (!File.Exists(mapPath))
         {
             LoggerInstance.Warning($"Map image not found: {mapPath}");
@@ -896,17 +990,18 @@ public sealed class ModEntry : MelonMod
             texture.hideFlags = HideFlags.HideAndDontSave | HideFlags.DontUnloadUnusedAsset;
             UnityEngine.Object.DontDestroyOnLoad(texture);
 
-            Texture2D previousTexture = _currentTexture;
-            _currentTexture = texture;
-            _mapImage.texture = texture;
-            _loadedMapId = _currentDefinition.Id;
-            _textureReady = true;
+            Texture2D previousTexture = layer.Texture;
+            layer.Texture = texture;
+            layer.LoadedMapId = layer.Definition.Id;
+            layer.TextureReady = true;
 
+            // Do not bind this texture to the shared UI here: it belongs to the layer, and that
+            // layer may not be the one on screen. UpdateUnityUi binds whichever layer is active.
             if (!ReferenceEquals(previousTexture, null))
                 UnityEngine.Object.Destroy(previousTexture);
 
             LoggerInstance.Msg(
-                $"Loaded {_currentDefinition.DisplayName}: {texture.width}x{texture.height}.");
+                $"Loaded {layer.Definition.DisplayName}: {texture.width}x{texture.height}.");
             GC.KeepAlive(texture);
             return true;
         }
@@ -1088,6 +1183,9 @@ public sealed class ModEntry : MelonMod
     private void UpdateUnityUi(Transform player)
     {
         bool fullMap = FullMapVisible;
+        // The single UI object carries whichever layer is on screen, so the binding happens here
+        // rather than at load time: loading a layer must not steal the object from the other one.
+        _mapImage.texture = ActiveLayer.Texture;
         UpdateFullMapHints(fullMap);
         _backgroundObject.SetActive(fullMap);
         _backgroundImage.color = new Color(0.015f, 0.025f, 0.035f,
@@ -1170,7 +1268,7 @@ public sealed class ModEntry : MelonMod
 
     private void UpdateVanillaIcons(Rect visibleUv, Vector2 mapSize)
     {
-        bool show = _usingVanillaMap;
+        bool show = ActiveLayer.UsingVanilla;
         for (int i = 0; i < _vanillaIcons.Count; i++)
         {
             VanillaIcon icon = _vanillaIcons[i];
@@ -1213,14 +1311,15 @@ public sealed class ModEntry : MelonMod
     private bool TryPlayerToMapUv(Vector3 worldPosition, out Vector2 uv)
     {
         uv = default;
-        if (!_usingVanillaMap)
-            return _currentDefinition != null &&
-                   _currentDefinition.TryWorldToMap(worldPosition, out uv);
+        MapLayer layer = ActiveLayer;
+        if (!layer.UsingVanilla)
+            return layer.Definition != null &&
+                   layer.Definition.TryWorldToMap(worldPosition, out uv);
 
         try
         {
             Panel_Map panel = InterfaceManager.GetPanel<Panel_Map>();
-            if (panel == null || ReferenceEquals(_currentTexture, null))
+            if (panel == null || ReferenceEquals(layer.Texture, null))
                 return false;
             Vector3 mapPosition = panel.WorldPositionToMapPosition(
                 _vanillaProjectionScene, worldPosition);
@@ -1311,9 +1410,10 @@ public sealed class ModEntry : MelonMod
 
     private float GetTextureAspect()
     {
-        if (ReferenceEquals(_currentTexture, null) || _currentTexture.height <= 0)
+        Texture2D texture = ActiveLayer.Texture;
+        if (ReferenceEquals(texture, null) || texture.height <= 0)
             return 1f;
-        return (float)_currentTexture.width / _currentTexture.height;
+        return (float)texture.width / texture.height;
     }
 
     private void RecordCalibrationPoint()
@@ -1349,9 +1449,9 @@ public sealed class ModEntry : MelonMod
                 EscapeCsv(captureId),
                 EscapeCsv(sceneName),
                 scene.handle.ToString(CultureInfo.InvariantCulture),
-                EscapeCsv(_currentDefinition?.Id ?? "unmapped"),
-                EscapeCsv(_currentDefinition?.FileName ?? ""),
-                _currentDefinition?.IsCalibrated == true ? "true" : "false",
+                EscapeCsv(ActiveLayer.Definition?.Id ?? "unmapped"),
+                EscapeCsv(ActiveLayer.Definition?.FileName ?? ""),
+                ActiveLayer.Definition?.IsCalibrated == true ? "true" : "false",
                 position.x.ToString("F3", CultureInfo.InvariantCulture),
                 position.y.ToString("F3", CultureInfo.InvariantCulture),
                 position.z.ToString("F3", CultureInfo.InvariantCulture),
@@ -1478,10 +1578,19 @@ public sealed class ModEntry : MelonMod
             // The region base map normally supplies the terrain on its own. Only when it could
             // not be loaded do we fall back to this surveyed texture, which is the path that
             // requires the player to have opened the panel.
-            if (!_textureReady && main.mainTexture != null)
+            if (!AnyVanillaLayerReady() && main.mainTexture != null)
             {
-                Texture2D capturedMain = CaptureTexture(main.mainTexture);
-                UseCapturedVanillaMap(capturedMain, sceneName);
+                // One independent copy per layer: UseCapturedVanillaMap destroys whatever the
+                // layer held before, so handing the same Texture2D to both would leave the second
+                // layer pointing at a destroyed texture.
+                for (int i = 0; i < _layers.Length; i++)
+                {
+                    MapLayer target = _layers[i];
+                    if (!target.UsingVanilla)
+                        continue;
+                    Texture2D capturedMain = CaptureTexture(main.mainTexture);
+                    UseCapturedVanillaMap(capturedMain, sceneName, target);
+                }
             }
 
             // Some regions store their base map texture rotated and let the widget's own
@@ -1796,14 +1905,16 @@ public sealed class ModEntry : MelonMod
         catch { }
 
         string texture = "none";
-        if (!ReferenceEquals(_currentTexture, null))
-            texture = $"{_currentTexture.width}x{_currentTexture.height}";
+        MapLayer shown = ActiveLayer;
+        if (!ReferenceEquals(shown.Texture, null))
+            texture = $"{shown.Texture.width}x{shown.Texture.height}";
 
         LoggerInstance.Msg(
-            $"[state] scene={_observedSceneName} map={_currentDefinition?.Id ?? "-"} " +
-            $"calibrated={_currentDefinition?.IsCalibrated.ToString() ?? "-"} " +
-            $"source={(_usingVanillaMap ? "vanilla" : "community")} tex={texture} " +
-            $"textureReady={_textureReady} playerUv={hasUv} markers={_vanillaIcons.Count} " +
+            $"[state] scene={_observedSceneName} map={shown.Definition?.Id ?? "-"} " +
+            $"calibrated={shown.Definition?.IsCalibrated.ToString() ?? "-"} " +
+            $"layer={LayerName(ActiveLayerId)} " +
+            $"source={(shown.UsingVanilla ? "vanilla" : "community")} tex={texture} " +
+            $"textureReady={shown.TextureReady} playerUv={hasUv} markers={_vanillaIcons.Count} " +
             $"mapDetails={detailCount} vanillaPanelOpen={panelOpen} view={DescribeView()} {fog}");
     }
 
@@ -2255,16 +2366,15 @@ public sealed class ModEntry : MelonMod
         _vanillaIcons.Clear();
     }
 
-    private void UseCapturedVanillaMap(Texture2D texture, string sceneName)
+    private void UseCapturedVanillaMap(Texture2D texture, string sceneName, MapLayer layer)
     {
         EnsureUnityUi();
-        Texture2D previous = _currentTexture;
-        _currentTexture = texture;
-        _mapImage.texture = texture;
-        _loadedMapId = "__vanilla__" + sceneName;
+        Texture2D previous = layer.Texture;
+        layer.Texture = texture;
+        layer.LoadedMapId = "__vanilla__" + sceneName;
         _vanillaProjectionScene = sceneName;
-        _usingVanillaMap = true;
-        _textureReady = true;
+        layer.UsingVanilla = true;
+        layer.TextureReady = true;
         if (!ReferenceEquals(previous, null))
             UnityEngine.Object.Destroy(previous);
         LoggerInstance.Msg(
@@ -2294,7 +2404,7 @@ public sealed class ModEntry : MelonMod
     // shortly after the game removes them, instead of only refreshing when M is pressed.
     private void TryRefreshVanillaIcons()
     {
-        if (!_usingVanillaMap || DateTime.UtcNow < _nextVanillaIconRefreshUtc)
+        if (!ActiveLayer.UsingVanilla || DateTime.UtcNow < _nextVanillaIconRefreshUtc)
             return;
 
         _nextVanillaIconRefreshUtc = DateTime.UtcNow.AddSeconds(1);
@@ -2356,9 +2466,9 @@ public sealed class ModEntry : MelonMod
 
     // Asks the game for the region's own base map. This is independent of Panel_Map, so the
     // HUD no longer requires the player to open the game map first.
-    private void TryRequestVanillaBaseMap(string sceneName)
+    private void TryRequestVanillaBaseMap(string sceneName, MapLayer layer)
     {
-        if (_baseMapPending || string.Equals(_baseMapRequestedScene, sceneName, StringComparison.Ordinal))
+        if (layer.BaseMapPending || string.Equals(layer.BaseMapRequestedScene, sceneName, StringComparison.Ordinal))
             return;
 
         try
@@ -2392,53 +2502,53 @@ public sealed class ModEntry : MelonMod
             {
                 // Genuinely unavailable for this region: stop asking, and let the surveyed
                 // texture fallback take over if the player opens the map panel.
-                _baseMapRequestedScene = sceneName;
+                layer.BaseMapRequestedScene = sceneName;
                 LoggerInstance.Warning($"Region {sceneName} reports no base map texture.");
                 return;
             }
 
-            _baseMapRequestedScene = sceneName;
-            _baseMapHandle = region.GetMiniMapTextureAsync();
-            _baseMapPending = true;
-            _baseMapRequestUtc = DateTime.UtcNow;
+            layer.BaseMapRequestedScene = sceneName;
+            layer.BaseMapHandle = region.GetMiniMapTextureAsync();
+            layer.BaseMapPending = true;
+            layer.BaseMapRequestUtc = DateTime.UtcNow;
             LoggerInstance.Msg($"Requested region base map for {sceneName}.");
         }
         catch (Exception ex)
         {
-            _baseMapRequestedScene = sceneName;
+            layer.BaseMapRequestedScene = sceneName;
             LoggerInstance.Warning($"Region base map request failed for {sceneName}: {ex.Message}");
         }
     }
 
-    private void PollVanillaBaseMap(string sceneName)
+    private void PollVanillaBaseMap(string sceneName, MapLayer layer)
     {
-        if (!_baseMapPending)
+        if (!layer.BaseMapPending)
             return;
 
         // Never leave the HUD permanently blank if the load silently stalls.
-        if ((DateTime.UtcNow - _baseMapRequestUtc).TotalSeconds > 15.0)
+        if ((DateTime.UtcNow - layer.BaseMapRequestUtc).TotalSeconds > 15.0)
         {
-            _baseMapPending = false;
+            layer.BaseMapPending = false;
             LoggerInstance.Warning($"Region base map for {sceneName} timed out.");
             return;
         }
 
         try
         {
-            if (!_baseMapHandle.IsDone)
+            if (!layer.BaseMapHandle.IsDone)
                 return;
         }
         catch (Exception ex)
         {
-            _baseMapPending = false;
+            layer.BaseMapPending = false;
             LoggerInstance.Warning($"Region base map handle failed: {ex.Message}");
             return;
         }
 
-        _baseMapPending = false;
+        layer.BaseMapPending = false;
         try
         {
-            Texture2D source = _baseMapHandle.Result;
+            Texture2D source = layer.BaseMapHandle.Result;
             if (source == null)
             {
                 LoggerInstance.Warning($"Region base map for {sceneName} resolved to NULL.");
@@ -2448,7 +2558,7 @@ public sealed class ModEntry : MelonMod
             // The loaded asset is not CPU-readable and is owned by Addressables, so keep an
             // owned copy instead of handing the asset itself to the HUD.
             Texture2D owned = CaptureTexture(source);
-            UseVanillaBaseMap(owned, sceneName);
+            UseVanillaBaseMap(owned, sceneName, layer);
             LoggerInstance.Msg(
                 $"Vanilla base map active for {sceneName}: {owned.width}x{owned.height} " +
                 "(no map panel needed).");
@@ -2479,7 +2589,7 @@ public sealed class ModEntry : MelonMod
     // Panel_Map exposes public entry points that build the marker objects. Calling them with
     // the panel closed populates the same containers the open panel would, which lets markers
     // appear without the player opening the map.
-    private void TryLoadVanillaElementsWithoutPanel(string sceneName)
+    private void TryLoadVanillaElementsWithoutPanel(string sceneName, MapLayer layer)
     {
         // LoadMapElementsForScene appends to the existing containers, so calling it repeatedly
         // duplicates every marker. Load each scene's elements exactly once.
@@ -2509,6 +2619,7 @@ public sealed class ModEntry : MelonMod
                 return;
 
             _elementsLoadedForScene = sceneName;
+            layer.ElementsLoadedForScene = sceneName;
             Transform mapElements = FindChildByName(panel.transform, "MapElements");
             if (mapElements == null)
                 return;
@@ -2522,19 +2633,19 @@ public sealed class ModEntry : MelonMod
         }
     }
 
-    private void UseVanillaBaseMap(Texture2D texture, string sceneName)    {
+    private void UseVanillaBaseMap(Texture2D texture, string sceneName, MapLayer layer)
+    {
         EnsureUnityUi();
-        Texture2D previous = _currentTexture;
-        _currentTexture = texture;
-        _mapImage.texture = texture;
-        _loadedMapId = "__basemap__" + sceneName;
+        Texture2D previous = layer.Texture;
+        layer.Texture = texture;
+        layer.LoadedMapId = "__basemap__" + sceneName;
         _vanillaProjectionScene = sceneName;
         // The base map shares the surveyed map's framing, verified by direct overlay of the
         // two textures, so the same projection bounds apply.
         _vanillaMapLocalBounds = new Rect(-325f, -325f, 650f, 650f);
         _vanillaTextureUv = new Rect(0f, 0f, 1f, 1f);
-        _usingVanillaMap = true;
-        _textureReady = true;
+        layer.UsingVanilla = true;
+        layer.TextureReady = true;
         if (!ReferenceEquals(previous, null) && !ReferenceEquals(previous, texture))
             UnityEngine.Object.Destroy(previous);
     }
