@@ -144,7 +144,6 @@ public sealed class ModEntry : MelonMod
     {
         s_instance = this;
         HarmonyInstance.PatchAll();
-        PanelProbe.Install(HarmonyInstance);
         _settings.AddToModSettings("社区HUD地图", MenuType.Both);
         // The settings GUI does not exist yet, so the visibility rules have to be applied once by
         // hand or the developer-only rows show up for everyone until something changes.
@@ -1071,10 +1070,13 @@ public sealed class ModEntry : MelonMod
         Vector2 mapSize = fullMap ? ApplyFullMapLayout() : ApplyMiniMapLayout();
 
         bool hasPosition = TryPlayerToMapUv(player.position, out Vector2 uv);
-        if (!hasPosition)
+        if (!hasPosition && !fullMap)
         {
-            if (!fullMap)
-                _mapImage.uvRect = new Rect(0f, 0f, 1f, 1f);
+            // The corner map centres on the player, so without a projection it has nothing to show
+            // and falls back to the whole image. The full map does not: its zoom and pan are plain
+            // uv maths, and returning here was why scrolling did nothing at all in a region that
+            // had not been calibrated yet.
+            _mapImage.uvRect = new Rect(0f, 0f, 1f, 1f);
             _markerRoot.SetActive(false);
             return;
         }
@@ -1089,7 +1091,7 @@ public sealed class ModEntry : MelonMod
             float half = span * 0.5f;
             if (!_fullMapCenterValid)
             {
-                _fullMapCenter = uv;
+                _fullMapCenter = hasPosition ? uv : new Vector2(0.5f, 0.5f);
                 _fullMapCenterValid = true;
             }
             _fullMapCenter = new Vector2(
@@ -1108,9 +1110,18 @@ public sealed class ModEntry : MelonMod
             _mapImage.uvRect = visibleUv;
         }
 
+        UpdateVanillaIcons(visibleUv, mapSize);
+
+        // The markers live in the texture's own uv space, so they are still worth drawing on an
+        // uncalibrated map. Only the player pointer needs a projection.
+        if (!hasPosition)
+        {
+            _markerRoot.SetActive(false);
+            return;
+        }
+
         bool markerVisible = uv.x >= visibleUv.xMin && uv.x <= visibleUv.xMax &&
                              uv.y >= visibleUv.yMin && uv.y <= visibleUv.yMax;
-        UpdateVanillaIcons(visibleUv, mapSize);
         if (!markerVisible)
         {
             _markerRoot.SetActive(false);

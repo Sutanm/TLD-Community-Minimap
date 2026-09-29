@@ -70,7 +70,6 @@ internal static class InputPatches
     private static void NoteSurvey()
     {
         ModEntry.s_lastSurveyUtc = DateTime.UtcNow;
-        PanelProbe.Report("MapDetail.Surveyed()");
     }
 
     // Kept from an earlier, wrong guess. The probe showed this method is not on the survey's path

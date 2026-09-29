@@ -2731,3 +2731,114 @@ alpha = sprite.enabled ? sprite.alpha * sprite.color.a : 0f;   // enabled=false 
 | B1 | 校准剩余 **15** 张（22 张完成 7 张） | 流程已验证，**用 calibrate.html 点地物** |
 | — | 未校准区域全屏地图无法缩放/拖动 | **已定位 bug**：`UpdateUnityUi` 在设 `uvRect` 之前 `return`。等游戏关闭时修 |
 | — | 全屏地图上那块软斑 | **已排除贴图**（原图源与部署副本都干净）。小地图无、轮换后仍在 → 稳定绘制在全屏地图路径上。待修 |
+---
+
+## 37. 图源分离 + 标记重写：执行准备（2026-09-29）
+
+用户暂停校准，转入这两项。本节是**开工前的准备**，不是已完成的工作。**顺序：先图源分离，后标记重写**——
+分离先定下"图层"这个抽象，重写才有明确的落点。
+
+### 37.1 图源分离（小地图用官方、大地图用社区）
+
+**现状**：只有一套资源，图源是全局的。
+
+| 位置 | 现状 |
+|---|---|
+| `_currentDefinition` / `_currentTexture` / `_usingVanillaMap` | **各一套**，两层共用 |
+| `_mapImage` / `_mapRect` | **同一个 UI 对象**，只换锚点和尺寸 |
+| `ShouldUseCommunityMap()` | 读全局 `_settings.MapSource`，和显示模式无关 |
+| `_baseMapRequestedScene` / `_elementsLoadedForScene` | 单份"已请求过"标记 |
+
+**目标**：`MapSource` 拆成 `MiniMapSource` + `FullMapSource`（各自 自动/民间高清/原版制图），
+两层各有自己的贴图、定义、基准。
+
+**一个重要的简化**：两层的坐标变换**本来就是分开的代码路径**，所以改动主要是"当前生效的是哪一层"：
+
+```csharp
+if (!_usingVanillaMap)
+    return _currentDefinition.TryWorldToMap(worldPosition, out uv);      // 社区图：仿射校准
+// 原版图：panel.WorldPositionToMapPosition(scene, world) → NGUI → _vanillaTextureUv
+```
+
+⇒ **原版那一层不需要校准，全区可用；社区那一层需要校准，目前 7/22。**
+这正是分离的价值：小地图用原版（全区 + 有标记），大地图用社区（漂亮，用于规划）。
+
+**执行步骤**
+
+1. 引入"当前图层"概念，由 `FullMapVisible` 决定；把 `_currentDefinition` / `_currentTexture` /
+   `_usingVanillaMap` 改成**按图层取**（两个槽位，或一个小结构体数组）。
+2. `ShouldUseCommunityMap()` 改成接受图层参数，读对应的设置项。
+3. `LoadCurrentMapIntoUnityUi` 载入到**当前图层**的槽位；两层都保留已载入的贴图（切换时不重新解码）。
+4. `UpdateUnityUi` 用当前图层的贴图 + 变换。
+5. `_baseMapRequestedScene` / `_elementsLoadedForScene` **必须按图层分开**，否则又会踩
+   §35.1 那类"离开的图源把标记作废、但'已完成'标记还在"的坑。
+
+**已知代价 / 风险**
+
+- **显存**：两张贴图同时驻留。林狼雪岭 4380×4302 解压后约 72MB，两张约 144MB。**按需惰性加载**。
+- **切换时的卡顿**：不能在切视图时现读盘解码（4400² 的 JPG 要 200–400ms）。所以要预载。
+- **标记基准**：`UpdateVanillaIcons` 的 `show = _usingVanillaMap` 要改成看**当前图层**。
+  标记只属于原版那一层（§32.1 已确认这是原设计）。
+- `_vanillaProjectionScene` / `_vanillaMapLocalBounds` / `_vanillaTextureUv` 是原版层专用的，不要被社区层覆盖。
+
+### 37.2 标记重写（从 `MapDetail` 读，不再刮 UI）
+
+**为什么做**——**这是实测数字，不是推断**：
+
+| | |
+|---|---|
+| `MapDetailManager.s_MapDetails` 条目 | **723** |
+| 从 UI 容器刮到的标记 | **148** |
+| 丢失 | **80%** |
+
+用户原话："原版制图的图源标记不全啊，怎么只有自然资源的标记"——**不是要玩家点亮，是我们抓的地方本来就不全。**
+
+**已经确认可用的字段**（§24 + §36 的实测）
+
+| 字段 | 结论 |
+|---|---|
+| `GetWorldPosition()` | ✅ 有值，**和我们的校准点同一坐标系**（教堂点相差 11.2 世界单位） |
+| `m_TargetPosition` | ❌ 恒为 `(0,0,0)`，**不能用** |
+| `m_SpriteName` | ✅ 语义化图标名，**通过 `_mapIconAtlas.GetSprite(name)` 100% 解析得到**（§25.3） |
+| `m_LocID` | ✅ 本地化 key，可做地名 |
+| `m_IconType` | **`Text` 是地名标签**（`m_SpriteName` 为空），要滤掉 |
+| `m_IsSurveyed` | ✅ 实时勘测状态 |
+| **`m_HarvestablesForMapVisibility`** | ✅ **有值**：163 条非空 / 387 个对象，**场景加载时即填充，不需要开面板** |
+| `m_HarvestablesSharingIcon` | ❌ **全空**（0 条），**不要依赖它** |
+
+> ⚠️ **§20 记的"两个字段全空"是错的**，已被 §36 的普查推翻。以本节为准。
+
+**设计**
+
+1. **位置**：`GetWorldPosition()` → **当前图层**的变换 → uv。与原版层的
+   `WorldPositionToMapPosition` 或社区层的仿射共用同一条链路。
+2. **图标**：`m_SpriteName` → `_iconBySpriteName`（刮取时顺便建的字典）→ 退化到
+   `_mapIconAtlas.GetSprite(name)` → 再退化到通用标记。
+3. **过滤**：跳过 `m_SpriteName` 为空的（`Text` 标签）。
+4. **可见性放到绘制期决定**，不要像现在这样在抓取时用 `sprite.enabled` 判（§35.3）。
+   这一步是**迷雾模式的地基**：那时"画不画"由 `m_IsSurveyed` 决定，而不是"抓不抓"。
+5. **去重 / 聚类**：166 条香蒲、103 条树枝……同位置会叠成一坨。按距离聚类，或在同一图标上计数。
+
+**风险**
+
+- **723 个 `GameObject` + `RawImage`**：现在 148 个就已经不轻。**必须一并做 §30 的 C3（合并绘制）**，
+  否则重写完性能会明显变差。这是重写里**最容易被低估**的一块。
+- 图标解析依赖 `_mapIconAtlas`，而图集是**刮取时**拿到的。**第一次抓取前没有图集** →
+  需要保留一条刮取路径专门用于建图标字典，或者从 `MapElements` 单独取一次图集。
+
+### 37.3 开工前必须先做的一件事
+
+**§35.2 的修复②（保留较大的集合）要重新审。** 它是为了止血写的启发式：
+"抓回来变少 = 迷雾，不是标记消失"。
+
+**标记重写之后，标记集合不再来自抓取，这条启发式就失去意义**，应该换成
+**基于 `m_HarvestablesForMapVisibility` + `IsHarvested()` 的真实判据**。
+
+⇒ 重写时要**把这条启发式一起删掉**，否则会带着一个过期的补丁进新架构。
+
+### 37.4 本次已修（顺带）
+
+| 事项 | 说明 |
+|---|---|
+| **未校准区域全屏地图不能缩放/拖动** | `UpdateUnityUi` 在设 `uvRect` 之前 `return`。现在只在**小地图**需要投影时才提前返回；全屏地图的缩放/平移是纯 uv 运算，不需要校准。顺带让**标记**在未校准时也照画（标记本来就在贴图 uv 空间里） |
+| **`PanelProbe` 已删除** | 临时诊断，使命完成。保留的 `MapDetail.Surveyed()` 挂钩仍在，用于勘测弹图的时间信号 |
