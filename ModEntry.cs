@@ -1557,6 +1557,10 @@ public sealed class ModEntry : MelonMod
     // because touching two interop lists on every one of them is not a per-frame cost worth paying.
     private void LogStateHeartbeat()
     {
+        // Diagnostics only: a line every ten seconds is useful in a bug report and pure noise in
+        // a normal session, so it sits behind the same switch as the rest of the developer rows.
+        if (!_settings.DeveloperMode)
+            return;
         if (DateTime.UtcNow < _nextHeartbeatUtc)
             return;
         _nextHeartbeatUtc = DateTime.UtcNow.AddSeconds(10);
@@ -1634,6 +1638,9 @@ public sealed class ModEntry : MelonMod
     // read them wrong. The panel open/close trigger exists to tell those two apart.
     private void CensusMapDetails(string reason)
     {
+        // This writes a 70 KB CSV, so it must never run for a player who has not asked for it.
+        if (!_settings.DeveloperMode)
+            return;
         if (DateTime.UtcNow < _nextCensusUtc)
             return;
         _nextCensusUtc = DateTime.UtcNow.AddSeconds(2);
