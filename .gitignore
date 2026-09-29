@@ -13,3 +13,4 @@ calibration_points.csv
 # PNG in the repository; the scripts and the data they read are what belongs in version control.
 tools/marker-overlay-preview.png
 tools/marker-crop-*.png
+tools/marker-tight-*.png

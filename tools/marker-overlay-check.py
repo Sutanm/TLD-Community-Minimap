@@ -111,3 +111,26 @@ for i, (sprite, loc, x, y) in enumerate(projected):
     crop_path = os.path.join(WORKSPACE, "tools", f"marker-crop-{i}-{loc.split('_')[-1]}.png")
     crop.save(crop_path)
     print(f"wrote {crop_path}")
+
+# A calibration circle is no evidence about a marker unless they are the same object, so measure
+# how far each marker actually is from the nearest recorded point. A small distance would mean the
+# two describe one place and the marker can be checked against it; a large one means the marker
+# has to be judged on its own, against the drawing.
+print()
+print("=== marker vs nearest recorded calibration point ===")
+for sprite, loc, x, y in projected:
+    best = min(points, key=lambda p: (p["mapX"] - x) ** 2 + (p["mapY"] - y) ** 2)
+    dist = ((best["mapX"] - x) ** 2 + (best["mapY"] - y) ** 2) ** 0.5
+    print(f"  {loc:<28} nearest recorded point: {best['label']:<12} {dist:6.1f}px "
+          f"({dist / width * 100:.1f}% of the image width)")
+
+# Tight crops: the only question that matters is whether the cross sits on the drawn feature for
+# the same object, and that cannot be judged from a wide shot full of unrelated icons.
+for i, (sprite, loc, x, y) in enumerate(projected):
+    half = 190
+    box = (max(0, int(x - half)), max(0, int(y - half)),
+           min(image.width, int(x + half)), min(image.height, int(y + half)))
+    tight = image.crop(box).resize((760, 760), Image.NEAREST)
+    tight_path = os.path.join(WORKSPACE, "tools", f"marker-tight-{i}-{loc.split('_')[-1]}.png")
+    tight.save(tight_path)
+    print(f"wrote {tight_path}")
