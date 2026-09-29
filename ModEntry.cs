@@ -3258,6 +3258,7 @@ public sealed class ModEntry : MelonMod
             }
 
             layer.BaseMapRequestedScene = sceneName;
+            ProbeRegionTextures(region, sceneName);
             layer.BaseMapHandle = region.GetMiniMapTextureAsync();
             layer.BaseMapPending = true;
             layer.BaseMapRequestUtc = DateTime.UtcNow;
@@ -3268,6 +3269,94 @@ public sealed class ModEntry : MelonMod
             layer.BaseMapRequestedScene = sceneName;
             LoggerInstance.Warning($"Region base map request failed for {sceneName}: {ex.Message}");
         }
+    }
+
+    // Lists every texture-shaped member the region specification exposes, and exports the ones that
+    // are readable.
+    //
+    // The reason to look rather than guess: the HUD is handed GetMiniMapTextureAsync(), which is
+    // named for the CORNER map, while the map panel draws a different 2048x2048 image. If the region
+    // also holds the full-resolution terrain, exporting it would give a clean base map with no fog
+    // to light up and no marker objects on it - which is exactly what is wanted, and what the panel
+    // route cannot provide because the panel's texture carries the reveal state.
+    //
+    // Reflection because the member names are only partly known: m_MapTex was found by string search
+    // but the type around it could not be reflected offline (the interop assemblies do not resolve
+    // outside the game), so enumerating at runtime is the only reliable way.
+    private void ProbeRegionTextures(RegionSpecification region, string sceneName)
+    {
+        if (!_settings.DeveloperMode)
+            return;
+        try
+        {
+            Type type = region.GetType();
+            LoggerInstance.Msg($"Region texture probe [{sceneName}]: type={type.FullName}.");
+            int found = 0;
+
+            foreach (System.Reflection.FieldInfo field in type.GetFields(
+                         System.Reflection.BindingFlags.Public |
+                         System.Reflection.BindingFlags.NonPublic |
+                         System.Reflection.BindingFlags.Instance))
+            {
+                string kind = field.FieldType.Name;
+                bool textureish = kind.Contains("Texture") || kind.Contains("Sprite");
+                if (!textureish)
+                    continue;
+                found++;
+
+                string value = "?";
+                try
+                {
+                    object raw = field.GetValue(region);
+                    value = DescribeObject(raw);
+                }
+                catch (Exception ex)
+                {
+                    value = $"unreadable ({ex.GetType().Name})";
+                }
+                LoggerInstance.Msg($"Region texture probe [{sceneName}]: field {field.Name} " +
+                                   $": {kind} = {value}");
+            }
+
+            foreach (System.Reflection.PropertyInfo property in type.GetProperties(
+                         System.Reflection.BindingFlags.Public |
+                         System.Reflection.BindingFlags.NonPublic |
+                         System.Reflection.BindingFlags.Instance))
+            {
+                string kind = property.PropertyType.Name;
+                if (!kind.Contains("Texture") && !kind.Contains("Sprite"))
+                    continue;
+                found++;
+
+                string value = "?";
+                try
+                {
+                    value = DescribeObject(property.GetValue(region));
+                }
+                catch (Exception ex)
+                {
+                    value = $"unreadable ({ex.GetType().Name})";
+                }
+                LoggerInstance.Msg($"Region texture probe [{sceneName}]: property {property.Name} " +
+                                   $": {kind} = {value}");
+            }
+
+            if (found == 0)
+                LoggerInstance.Msg($"Region texture probe [{sceneName}]: no texture members found.");
+        }
+        catch (Exception ex)
+        {
+            LoggerInstance.Warning($"Region texture probe [{sceneName}] failed: {ex.Message}");
+        }
+    }
+
+    private static string DescribeObject(object raw)
+    {
+        if (raw == null)
+            return "null";
+        if (raw is Texture texture)
+            return $"Texture {texture.width}x{texture.height} ({texture.GetType().Name})";
+        return raw.GetType().Name;
     }
 
     private void PollVanillaBaseMap(string sceneName, MapLayer layer)
@@ -3307,7 +3396,36 @@ public sealed class ModEntry : MelonMod
 
             // The loaded asset is not CPU-readable and is owned by Addressables, so keep an
             // owned copy instead of handing the asset itself to the HUD.
+            //
+            // Measure the ASSET before copying it. The copy is taken at the asset's own size, so a
+            // 1024 result means the asset really is 1024 and not that the copy shrank it - and that
+            // distinction decides whether the HUD is being handed the map or a downscaled thumbnail
+            // of it. The panel draws a 2048x2048 image, so if this is 1024 the two are different
+            // assets and the HUD has the smaller one.
+            LoggerInstance.Msg(
+                $"Region map asset [{sceneName}]: {source.width}x{source.height} " +
+                $"({source.GetType().Name}), format={source.format}, " +
+                $"mipmaps={source.mipmapCount}.");
             Texture2D owned = CaptureTexture(source);
+            LoggerInstance.Msg(
+                $"Region map copy [{sceneName}]: {owned.width}x{owned.height}.");
+
+            // Export this asset at full size, once per region. It is a different file from the
+            // basemap_* export so the two can be compared rather than one overwriting the other.
+            try
+            {
+                string assetPath = Path.Combine(_modDirectory,
+                    $"regionmap_{SanitizeFileName(sceneName)}.png");
+                if (!File.Exists(assetPath))
+                {
+                    WriteTextureToPng(owned, assetPath);
+                    LoggerInstance.Msg($"Exported region map asset: {assetPath}");
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggerInstance.Warning($"Region map asset export failed: {ex.Message}");
+            }
 
             // The capture is UP TO 1024x1024 and letterboxed, not a full-bleed map: measured across
             // all 16 exported regions, the opaque content runs from 745x893 up to 1009x1021 inside
