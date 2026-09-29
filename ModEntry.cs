@@ -342,6 +342,16 @@ public sealed class ModEntry : MelonMod
         TryExportSceneCatalog();
         TryReloadCalibrations();
 
+        // Capture the game's own map image on demand, while it is on screen.
+        //
+        // The mod cannot light a region up, so the reveal has to happen in the game. What it CAN do
+        // is take the panel's full-resolution image at the moment the player says it is ready, apply
+        // it to the HUD immediately, and keep a PNG for calibration. That is one key press in the
+        // session where the player revealed the map, instead of a file that only refreshes on the
+        // first panel open of a session and then has to be carried back to the workspace by hand.
+        if (Input.GetKeyDown(KeyCode.F7))
+            CaptureGameMapImage();
+
         if (Input.GetKeyDown(_settings.ToggleKey))
         {
             // Only the corner map: the full map is a modal overlay and must keep working while
@@ -3066,6 +3076,98 @@ public sealed class ModEntry : MelonMod
                 UnityEngine.Object.Destroy(_vanillaIcons[i].Root);
         }
         _vanillaIcons.Clear();
+    }
+
+    // Takes the game's own map image and makes the HUD use it, right now.
+    //
+    // The region's own texture is 1024x1024 while the panel draws a 2048x2048 image, so the panel is
+    // the better source whenever the player has it on screen. It carries the reveal state, which is
+    // why this is a key press rather than something automatic: only the player knows whether they
+    // have lit the region yet.
+    //
+    // The framing is shared with the panel path deliberately. The panel reports its bounds and uvRect
+    // through the same objects CaptureVanillaMap already reads, so the captured image and the
+    // projection that places the player pointer and the markers come from one source. Anything else
+    // risks reintroducing the mismatch that made markers land off the map.
+    private void CaptureGameMapImage()
+    {
+        try
+        {
+            Panel_Map panel = InterfaceManager.GetPanel<Panel_Map>();
+            if (panel == null || !panel.gameObject.activeInHierarchy)
+            {
+                LoggerInstance.Msg("F7: the game map is not open, so there is nothing to capture.");
+                return;
+            }
+
+            Transform regionMap = FindActiveRegionMap(panel.transform);
+            if (regionMap == null)
+            {
+                LoggerInstance.Msg("F7: no active region map in the panel.");
+                return;
+            }
+
+            UITexture main = regionMap.GetComponent<UITexture>();
+            if (main == null || ReferenceEquals(main.mainTexture, null))
+            {
+                LoggerInstance.Msg("F7: the region map widget has no texture yet.");
+                return;
+            }
+
+            string sceneName = _observedSceneName;
+            var bounds = new Rect(main.drawingDimensions.x, main.drawingDimensions.y,
+                main.drawingDimensions.z - main.drawingDimensions.x,
+                main.drawingDimensions.w - main.drawingDimensions.y);
+            Rect textureUv = main.uvRect;
+
+            Texture2D owned = CaptureTexture(main.mainTexture);
+            LoggerInstance.Msg(
+                $"F7 captured the game map for {sceneName}: {owned.width}x{owned.height}, " +
+                $"bounds={bounds}, uv={textureUv}.");
+
+            // Keep a separate copy for the file, so the one handed to a layer can be destroyed by
+            // that layer later without the export depending on its lifetime.
+            Texture2D forFile = CaptureTexture(main.mainTexture);
+
+            // Hand it to every layer that is showing the vanilla source: the capture is region-wide,
+            // so a layer that wants vanilla wants this image. Each layer takes its own texture, and
+            // UseVanillaBaseMap retires the previous one safely.
+            int applied = 0;
+            for (int i = 0; i < _layers.Length; i++)
+            {
+                MapLayer layer = _layers[i];
+                if (!layer.UsingVanilla || layer.Definition == null)
+                    continue;
+                Texture2D copy = applied == 0 ? owned : CaptureTexture(main.mainTexture);
+                UseVanillaBaseMap(copy, sceneName, layer, textureUv);
+                applied++;
+            }
+
+            if (applied == 0)
+                UnityEngine.Object.Destroy(owned);
+            else
+                LoggerInstance.Msg($"F7 applied the game map to {applied} vanilla layer(s).");
+
+            // The projection fields the panel path would have set, so the two routes agree.
+            for (int i = 0; i < _layers.Length; i++)
+            {
+                MapLayer target = _layers[i];
+                target.VanillaProjectionScene = sceneName;
+                target.VanillaMapLocalBounds = bounds;
+                target.VanillaTextureUv = textureUv;
+            }
+            _panelTextureMeasuredForScene = sceneName;
+
+            string path = Path.Combine(_modDirectory,
+                $"panelmap_{SanitizeFileName(sceneName)}.png");
+            WriteTextureToPng(forFile, path);
+            UnityEngine.Object.Destroy(forFile);
+            LoggerInstance.Msg($"F7 wrote {path} for calibration.");
+        }
+        catch (Exception ex)
+        {
+            LoggerInstance.Warning($"F7 capture failed: {ex.Message}");
+        }
     }
 
     // Captures the panel's own map texture, measures where its opaque content actually sits, and
