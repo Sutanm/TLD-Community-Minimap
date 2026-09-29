@@ -2279,6 +2279,7 @@ public sealed class ModEntry : MelonMod
             // Per sprite name, so the "166 cattails" kind of pile-up is visible as a number rather
             // than as an opinion about density.
             var perSprite = new Dictionary<string, int>(StringComparer.Ordinal);
+            var perSpriteScraped = new Dictionary<string, int>(StringComparer.Ordinal);
 
             for (int i = 0; i < details.Count; i++)
             {
@@ -2312,6 +2313,16 @@ public sealed class ModEntry : MelonMod
 
                 perSprite.TryGetValue(name, out int seen);
                 perSprite[name] = seen + 1;
+
+                // Which groups the game actually instantiated, counted the same way. The scraped
+                // set is the only trustworthy statement about what the panel draws: the 22:12
+                // session showed 765 of 802 entries with surveyed, discovered and unlocked all
+                // false, so no flag combination reproduces the 162 the game built.
+                if (_iconBySpriteName.ContainsKey(name))
+                {
+                    perSpriteScraped.TryGetValue(name, out int scrapedSeen);
+                    perSpriteScraped[name] = scrapedSeen + 1;
+                }
 
                 // The marker path shares the pointer's conversion, so this is the real test of
                 // whether a marker would land on the map at all.
@@ -2366,6 +2377,22 @@ public sealed class ModEntry : MelonMod
                 $"fully harvested {fullyHarvested}. " +
                 $"Would draw under (surveyed||unlocked) && !fullyHarvested: {wouldDraw}. " +
                 $"Currently scraped from the panel's sprites: {_vanillaIcons.Count}.");
+
+            // Group by group: the total (in MapDetail data) next to what the game instantiated.
+            // A group the game builds none of is the one to leave out; a group it builds all of is
+            // the one to draw. This is the comparison that decides the rewrite's filtering rule.
+            var compared = new List<KeyValuePair<string, int>>(perSprite);
+            compared.Sort((a, b) => b.Value.CompareTo(a.Value));
+            var groupLine = new StringBuilder();
+            for (int i = 0; i < compared.Count; i++)
+            {
+                string key = compared[i].Key;
+                perSpriteScraped.TryGetValue(key, out int scraped);
+                if (i > 0)
+                    groupLine.Append(", ");
+                groupLine.Append(key).Append(' ').Append(scraped).Append('/').Append(compared[i].Value);
+            }
+            LoggerInstance.Msg($"Marker groups (scraped/total) [{reason}]: {groupLine}.");
         }
         catch (Exception ex)
         {
