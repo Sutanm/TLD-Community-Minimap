@@ -3232,6 +3232,80 @@ Framing probe offset: +600 world units -> delta=(0.00000,0.00000)
 > 最坏后果是 `TryPlayerToMapUv` 在某一帧读到旧区域的值；按现有请求序列，
 > `VanillaProjectionScene` 会挡住它（它按场景名比对）。
 
+---
+
+## 44. 原版底图的分辨率上限：1024×1024 DXT5（**否定性结论，已实测**）
+
+**目的**：想让每个地区不必手动点亮、也不必关掉标记，就直接导出干净的底图。
+于是把游戏里所有可能存全分辨率地图的地方**枚举了一遍**，而不是继续猜名字。
+
+### 44.1 实测结果（2026-09-29 23:02 / 23:04 两次会话）
+
+```
+RegionSpecification 的贴图成员（全部枚举，不是搜索）：
+  property m_MiniMap     : AssetReferenceTexture2D = 加载后 1024x1024, DXT5
+  property m_TOCTexture  : AssetReferenceTexture2D = 加载后 1024x1024, DXT5
+  （没有任何名为 m_MapTex 的成员 —— 早期靠字符串搜索找到的这个名字不存在于该类）
+
+GetMiniMapTextureAsync() 实际返回：
+  Region map asset [MountainTownRegion]: 1024x1024 (Texture2D), format=DXT5, mipmaps=1
+
+prefab 成员拆开后的贴图：
+  m_RegionMap = 'MountainTownSandbox_RegionMap'
+      widget 'MountainTownSandbox_RegionMap'  texture=null  size=650x650
+      widget 'RegionDetailMap'                texture=null  size=523x523
+  m_SelectRegionPrefab = 'MountainTown_SelectRegionItem'
+      widget 'Map'                texture=1024x1024  size=1024x979
+      widget 'Highlight'          texture=512x512
+      widget 'Highlight_Target'   texture=512x512
+```
+
+⇒ **区域里不存在大于 1024 的地图贴图。**
+⇒ **地图面板那张 2048×2048 是运行时合成的**（底图 + 迷雾 + 叠加），不是可加载的资源。
+
+### 44.2 结论（**不要再走这条路**）
+
+1. **我们手上的 1024 就是最好的那张**，「换一张更全的贴图」不成立。
+2. **原版底图天然带 DXT5 块压缩伪影** —— 灰色地形图上的块状痕迹**不是 bug**，是资源本身如此。
+3. **面板路线仍然必须点亮地图**（它的贴图带揭示状态），所以
+   **「不点亮就导出完整底图」这个目标，靠现存资源做不到。**
+
+**⇒ 能做的是把这张 1024 底图对齐准，而不是找一张更大的。**
+
+### 44.3 方法论教训（本节最有价值的部分）
+
+**这一轮连续四次推断被实测推翻**，每次都换了说法：
+
+| 推断 | 实测结果 |
+|---|---|
+| 「底图有留白，所以错位」 | 那只是**没点亮**的区域 |
+| 「面板贴图 96% 是空的」 | 那是**点亮前**的迷雾 |
+| 「内容框能量出覆盖范围」 | 图是**软边羽化**的，alpha 阈值 8 与 200 差 10%+，**量法本身无效** |
+| 「`RegionSpecification` 有 `m_MapTex`」 | 靠字符串搜索得到的名字**不在该类上** |
+
+⇒ **两条纪律**：
+1. **枚举优于搜索**。interop 程序集在游戏外解析不了，字符串搜索只会给出**看起来合理**的名字。
+   `ProbeRegionTextures` / `ProbeRegionAssetReferences` / `PollPrefabProbes` 就是这么来的。
+2. **软边贴图不能用 alpha 阈值界定内容范围**。`MeasureOpaqueUv` 只适用于**硬边留白**
+   （它本来就是为此写的），被误用成了通用覆盖范围判定。
+
+## 45. 社区图确实不是 1:1（**已量化**）
+
+用 mountain_town 的校准点算世界→社区图像素的比例：
+
+| 方向 | 比例 |
+|---|---|
+| X | **2.04** px / 世界单位 |
+| Z | **1.76** px / 世界单位 |
+
+**两个方向差 16%** —— 这就是「社区图不能替代原版做绝对定位」的量化依据。
+
+> 取点：信用合作社 world=(1076.9,1736.3) map=(1552.3,1408.9)；邮局 (1126.2,1710.9)→(1641.2,1456.8)；
+> 教堂 (699.8,2102.2)→(874.5,720.8)。**只有 5 个校准点，样本很小**，
+> 这个 16% 是**量级**而不是精确值。
+
+⇒ 用户的判断成立：**原版必须做对**，社区图精度不够（地图作者自己也说过为观感调整过地形）。
+
 ### 41.4 标记重写现在缺的只剩「可见性判据」
 
 §39.3 已知：**802 个带精灵名的标记里只有 39 个 surveyed**，
