@@ -1936,6 +1936,29 @@ public sealed class ModEntry : MelonMod
             $"source={(shown.UsingVanilla ? "vanilla" : "community")} tex={texture} " +
             $"textureReady={shown.TextureReady} playerUv={hasUv} markers={_vanillaIcons.Count} " +
             $"mapDetails={detailCount} vanillaPanelOpen={panelOpen} view={DescribeView()} {fog}");
+
+        // The two layers side by side. The split is only correct if each one's texture, framing and
+        // request state survive the other one changing, and that is invisible in any single-layer
+        // line: a cross-layer clobber looks exactly like a working layer until the other one moves.
+        LoggerInstance.Msg($"[layers] {DescribeLayer(_layers[LayerMini], LayerMini)} | " +
+                           DescribeLayer(_layers[LayerFull], LayerFull));
+    }
+
+    private string DescribeLayer(MapLayer layer, int layerId)
+    {
+        string texture = ReferenceEquals(layer.Texture, null)
+            ? "none"
+            : $"{layer.Texture.width}x{layer.Texture.height}";
+        string projection = string.IsNullOrEmpty(layer.VanillaProjectionScene)
+            ? "-"
+            : layer.VanillaProjectionScene;
+        return $"{LayerName(layerId)}: src={DescribeSource(layer.Source)} " +
+               $"using={(layer.UsingVanilla ? "vanilla" : "community")} tex={texture} " +
+               $"ready={layer.TextureReady} bounds=({layer.VanillaMapLocalBounds.xMin:F0}," +
+               $"{layer.VanillaMapLocalBounds.yMin:F0}," +
+               $"{layer.VanillaMapLocalBounds.width:F0}x{layer.VanillaMapLocalBounds.height:F0}) " +
+               $"proj={projection} baseReq='{layer.BaseMapRequestedScene}' " +
+               $"elems='{layer.ElementsLoadedForScene}'";
     }
 
     // How many entries actually carry the links that would let us tell a collected marker from a
