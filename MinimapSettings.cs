@@ -93,6 +93,14 @@ internal sealed class MinimapSettings : JsonModSettings
     // Names are the keys in the settings file, so only the [Name] strings are free to change.
     [Section("地图标记筛选")]
 
+    // The rewrite is measured against the old path rather than replacing it silently: the scraped
+    // set tops out at whatever the game instantiated (162 of this region's 802), so the two are
+    // visibly different and a player should be able to switch back if the new one misbehaves.
+    [Name("标记来源")]
+    [Description("决定标记从哪里来。地图数据＝读取游戏登记的完整标记（本地区 802 个），位置用与校准相同的坐标系，因此更全也更准；游戏面板＝沿用旧做法，只刮取游戏实际建出的那部分（162 个）。标记画得不对时切回旧做法即可。")]
+    [Choice("地图数据", "游戏面板")]
+    public int MarkerSource = 0;
+
     [Name("资源")]
     [Description("可采集的植物、树枝、鸟巢与动物尸体等资源标记。数量最多的一类。")]
     public bool ShowMarkerResources = true;
@@ -112,6 +120,9 @@ internal sealed class MinimapSettings : JsonModSettings
     [Name("油漆喷罐标记")]
     [Description("玩家用油漆喷罐在地图上留下的标记。")]
     public bool ShowMarkerSprayMarks = true;
+
+    internal const int MarkerSourceMapDetails = 0;
+    internal const int MarkerSourcePanel = 1;
 
     // One integer that changes whenever any of the five switches does, so the per-frame marker loop
     // can decide whether to re-resolve categories with a single comparison instead of five reads

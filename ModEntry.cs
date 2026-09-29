@@ -142,7 +142,18 @@ public sealed class ModEntry : MelonMod
     {
         public Texture Texture;
         public Rect Uv;
+        // Only filled by the atlas path; the scraped path derives size from widget corners instead.
+        public int PixelWidth;
+        public int PixelHeight;
     }
+
+    // Counters for the last MapDetail-driven build, reported once so a session says how many
+    // markers could not be placed rather than leaving it to be guessed from the total.
+    private int _mapDetailSkipped;
+    private int _mapDetailUnresolved;
+    // scene|source of the last marker build, so a rebuild happens when either changes and not
+    // otherwise.
+    private string _markersBuiltForScene = "";
 
     private readonly Dictionary<string, IconRef> _iconBySpriteName = new(StringComparer.Ordinal);
     private UIAtlas _mapIconAtlas;
@@ -477,6 +488,36 @@ public sealed class ModEntry : MelonMod
         if (active.Definition != null && playerReady && !vanillaMapOpen)
             PopulateIconTableOnce(scene.name);
 
+        // The MapDetail-driven marker set. Rebuilt when the scene changes or the source setting
+        // changes, never per frame: it can run to hundreds of objects, and recreating those every
+        // frame is what the draw-time visibility rule exists to avoid.
+        if (active.Definition != null && playerReady && !vanillaMapOpen)
+        {
+            string markerScene = scene.name + "|" + _settings.MarkerSource;
+            if (_markersBuiltForScene != markerScene)
+            {
+                _markersBuiltForScene = markerScene;
+                if (_settings.MarkerSource == MinimapSettings.MarkerSourceMapDetails)
+                {
+                    if (ReferenceEquals(_mapIconAtlas, null) && _iconBySpriteName.Count == 0)
+                        _markersBuiltForScene = "";
+                    else
+                        RebuildMarkersFromMapDetails();
+                }
+                else
+                {
+                    // Old path, kept behind the setting so the rewrite can be compared against it.
+                    // It needs a panel to scrape; with none the icon list stays as it was.
+                    Panel_Map scrapePanel = InterfaceManager.GetPanel<Panel_Map>();
+                    Transform scrapeRoot = ReferenceEquals(scrapePanel, null)
+                        ? null
+                        : FindChildByName(scrapePanel.transform, "MapElements");
+                    if (!ReferenceEquals(scrapeRoot, null))
+                        CaptureVanillaIcons(scrapeRoot, false, true);
+                }
+            }
+        }
+
         TryRefreshVanillaIcons();
 
         if (preferCommunity && !active.TextureReady && active.Definition != null && playerReady &&
@@ -557,6 +598,8 @@ public sealed class ModEntry : MelonMod
             return;
 
         ClearVanillaIcons();
+        // The marker set belongs to the region that just went away.
+        _markersBuiltForScene = "";
         // A new region invalidates the framing outright, so no layer may keep the old one.
         ClearVanillaProjection();
         _layersDirty = true;
@@ -1535,6 +1578,13 @@ public sealed class ModEntry : MelonMod
             textureUv.x + localU * textureUv.width,
             textureUv.y + localV * textureUv.height);
     }
+
+    // Markers and the player pointer share one conversion, deliberately: a marker whose position is
+    // computed differently from the pointer's would drift against it. In the vanilla layer the
+    // texture uv is the region's real uvRect, so a marker and the pointer go through identical
+    // maths; in the community layer the affine calibration serves both.
+    private bool TryWorldToMarkerUv(Vector3 worldPosition, out Vector2 uv) =>
+        TryPlayerToMapUv(worldPosition, out uv);
 
     private bool TryPlayerToMapUv(Vector3 worldPosition, out Vector2 uv)
     {
@@ -2681,6 +2731,189 @@ public sealed class ModEntry : MelonMod
         catch
         {
             return false;
+        }
+    }
+
+    // The texture and atlas rectangle behind a sprite name. The scraped table only ever holds the
+    // handful of sprites the game happened to instantiate, so the atlas is the real source: section
+    // 25.3 measured 205 from the table plus 597 through the atlas for 802 of 802, and the 22:08
+    // session reproduced exactly that.
+    private bool TryResolveIcon(string spriteName, out IconRef icon)
+    {
+        icon = null;
+        if (string.IsNullOrEmpty(spriteName))
+            return false;
+
+        if (_iconBySpriteName.TryGetValue(spriteName, out IconRef known) &&
+            !ReferenceEquals(known.Texture, null))
+        {
+            icon = known;
+            return true;
+        }
+
+        if (ReferenceEquals(_mapIconAtlas, null))
+            return false;
+        try
+        {
+            UISpriteData data = _mapIconAtlas.GetSprite(spriteName);
+            if (data == null)
+                return false;
+            Texture texture = _mapIconAtlas.texture;
+            if (ReferenceEquals(texture, null))
+                return false;
+
+            var resolved = new IconRef
+            {
+                Texture = texture,
+                Uv = new Rect(data.x, data.y, data.width, data.height),
+                PixelWidth = data.width,
+                PixelHeight = data.height,
+            };
+            // Cached so a rebuild does not walk the atlas once per marker.
+            _iconBySpriteName[spriteName] = resolved;
+            icon = resolved;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            LoggerInstance.Warning($"Atlas lookup failed for '{spriteName}': {ex.Message}");
+            return false;
+        }
+    }
+
+    // Builds one marker from data rather than from a UI widget. The scraped path derives position
+    // and size from the sprite's world corners; this one is handed both, which is the point of the
+    // rewrite: position comes from GetWorldPosition, the same coordinate system the calibration
+    // uses, instead of from where the game happened to lay a widget out.
+    private VanillaIcon BuildMarkerIcon(IconRef icon, Vector2 mapUv, Vector2 uvSize, Color color)
+    {
+        GameObject iconObject = CreateUiObject("VanillaMapIcon",
+            typeof(RectTransform), typeof(CanvasRenderer), typeof(RawImage));
+        iconObject.transform.SetParent(_mapRect, false);
+        RectTransform rect = iconObject.GetComponent<RectTransform>();
+        rect.anchorMin = new Vector2(0.5f, 0.5f);
+        rect.anchorMax = new Vector2(0.5f, 0.5f);
+        rect.pivot = new Vector2(0.5f, 0.5f);
+        RawImage image = iconObject.GetComponent<RawImage>();
+        image.texture = icon.Texture;
+        image.uvRect = icon.Uv;
+        image.color = color;
+        image.raycastTarget = false;
+        return new VanillaIcon
+        {
+            Root = iconObject,
+            Rect = rect,
+            MapUv = mapUv,
+            MapUvSize = uvSize,
+        };
+    }
+
+    // Draws every marker the game has registered for this region, from MapDetail data.
+    //
+    // This is the rewrite section 37.2 describes. The panel only instantiates 162 of the region's
+    // 802 registered markers - measured, not assumed - so scraping could never show more than that
+    // however well it worked. Reading s_MapDetails shows all of them, and the icon for each comes
+    // from the atlas, which resolves every one of the 802.
+    //
+    // Visibility is NOT decided here (section 35.3): everything registered is built, and whether it
+    // is drawn is settled per frame in UpdateVanillaIcons against the live category switches. That
+    // is also the groundwork the fog mode needs.
+    private void RebuildMarkersFromMapDetails()
+    {
+        EnsureUnityUi();
+        _pendingVanillaIcons.Clear();
+        _mapDetailSkipped = 0;
+        _mapDetailUnresolved = 0;
+
+        try
+        {
+            var details = MapDetailManager.s_MapDetails;
+            if (ReferenceEquals(details, null))
+            {
+                LoggerInstance.Warning("Marker build: s_MapDetails is null.");
+                return;
+            }
+
+            for (int i = 0; i < details.Count; i++)
+            {
+                MapDetail detail = details[i];
+                if (ReferenceEquals(detail, null))
+                    continue;
+
+                // Labels and area blobs carry no sprite name (section 37.2 point 3).
+                string spriteName = detail.m_SpriteName;
+                if (string.IsNullOrEmpty(spriteName))
+                {
+                    _mapDetailSkipped++;
+                    continue;
+                }
+
+                // One monster resolves the texture; the atlas covers the rest.
+                if (!TryResolveIcon(spriteName, out IconRef icon))
+                {
+                    _mapDetailUnresolved++;
+                    continue;
+                }
+
+                Vector2 mapUv;
+                try
+                {
+                    if (!TryWorldToMarkerUv(detail.GetWorldPosition(), out mapUv))
+                    {
+                        _mapDetailSkipped++;
+                        continue;
+                    }
+                }
+                catch
+                {
+                    _mapDetailSkipped++;
+                    continue;
+                }
+
+                // Markers are drawn at a constant on-screen size that keeps the set's proportions,
+                // exactly as the scraped path does; the icon's own pixel size only sets the ratio.
+                float iconUv = icon.Texture.width > 0
+                    ? Mathf.Max(icon.Uv.width, icon.Uv.height) / icon.Texture.width
+                    : 0.05f;
+                var uvSize = new Vector2(iconUv, iconUv);
+
+                MarkerCategory category = CategorizeSprite(spriteName);
+                VanillaIcon built = BuildMarkerIcon(icon, mapUv, uvSize, Color.white);
+                built.Category = category;
+                built.CategoryEnabled = CategoryEnabled(category);
+                _pendingVanillaIcons.Add(built);
+            }
+
+            ClearVanillaIcons();
+            _vanillaIcons.AddRange(_pendingVanillaIcons);
+            _pendingVanillaIcons.Clear();
+
+            // The same median normalisation the scraped path uses, so a deliberately oversized icon
+            // cannot set the scale for everything else.
+            _vanillaIconMaxUv = 0f;
+            if (_vanillaIcons.Count > 0)
+            {
+                var sizes = new List<float>(_vanillaIcons.Count);
+                for (int i = 0; i < _vanillaIcons.Count; i++)
+                {
+                    Vector2 size = _vanillaIcons[i].MapUvSize;
+                    sizes.Add(Mathf.Max(size.x, size.y));
+                }
+                sizes.Sort();
+                _vanillaIconMaxUv = sizes[sizes.Count / 2];
+            }
+            if (_vanillaIconMaxUv <= 1e-5f)
+                _vanillaIconMaxUv = 1f;
+            _markerRoot.transform.SetAsLastSibling();
+
+            LoggerInstance.Msg(
+                $"Markers rebuilt from MapDetail: {_vanillaIcons.Count} drawn, " +
+                $"{_mapDetailSkipped} skipped (labels, off-map), " +
+                $"{_mapDetailUnresolved} unresolved.");
+        }
+        catch (Exception ex)
+        {
+            LoggerInstance.Warning($"Marker rebuild from MapDetail failed: {ex.Message}");
         }
     }
 
