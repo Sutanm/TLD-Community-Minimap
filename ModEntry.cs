@@ -2033,7 +2033,11 @@ public sealed class ModEntry : MelonMod
         // removes a marker at all, so replacing the set would silently shrink the HUD to the lit
         // area - the log showed exactly that, 162 markers dropping to 28 once the panel had been
         // opened. Keeping the larger set costs nothing except stale markers we already had.
-        if (keepExistingWhenEmpty && _pendingVanillaIcons.Count < _vanillaIcons.Count)
+        //
+        // An empty existing set is exempt: there is nothing to protect, and refusing the capture
+        // is what left the HUD with no markers at all after a scene change.
+        if (keepExistingWhenEmpty && _vanillaIcons.Count > 0 &&
+            _pendingVanillaIcons.Count < _vanillaIcons.Count)
         {
             LoggerInstance.Msg(
                 $"Kept {_vanillaIcons.Count} markers: the re-capture returned only " +
@@ -2999,10 +3003,19 @@ public sealed class ModEntry : MelonMod
             // The loaded asset is not CPU-readable and is owned by Addressables, so keep an
             // owned copy instead of handing the asset itself to the HUD.
             Texture2D owned = CaptureTexture(source);
-            UseVanillaBaseMap(owned, sceneName, layer);
+
+            // The capture is UP TO 1024x1024 and letterboxed, not a full-bleed map: measured across
+            // all 16 exported regions, the opaque content runs from 745x893 up to 1009x1021 inside
+            // that frame, each with different margins. Projecting onto the frame put the player
+            // pointer off by a fixed, region-specific amount - the 22:21 session's "pointer position
+            // is wrong" after switching to vanilla. The content box is measured from the pixels
+            // rather than assumed, and the projection is aimed at it.
+            Rect contentUv = MeasureOpaqueUv(owned);
+            UseVanillaBaseMap(owned, sceneName, layer, contentUv);
             LoggerInstance.Msg(
-                $"Vanilla base map active for {sceneName}: {owned.width}x{owned.height} " +
-                "(no map panel needed).");
+                $"Vanilla base map active for {sceneName}: {owned.width}x{owned.height}, " +
+                $"content uv=({contentUv.x:F4},{contentUv.y:F4},{contentUv.width:F4}," +
+                $"{contentUv.height:F4}) (no map panel needed).");
 
             // Calibration aid: keep one PNG of each region's base map on disk so the community
             // map can be registered against it instead of picking pixels by eye.
@@ -3040,7 +3053,17 @@ public sealed class ModEntry : MelonMod
     // a texture: it needs the atlas, not the base map, so it must not wait for one.
     private void PopulateIconTableOnce(string sceneName)
     {
-        if (string.Equals(_elementsLoadedForScene, sceneName, StringComparison.Ordinal))
+        // The guard exists because LoadMapElementsForScene APPENDS, so calling it twice on the same
+        // scene would duplicate every marker. It must not, however, block rebuilding a list that
+        // something emptied: ObserveScene clears the icons on every real scene change (an interior
+        // counts), and the 22:21 session showed the result - markers fell from 162 to 0 on the way
+        // into GreyMothersHouseA and never came back, because this guard said "already loaded for
+        // this scene" while the list it was protecting no longer existed.
+        //
+        // An empty list is the one case where the containers may also be empty, so the scan runs
+        // first and the appending call is only made when the scan finds nothing.
+        bool alreadyLoaded = string.Equals(_elementsLoadedForScene, sceneName, StringComparison.Ordinal);
+        if (alreadyLoaded && _vanillaIcons.Count > 0)
             return;
         if (DateTime.UtcNow < _elementLoadAfterUtc)
             return;
@@ -3052,6 +3075,30 @@ public sealed class ModEntry : MelonMod
             if (panel == null)
                 return;
 
+            // Scan what is already there before asking the game to build more.
+            Transform mapElements = FindChildByName(panel.transform, "MapElements");
+            if (mapElements != null)
+            {
+                _vanillaIconSignature = ComputeVanillaIconSignature(mapElements);
+                CaptureVanillaIcons(mapElements, false, true);
+                if (_vanillaIcons.Count > 0)
+                {
+                    _elementsLoadedForScene = sceneName;
+                    LoggerInstance.Msg(
+                        $"Icon table [{sceneName}] rebuilt from existing elements: " +
+                        $"{_vanillaIcons.Count} markers, {_iconBySpriteName.Count} sprite names, " +
+                        $"atlas present: {!ReferenceEquals(_mapIconAtlas, null)}.");
+                    return;
+                }
+            }
+
+            if (alreadyLoaded)
+            {
+                // The scene was already loaded once and the containers are genuinely empty. Saying
+                // so is more useful than silently retrying forever.
+                LoggerInstance.Msg($"Icon table [{sceneName}]: containers are empty; rebuilding.");
+            }
+
             try { panel.ForceUpdateRegion(); }
             catch (Exception ex) { LoggerInstance.Warning($"ForceUpdateRegion failed: {ex.Message}"); }
 
@@ -3059,7 +3106,7 @@ public sealed class ModEntry : MelonMod
             catch (Exception ex) { LoggerInstance.Warning($"LoadMapElementsForScene failed: {ex.Message}"); }
 
             _elementsLoadedForScene = sceneName;
-            Transform mapElements = FindChildByName(panel.transform, "MapElements");
+            mapElements = FindChildByName(panel.transform, "MapElements");
             if (mapElements == null)
             {
                 LoggerInstance.Warning($"Icon table [{sceneName}]: no MapElements container.");
@@ -3067,9 +3114,10 @@ public sealed class ModEntry : MelonMod
             }
 
             _vanillaIconSignature = ComputeVanillaIconSignature(mapElements);
-            CaptureVanillaIcons(mapElements, true, true);
+            CaptureVanillaIcons(mapElements, false, true);
             LoggerInstance.Msg(
-                $"Icon table [{sceneName}]: {_iconBySpriteName.Count} sprite names, " +
+                $"Icon table [{sceneName}]: {_vanillaIcons.Count} markers, " +
+                $"{_iconBySpriteName.Count} sprite names, " +
                 $"atlas present: {!ReferenceEquals(_mapIconAtlas, null)}.");
         }
         catch (Exception ex)
@@ -3125,7 +3173,68 @@ public sealed class ModEntry : MelonMod
         }
     }
 
-    private void UseVanillaBaseMap(Texture2D texture, string sceneName, MapLayer layer)
+    // The uv rectangle of the opaque pixels inside a texture. The region base map is delivered on a
+    // fixed-size canvas with transparent margins whose size differs per region, so the projection has
+    // to aim at the content or every marker and the player pointer land off by a region-specific
+    // amount. Returns the full texture when the measurement is unusable, which is the same
+    // behaviour as before rather than a guess.
+    private Rect MeasureOpaqueUv(Texture2D texture)
+    {
+        var full = new Rect(0f, 0f, 1f, 1f);
+        if (ReferenceEquals(texture, null))
+            return full;
+        try
+        {
+            int width = texture.width;
+            int height = texture.height;
+            if (width <= 1 || height <= 1)
+                return full;
+
+            Il2CppStructArray<Color32> pixels = texture.GetPixels32();
+            if (pixels == null || pixels.Length < width * height)
+                return full;
+
+            int minX = width, maxX = -1, minY = height, maxY = -1;
+            for (int y = 0; y < height; y++)
+            {
+                int row = y * width;
+                for (int x = 0; x < width; x++)
+                {
+                    if (pixels[row + x].a <= 8)
+                        continue;
+                    if (x < minX) minX = x;
+                    if (x > maxX) maxX = x;
+                    if (y < minY) minY = y;
+                    if (y > maxY) maxY = y;
+                }
+            }
+
+            if (maxX < minX || maxY < minY)
+                return full;
+
+            // GetPixels32 is bottom-up, so row 0 is the bottom of the image and no flip is needed
+            // to express the result in texture uv space.
+            var content = new Rect(
+                (float)minX / width,
+                (float)minY / height,
+                (float)(maxX - minX + 1) / width,
+                (float)(maxY - minY + 1) / height);
+
+            // A box that covers essentially everything is not letterboxed, so report the full
+            // texture and keep the numbers clean.
+            if (content.width > 0.995f && content.height > 0.995f)
+                return full;
+            return content;
+        }
+        catch (Exception ex)
+        {
+            LoggerInstance.Warning($"Measuring base map content failed: {ex.Message}");
+            return full;
+        }
+    }
+
+    private void UseVanillaBaseMap(Texture2D texture, string sceneName, MapLayer layer,
+        Rect textureUv)
     {
         EnsureUnityUi();
         Texture2D previous = layer.Texture;
@@ -3133,16 +3242,17 @@ public sealed class ModEntry : MelonMod
         layer.LoadedMapId = "__basemap__" + sceneName;
         layer.UsingVanilla = true;
         layer.TextureReady = true;
-        // The base map shares the surveyed map's framing, confirmed by the framing probe: the panel
-        // path reported (-325,-325,650x650) with an identity uvRect, and both paths produced the
-        // same final uv for the player and 600 world units away. Recorded on every layer because
-        // the value belongs to the region, not to whichever layer happened to load it.
+        // The world bounds are the surveyed map's framing, confirmed by the framing probe: the panel
+        // path reported (-325,-325,650x650) and both paths produced the same final uv for the player
+        // and 600 world units away. The TEXTURE uv is a different matter - this capture is
+        // letterboxed, so it is the measured content box rather than the whole frame. Recording the
+        // frame's identity rect here is what put the vanilla pointer in the wrong place.
         for (int i = 0; i < _layers.Length; i++)
         {
             MapLayer target = _layers[i];
             target.VanillaProjectionScene = sceneName;
             target.VanillaMapLocalBounds = new Rect(-325f, -325f, 650f, 650f);
-            target.VanillaTextureUv = new Rect(0f, 0f, 1f, 1f);
+            target.VanillaTextureUv = textureUv;
         }
         if (!ReferenceEquals(previous, null) && !ReferenceEquals(previous, texture))
             UnityEngine.Object.Destroy(previous);
