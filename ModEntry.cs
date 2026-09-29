@@ -1081,7 +1081,9 @@ public sealed class ModEntry : MelonMod
             // Do not bind this texture to the shared UI here: it belongs to the layer, and that
             // layer may not be the one on screen. UpdateUnityUi binds whichever layer is active.
             LoggerInstance.Msg(
-                $"Loaded {layer.Definition.DisplayName}: {texture.width}x{texture.height}.");
+                $"Loaded {layer.Definition.DisplayName} for layer " +
+                $"'{LayerName(layer == _layers[LayerMini] ? LayerMini : LayerFull)}': " +
+                $"{texture.width}x{texture.height}.");
             GC.KeepAlive(texture);
             return true;
         }
@@ -1266,6 +1268,8 @@ public sealed class ModEntry : MelonMod
         // The single UI object carries whichever layer is on screen, so the binding happens here
         // rather than at load time: loading a layer must not steal the object from the other one.
         _mapImage.texture = ActiveLayer.Texture;
+        // Re-enabled every frame; the corner map switches it off below while it has no projection.
+        _mapImage.enabled = true;
         UpdateFullMapHints(fullMap);
         _backgroundObject.SetActive(fullMap);
         _backgroundImage.color = new Color(0.015f, 0.025f, 0.035f,
@@ -1277,14 +1281,19 @@ public sealed class ModEntry : MelonMod
         bool hasPosition = TryPlayerToMapUv(player.position, out Vector2 uv);
         if (!hasPosition && !fullMap)
         {
-            // The corner map centres on the player, so without a projection it has nothing to show
-            // and falls back to the whole image. The full map does not: its zoom and pan are plain
-            // uv maths, and returning here was why scrolling did nothing at all in a region that
-            // had not been calibrated yet.
-            _mapImage.uvRect = new Rect(0f, 0f, 1f, 1f);
+            // The corner map centres on the player, so until there is a projection it has nothing
+            // to show. Drawing the whole image here was a visible glitch on every scene change: for
+            // the moment before the new region's calibration or base map is ready, the corner map
+            // flashed the entire region and then snapped to the player. Hide the image instead and
+            // restore it as soon as a projection exists.
+            //
+            // The full map is deliberately not hidden: its zoom and pan are plain uv maths, so it
+            // works on an uncalibrated region, and hiding it was what made scrolling do nothing.
+            _mapImage.enabled = false;
             _markerRoot.SetActive(false);
             return;
         }
+
 
         Rect visibleUv;
         if (fullMap)
