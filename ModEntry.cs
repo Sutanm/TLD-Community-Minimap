@@ -4310,6 +4310,9 @@ public sealed class ModEntry : MelonMod
     private GameObject _hoverLabelRoot;
     private RectTransform _hoverLabelRect;
     private Text _hoverLabelText;
+    // The dark plate is a separate object behind the text, because adding Image to the text object
+    // stopped its Text component from being created at all.
+    private GameObject _hoverPlateRoot;
     // Font size in force on the existing label objects, so a settings change is applied once.
     private int _appliedLabelFontSize = -1;
     // Set when the tooltip could not be constructed, so the failure costs one log line rather than an
@@ -4579,6 +4582,8 @@ public sealed class ModEntry : MelonMod
         {
             if (!ReferenceEquals(_hoverLabelRoot, null))
                 _hoverLabelRoot.SetActive(false);
+            if (!ReferenceEquals(_hoverPlateRoot, null))
+                _hoverPlateRoot.SetActive(false);
             return;
         }
 
@@ -4635,26 +4640,45 @@ public sealed class ModEntry : MelonMod
             _hoverLabelRect.anchoredPosition = tooltipPosition;
         if (!_hoverLabelRoot.activeSelf)
             _hoverLabelRoot.SetActive(true);
+
+        // The plate is a separate object, so it is positioned and shown alongside the text.
+        if (!ReferenceEquals(_hoverPlateRoot, null))
+        {
+            RectTransform plateRect = _hoverPlateRoot.GetComponent<RectTransform>();
+            if (!ReferenceEquals(plateRect, null) && plateRect.anchoredPosition != tooltipPosition)
+                plateRect.anchoredPosition = tooltipPosition;
+            if (!_hoverPlateRoot.activeSelf)
+                _hoverPlateRoot.SetActive(true);
+        }
     }
 
-    // Adds a component through the same Il2CppType path CreateUiObject uses.
+    // Builds the one reusable tooltip.
     //
-    // GameObject.AddComponent<T>() silently returned null for UnityEngine.UI.Text in this mod - twice,
-    // once inside the component array and once on its own - while the Image added the same way worked.
-    // The generic overload is evidently not reliable for every UI type here, so the component is
-    // added by the type object, which is the path the rest of the UI already uses successfully.
-    private static Component AddComponentByType(GameObject target, Type componentType)
-    {
-        var il2CppType = Il2CppType.From(componentType);
-        return target.AddComponent(il2CppType);
-    }
-
-    // Builds the one reusable tooltip. Kept separate so its failure is caught and reported with the
-    // full exception, rather than surfacing as a bare null reference once per frame.
+    // The component list here is exactly the one that worked before: RectTransform, CanvasRenderer,
+    // Text. Adding Image to it stopped Text from being created at all, and neither adding it
+    // afterwards nor adding via Il2CppType recovered it - measured three times, with the diagnostics
+    // reporting text=false each time. So the text object is created exactly as it was, and the dark
+    // plate is a separate sibling placed behind it.
     private void CreateHoverTooltip()
     {
+        // The plate first, so it sits behind the text in the draw order.
+        _hoverPlateRoot = CreateUiObject("MapHoverPlate",
+            typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+        _hoverPlateRoot.transform.SetParent(_mapRect, false);
+        RectTransform plateRect = _hoverPlateRoot.GetComponent<RectTransform>();
+        plateRect.anchorMin = new Vector2(0.5f, 0.5f);
+        plateRect.anchorMax = new Vector2(0.5f, 0.5f);
+        plateRect.pivot = new Vector2(0.5f, 0.5f);
+        plateRect.sizeDelta = new Vector2(268f, 32f);
+        Image plate = _hoverPlateRoot.GetComponent<Image>();
+        if (!ReferenceEquals(plate, null))
+        {
+            plate.color = new Color(0.06f, 0.05f, 0.04f, 0.80f);
+            plate.raycastTarget = false;
+        }
+
         _hoverLabelRoot = CreateUiObject("MapHoverLabel",
-            typeof(RectTransform), typeof(CanvasRenderer));
+            typeof(RectTransform), typeof(CanvasRenderer), typeof(Text));
         _hoverLabelRoot.transform.SetParent(_mapRect, false);
         _hoverLabelRect = _hoverLabelRoot.GetComponent<RectTransform>();
         _hoverLabelRect.anchorMin = new Vector2(0.5f, 0.5f);
@@ -4662,22 +4686,11 @@ public sealed class ModEntry : MelonMod
         _hoverLabelRect.pivot = new Vector2(0.5f, 0.5f);
         _hoverLabelRect.sizeDelta = new Vector2(260f, 30f);
 
-        // A dark plate behind the text: over a pale map it is what makes the name read at a glance.
-        Component plateComponent = AddComponentByType(_hoverLabelRoot, typeof(Image));
-        Image plate = plateComponent?.TryCast<Image>();
-        if (!ReferenceEquals(plate, null))
-        {
-            plate.color = new Color(0.06f, 0.05f, 0.04f, 0.80f);
-            plate.raycastTarget = false;
-        }
-
-        Component textComponent = AddComponentByType(_hoverLabelRoot, typeof(Text));
-        _hoverLabelText = textComponent?.TryCast<Text>();
+        _hoverLabelText = _hoverLabelRoot.GetComponent<Text>();
         if (ReferenceEquals(_hoverLabelRect, null) || ReferenceEquals(_hoverLabelText, null))
             throw new InvalidOperationException(
                 $"tooltip components missing (rect={_hoverLabelRect != null}, " +
-                $"text={_hoverLabelText != null}, plate={plate != null}, " +
-                $"rawText={textComponent != null})");
+                $"text={_hoverLabelText != null}, plate={plate != null})");
 
         _hoverLabelText.font = _hintFont;
         _hoverLabelText.fontSize = _settings.LabelFontSize;
