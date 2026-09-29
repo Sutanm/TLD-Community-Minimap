@@ -101,6 +101,10 @@ internal sealed class MinimapSettings : JsonModSettings
     [Choice("地图数据", "游戏面板")]
     public int MarkerSource = 0;
 
+    [Name("社区地图上也画标记")]
+    [Description("打开后，民间高清地图上也会画出地图标记。关闭则只有原版制图带标记（旧行为）。打开时标记位置走地图配准用的仿射变换，和玩家指针同一条链路。")]
+    public bool MarkersOnCommunityMap = true;
+
     [Name("资源")]
     [Description("可采集的植物、树枝、鸟巢与动物尸体等资源标记。数量最多的一类。")]
     public bool ShowMarkerResources = true;

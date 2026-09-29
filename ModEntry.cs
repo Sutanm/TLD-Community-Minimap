@@ -493,7 +493,12 @@ public sealed class ModEntry : MelonMod
         // frame is what the draw-time visibility rule exists to avoid.
         if (active.Definition != null && playerReady && !vanillaMapOpen)
         {
-            string markerScene = scene.name + "|" + _settings.MarkerSource;
+            // The projection is part of the key because marker uv is computed at BUILD time from
+            // whichever layer is active then. Without the layer in the key, the markers built while
+            // the vanilla source was up stay in vanilla uv and land in the wrong place the moment
+            // the community map is on screen, even though both are "the same scene".
+            string projection = active.UsingVanilla ? "vanilla" : "community";
+            string markerScene = scene.name + "|" + _settings.MarkerSource + "|" + projection;
             if (_markersBuiltForScene != markerScene)
             {
                 _markersBuiltForScene = markerScene;
@@ -1530,7 +1535,14 @@ public sealed class ModEntry : MelonMod
 
     private void UpdateVanillaIcons(Rect visibleUv, Vector2 mapSize)
     {
-        bool show = ActiveLayer.UsingVanilla;
+        // Markers used to be drawn only while the vanilla source was active, and that was the whole
+        // of the reason they could not appear on the community map. The data does not care which
+        // texture is behind it: every marker has already been converted to this layer's texture uv
+        // by the same projection the player pointer uses. Drawing them on the community map is
+        // therefore a switch, not a feature - and it is the only path whose projection has been
+        // fitted against real landmarks.
+        bool show = ActiveLayer.UsingVanilla || _settings.MarkersOnCommunityMap;
+
         bool categoriesChanged = _markerCategoryState != _settings.MarkerCategoryState();
         if (categoriesChanged)
             _markerCategoryState = _settings.MarkerCategoryState();
