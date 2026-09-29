@@ -4641,8 +4641,12 @@ public sealed class ModEntry : MelonMod
     // full exception, rather than surfacing as a bare null reference once per frame.
     private void CreateHoverTooltip()
     {
+        // Image and Text in the same component array produced a GameObject with the Image and no
+        // Text - measured, not assumed: "rect=True, text=False, plate=True". That is why the tooltip
+        // showed nothing while the working version, which had no Image at all, was fine. Creating the
+        // plate first and adding the text to it afterwards keeps both.
         _hoverLabelRoot = CreateUiObject("MapHoverLabel",
-            typeof(RectTransform), typeof(CanvasRenderer), typeof(Image), typeof(Text));
+            typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
         _hoverLabelRoot.transform.SetParent(_mapRect, false);
         _hoverLabelRect = _hoverLabelRoot.GetComponent<RectTransform>();
         _hoverLabelRect.anchorMin = new Vector2(0.5f, 0.5f);
@@ -4650,8 +4654,7 @@ public sealed class ModEntry : MelonMod
         _hoverLabelRect.pivot = new Vector2(0.5f, 0.5f);
         _hoverLabelRect.sizeDelta = new Vector2(260f, 30f);
 
-        // A dark plate behind the text as well as a shadow on it: over a pale map the plate is what
-        // makes the name read at a glance, and the offset copy keeps the glyphs crisp against it.
+        // A dark plate behind the text: over a pale map it is what makes the name read at a glance.
         Image plate = _hoverLabelRoot.GetComponent<Image>();
         if (!ReferenceEquals(plate, null))
         {
@@ -4659,7 +4662,7 @@ public sealed class ModEntry : MelonMod
             plate.raycastTarget = false;
         }
 
-        _hoverLabelText = _hoverLabelRoot.GetComponent<Text>();
+        _hoverLabelText = _hoverLabelRoot.AddComponent<Text>();
         if (ReferenceEquals(_hoverLabelRect, null) || ReferenceEquals(_hoverLabelText, null))
             throw new InvalidOperationException(
                 $"tooltip components missing (rect={_hoverLabelRect != null}, " +
@@ -4672,7 +4675,6 @@ public sealed class ModEntry : MelonMod
         _hoverLabelText.horizontalOverflow = HorizontalWrapMode.Overflow;
         _hoverLabelText.verticalOverflow = VerticalWrapMode.Overflow;
         _hoverLabelText.raycastTarget = false;
-        AddTextOutline(_hoverLabelRect, _hoverLabelText);
     }
 
     // A single offset copy behind the text, to lift it off the map's dark linework.
@@ -4694,30 +4696,6 @@ public sealed class ModEntry : MelonMod
         catch (Exception ex)
         {
             LoggerInstance.Warning($"Text shadow unavailable: {ex.Message}");
-        }
-    }
-
-    // Outlines a piece of label text so the map's dark linework cannot swallow it.
-    //
-    // The map art is a light background crossed by heavy dark lines, and dark text laid straight on it
-    // disappears wherever a line passes behind. An outline of the opposite tone keeps every glyph
-    // readable without a background plate, which would hide the art the label is naming.
-    private void AddTextOutline(RectTransform rect, Text text)
-    {
-        try
-        {
-            var effect = rect.gameObject.AddComponent<Outline>();
-            if (ReferenceEquals(effect, null))
-                return;
-            effect.effectColor = new Color(0.97f, 0.95f, 0.90f, 0.95f);
-            effect.effectDistance = new Vector2(1.4f, -1.4f);
-            effect.useGraphicAlpha = false;
-        }
-        catch (Exception ex)
-        {
-            // An outline is a nicety; plain text is still legible, so a missing component is not a
-            // reason to drop the label.
-            LoggerInstance.Warning($"Text outline unavailable: {ex.Message}");
         }
     }
 
