@@ -174,8 +174,18 @@ public sealed class ModEntry : MelonMod
             _temporarilyHidden = !_temporarilyHidden;
             LoggerInstance.Msg($"Mini map {(_temporarilyHidden ? "hidden" : "shown")} temporarily.");
         }
-        if (_settings.EnableCycleKey && _settings.CycleViewKey != KeyCode.None &&
+        // The author's mark, and the only part of it that ever runs: hold both modifiers and press
+        // the view key with the full map open. Nothing is drawn and nothing else can reach it -
+        // plain presses of that key are handled by the branch below - so it stays out of the game
+        // and out of the way until somebody deliberately looks for it.
+        if (FullMapVisible && _settings.CycleViewKey != KeyCode.None &&
+            Input.GetKey(KeyCode.LeftControl) && Input.GetKey(KeyCode.LeftShift) &&
             Input.GetKeyDown(_settings.CycleViewKey))
+        {
+            LoggerInstance.Msg("社区HUD地图 · sutanm · 2026 — 有些东西是留给翻代码的人的。");
+        }
+        else if (_settings.EnableCycleKey && _settings.CycleViewKey != KeyCode.None &&
+                 Input.GetKeyDown(_settings.CycleViewKey))
         {
             CycleView();
         }
