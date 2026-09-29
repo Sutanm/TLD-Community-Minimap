@@ -1,0 +1,19 @@
+# Line endings.
+#
+# This project has been edited from Windows throughout and every file in it is CRLF. Normalising on
+# checkout keeps it that way when a tool or an editor on another platform writes LF - the Python
+# helpers under tools/ were added from a Linux-like environment and arrived with LF, which git then
+# warned about on every commit.
+* text=auto eol=crlf
+
+# Binary types that must never be line-ending converted. The map images are licensed art and the
+# exported PNGs are evidence used to verify measurements, so corrupting a byte of either would be
+# worse than a cosmetic diff.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.dll binary
+*.pdb binary
+
+# Keep patch and diff output readable rather than treating it as text to convert.
+*.patch -text

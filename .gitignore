@@ -14,3 +14,9 @@ calibration_points.csv
 tools/marker-overlay-preview.png
 tools/marker-crop-*.png
 tools/marker-tight-*.png
+
+# Comparison renders from the layer-split investigation. Multi-megabyte PNGs that the scripts beside
+# them can reproduce from the map images on demand.
+tools/extent-*.png
+tools/content-vs-content.png
+tools/panel-vs-*.png
