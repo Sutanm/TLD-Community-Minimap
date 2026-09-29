@@ -4152,6 +4152,77 @@ public sealed class ModEntry : MelonMod
         }
     }
 
+    // Lists what Il2Cpp.Locale actually offers, and tests the candidates.
+    //
+    // Both value sources for a place name are now ruled out by measurement: m_CustomName is empty for
+    // all 14 label entries, and Il2Cpp.Locale.GetText answers with the key it is handed. The key is a
+    // real localization key - the game's own map shows 米尔顿小镇 for GAMEPLAY_mtTownCentre - so the
+    // translation exists; what is wrong is which member performs it. Guessing that member has failed
+    // four times, so this enumerates the class and tries what it finds against a key whose expected
+    // answer is known.
+    private static bool s_localeMembersProbed;
+
+    private void ProbeLocaleMembers()
+    {
+        if (s_localeMembersProbed)
+            return;
+        s_localeMembersProbed = true;
+        try
+        {
+            Type type = null;
+            foreach (System.Reflection.Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                try { type = assembly.GetType("Il2Cpp.Locale"); } catch { }
+                if (type != null)
+                    break;
+            }
+            if (type == null)
+            {
+                LoggerInstance.Warning("Locale member probe: Il2Cpp.Locale not found.");
+                return;
+            }
+
+            LoggerInstance.Msg($"Locale members on {type.FullName}:");
+            foreach (System.Reflection.MethodInfo method in type.GetMethods(
+                         System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static))
+            {
+                if (method.IsSpecialName)
+                    continue;
+                var parameters = method.GetParameters();
+                LoggerInstance.Msg($"  {(method.ReturnType == typeof(string) ? "string" : method.ReturnType.Name)} " +
+                    $"{method.Name}({string.Join(",", System.Array.ConvertAll(parameters, p => p.ParameterType.Name))})");
+            }
+
+            // Try every static string-returning single-string method against a key whose answer is
+            // known from the game's own map, so a candidate can be judged rather than assumed.
+            const string knownKey = "GAMEPLAY_mtTownCentre";
+            foreach (System.Reflection.MethodInfo method in type.GetMethods(
+                         System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static))
+            {
+                if (method.IsSpecialName || method.ReturnType != typeof(string))
+                    continue;
+                var parameters = method.GetParameters();
+                if (parameters.Length != 1 || parameters[0].ParameterType != typeof(string))
+                    continue;
+                try
+                {
+                    string answer = method.Invoke(null, new object[] { knownKey }) as string;
+                    LoggerInstance.Msg($"  try {method.Name}(\"{knownKey}\") = " +
+                        $"{(string.IsNullOrEmpty(answer) ? "<empty>" : $"'{answer}'")}" +
+                        (string.Equals(answer, knownKey, StringComparison.Ordinal) ? "  (echoes the key)" : ""));
+                }
+                catch (Exception ex)
+                {
+                    LoggerInstance.Msg($"  try {method.Name} threw {ex.GetType().Name}.");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            LoggerInstance.Warning($"Locale member probe failed: {ex.Message}");
+        }
+    }
+
     private void ProbeLocalization()
     {
         s_localizationProbed = true;
@@ -4266,6 +4337,7 @@ public sealed class ModEntry : MelonMod
                 return;
 
             ProbeMapDetailMembers();
+            ProbeLocaleMembers();
 
             int added = 0;
             for (int i = 0; i < details.Count; i++)
