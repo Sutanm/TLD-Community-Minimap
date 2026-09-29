@@ -158,6 +158,8 @@ public sealed class ModEntry : MelonMod
     private DateTime _nextMarkerRebuildUtc = DateTime.MinValue;
     // Place names, which the marker build skips because they carry no sprite name.
     private readonly List<MapLabel> _mapLabels = new();
+    // Label entries whose text could not be resolved, reported once so the reason is visible.
+    private readonly List<string> _labelMisses = new();
     // Region whose panel texture has already been measured and exported, so the diagram is written
     // once instead of on every panel refresh.
     private string _panelTextureMeasuredForScene = "";
@@ -4096,45 +4098,6 @@ public sealed class ModEntry : MelonMod
         return "";
     }
 
-    // Reads MapDetail's own display name, if it has one.
-    //
-    // The game shows these names on its map, so the text must already exist somewhere reachable from
-    // the map data - and a member named m_LocalizedName is the obvious candidate. Reading a property
-    // off the entry is far less fragile than resolving a key through a localization API whose type
-    // name and member name both had to be guessed. Reflection, because a missing property must fall
-    // through to the key lookup rather than fail the build.
-    private static System.Reflection.PropertyInfo s_localizedNameProperty;
-    private static bool s_localizedNameProbed;
-
-    private static string ReadLocalizedName(MapDetail detail)
-    {
-        if (!s_localizedNameProbed)
-        {
-            s_localizedNameProbed = true;
-            try
-            {
-                s_localizedNameProperty = typeof(MapDetail).GetProperty("m_LocalizedName",
-                    System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic |
-                    System.Reflection.BindingFlags.Instance);
-            }
-            catch
-            {
-                s_localizedNameProperty = null;
-            }
-        }
-
-        if (s_localizedNameProperty == null)
-            return "";
-        try
-        {
-            return s_localizedNameProperty.GetValue(detail) as string ?? "";
-        }
-        catch
-        {
-            return "";
-        }
-    }
-
     // Lists what a MapDetail actually exposes for reading a display name.
     //
     // Guessing has failed three times now - "Localization" was not a type name, m_LocalizedName is
@@ -4294,6 +4257,7 @@ public sealed class ModEntry : MelonMod
     {
         EnsureUnityUi();
         ClearLabels();
+        _labelMisses.Clear();
 
         try
         {
@@ -4315,11 +4279,22 @@ public sealed class ModEntry : MelonMod
                 if (!string.IsNullOrEmpty(detail.m_SpriteName))
                     continue;
 
-                string text = ReadLocalizedName(detail);
+                // Order matters. m_CustomName is a plain text override and is used when set;
+                // m_LocID is a localization key, which is why the labels came out empty while only
+                // the key path was tried. Enumerating the entry's own members found both, after three
+                // guesses at a lookup API had failed.
+                // Order matters. m_CustomName is a plain text override and is used when set; m_LocID
+                // is a localization key, which is why the labels stayed empty while only the key path
+                // was tried. Enumerating the entry's own members found both, after three guesses at a
+                // lookup API had failed.
+                string text = detail.m_CustomName;
                 if (string.IsNullOrEmpty(text))
                     text = LocalizeLabel(detail.m_LocID);
                 if (string.IsNullOrEmpty(text))
+                {
+                    _labelMisses.Add($"{detail.m_LocID}|custom='{detail.m_CustomName}'");
                     continue;
+                }
 
                 Vector2 mapUv;
                 try
@@ -4371,8 +4346,12 @@ public sealed class ModEntry : MelonMod
             }
 
             LoggerInstance.Msg($"Map labels: {added} placed from {details.Count} entries " +
-                $"(display name available: {s_localizedNameProperty != null}, " +
-                $"key lookup: {(s_locStringMethod != null ? "yes" : "no")}).");
+                $"(key lookup: {(s_locStringMethod != null ? "yes" : "no")}).");
+            if (_labelMisses.Count > 0)
+            {
+                LoggerInstance.Msg($"Map labels with no text ({_labelMisses.Count}): " +
+                    string.Join(", ", _labelMisses.GetRange(0, Math.Min(6, _labelMisses.Count))));
+            }
         }
         catch (Exception ex)
         {
