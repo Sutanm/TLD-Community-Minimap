@@ -4277,6 +4277,89 @@ public sealed class ModEntry : MelonMod
         }
     }
 
+    // Finds the member that resolves a location key by testing every candidate against a key whose
+    // answer is already known to exist.
+    //
+    // The finished text is definitely produced: the hierarchy dump shows the panel's own text objects
+    // carrying 米尔顿小镇 and even 香蒲 for harvestables. Il2Cpp.Locale is not doing it - all three of
+    // its GetText overloads echo the key - so the resolver is somewhere else, and naming it by hand
+    // has failed four times. Scanning for a (string) -> string member and calling it is a test rather
+    // than a guess: a candidate that returns the key unchanged is rejected, and one that returns
+    // something else is the answer.
+    private static bool s_locatorScanDone;
+
+    private void ScanForLocator()
+    {
+        if (s_locatorScanDone)
+            return;
+        s_locatorScanDone = true;
+
+        const string knownKey = "GAMEPLAY_mtTownCentre";
+        int tried = 0;
+        try
+        {
+            foreach (System.Reflection.Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                Type[] types;
+                try { types = assembly.GetTypes(); }
+                catch { continue; }
+
+                foreach (Type type in types)
+                {
+                    string typeName = type.FullName ?? type.Name;
+                    if (typeName.StartsWith("System.", StringComparison.Ordinal) ||
+                        typeName.StartsWith("UnityEngine", StringComparison.Ordinal) ||
+                        typeName.StartsWith("MelonLoader", StringComparison.Ordinal))
+                        continue;
+
+                    System.Reflection.MethodInfo[] methods;
+                    try
+                    {
+                        methods = type.GetMethods(System.Reflection.BindingFlags.Public |
+                                                  System.Reflection.BindingFlags.NonPublic |
+                                                  System.Reflection.BindingFlags.Static |
+                                                  System.Reflection.BindingFlags.Instance |
+                                                  System.Reflection.BindingFlags.DeclaredOnly);
+                    }
+                    catch { continue; }
+
+                    foreach (System.Reflection.MethodInfo method in methods)
+                    {
+                        if (method.IsSpecialName || method.ReturnType != typeof(string))
+                            continue;
+                        var parameters = method.GetParameters();
+                        if (parameters.Length != 1 || parameters[0].ParameterType != typeof(string))
+                            continue;
+                        if (!method.IsStatic)
+                            continue;
+
+                        tried++;
+                        try
+                        {
+                            string answer = method.Invoke(null, new object[] { knownKey }) as string;
+                            if (string.IsNullOrEmpty(answer) ||
+                                string.Equals(answer, knownKey, StringComparison.Ordinal))
+                                continue;
+
+                            LoggerInstance.Msg(
+                                $"Locator found: {typeName}.{method.Name}(\"{knownKey}\") = '{answer}'.");
+                        }
+                        catch
+                        {
+                            // Wrong shape for this key; not a candidate.
+                        }
+                    }
+                }
+            }
+            LoggerInstance.Msg($"Locator scan finished: {tried} static (string)->string " +
+                "candidates tried.");
+        }
+        catch (Exception ex)
+        {
+            LoggerInstance.Warning($"Locator scan failed: {ex.Message}");
+        }
+    }
+
     private void ProbeLocalization()
     {
         s_localizationProbed = true;
@@ -4392,6 +4475,7 @@ public sealed class ModEntry : MelonMod
 
             ProbeMapDetailMembers();
             ProbeLocaleMembers();
+            ScanForLocator();
 
             int added = 0;
             for (int i = 0; i < details.Count; i++)
