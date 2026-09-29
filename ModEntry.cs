@@ -2274,6 +2274,8 @@ public sealed class ModEntry : MelonMod
 
             int noSprite = 0, resolved = 0, fromTable = 0, fromAtlas = 0, unresolvable = 0;
             int projected = 0, unprojected = 0;
+            int surveyed = 0, unlocked = 0, surveyedAndUnlocked = 0, surveyedOrUnlocked = 0;
+            int fullyHarvested = 0, wouldDraw = 0;
             // Per sprite name, so the "166 cattails" kind of pile-up is visible as a number rather
             // than as an opinion about density.
             var perSprite = new Dictionary<string, int>(StringComparer.Ordinal);
@@ -2317,6 +2319,24 @@ public sealed class ModEntry : MelonMod
                     projected++;
                 else
                     unprojected++;
+
+                // How many would survive a fog-aware visibility rule. Section 39.3 found that only
+                // 39 of 802 are surveyed and that the largest groups are all harvestables, which
+                // suggests the icon-wall worry is mostly fog - but that is a hypothesis until the
+                // combinations are counted. Which combination is right is still open (section
+                // 25.6), so every one is reported rather than a chosen rule.
+                if (detail.m_IsSurveyed)
+                    surveyed++;
+                if (detail.m_IsUnlocked)
+                    unlocked++;
+                if (detail.m_IsSurveyed && detail.m_IsUnlocked)
+                    surveyedAndUnlocked++;
+                if (detail.m_IsSurveyed || detail.m_IsUnlocked)
+                    surveyedOrUnlocked++;
+                if (AllHarvestablesCollected(detail))
+                    fullyHarvested++;
+                if ((detail.m_IsSurveyed || detail.m_IsUnlocked) && !AllHarvestablesCollected(detail))
+                    wouldDraw++;
             }
 
             // Largest groups first: that is the clustering question.
@@ -2336,6 +2356,16 @@ public sealed class ModEntry : MelonMod
                 $"Resolvable: {resolved} ({fromTable} from the scraped table, {fromAtlas} via the atlas), " +
                 $"unresolvable {unresolvable}. Projected onto the map: {projected}, not projected: {unprojected}. " +
                 $"Largest groups: {(top.Length > 0 ? top.ToString() : "none")}.");
+
+            // The visibility combinations, so the choice of rule can be made from numbers. The last
+            // count is what a rule of "revealed and not fully harvested" would actually draw, and it
+            // is the number that decides whether clustering is needed before drawing.
+            LoggerInstance.Msg(
+                $"Marker visibility ({reason}): surveyed {surveyed}, unlocked {unlocked}, " +
+                $"surveyed&&unlocked {surveyedAndUnlocked}, surveyed||unlocked {surveyedOrUnlocked}, " +
+                $"fully harvested {fullyHarvested}. " +
+                $"Would draw under (surveyed||unlocked) && !fullyHarvested: {wouldDraw}. " +
+                $"Currently scraped from the panel's sprites: {_vanillaIcons.Count}.");
         }
         catch (Exception ex)
         {
