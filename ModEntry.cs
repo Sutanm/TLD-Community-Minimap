@@ -2968,7 +2968,7 @@ public sealed class ModEntry : MelonMod
                 // lookup.
                 built.Text = !string.IsNullOrEmpty(detail.m_CustomName)
                     ? detail.m_CustomName
-                    : LocalizeLabel(detail.m_LocID);
+                    : LocalizeLabelCached(detail.m_LocID);
                 _pendingVanillaIcons.Add(built);
             }
 
@@ -4090,6 +4090,26 @@ public sealed class ModEntry : MelonMod
     private string CapturedMapPath(string sceneName) =>
         Path.Combine(_modDirectory, "captured", SanitizeFileName(sceneName) + ".png");
 
+    // Memoised localization.
+    //
+    // Resolving a key goes through reflection because the member had to be discovered rather than
+    // compiled against, and a reflected call under IL2CPP is expensive. A region's marker set runs to
+    // hundreds of entries that share a handful of distinct keys - 251 cattails, 127 rosehips - so
+    // resolving per entry hammered that cost once per marker. That is what made the map stall after
+    // the hover names were added: the place names were fine because there are only fourteen of them.
+    private readonly Dictionary<string, string> _localizedCache = new(StringComparer.Ordinal);
+
+    private string LocalizeLabelCached(string locId)
+    {
+        if (string.IsNullOrEmpty(locId))
+            return "";
+        if (_localizedCache.TryGetValue(locId, out string cached))
+            return cached;
+        string resolved = LocalizeLabel(locId);
+        _localizedCache[locId] = resolved;
+        return resolved;
+    }
+
     // Turns a localization key such as GAMEPLAY_mtTownCentre into display text.
     //
     // The member that does this was found by scanning, not by naming it: see
@@ -4336,7 +4356,7 @@ public sealed class ModEntry : MelonMod
                 // lookup API had failed.
                 string text = detail.m_CustomName;
                 if (string.IsNullOrEmpty(text))
-                    text = LocalizeLabel(detail.m_LocID);
+                    text = LocalizeLabelCached(detail.m_LocID);
                 if (string.IsNullOrEmpty(text))
                 {
                     _labelMisses.Add($"{detail.m_LocID}|custom='{detail.m_CustomName}'");
@@ -4380,7 +4400,11 @@ public sealed class ModEntry : MelonMod
                 label.horizontalOverflow = HorizontalWrapMode.Overflow;
                 label.verticalOverflow = VerticalWrapMode.Overflow;
                 label.raycastTarget = false;
-                AddTextOutline(labelObject.GetComponent<RectTransform>(), label);
+                // Deliberately no Outline here. Outline duplicates every glyph four times, and a
+                // canvas full of them multiplies the vertex count until the UI rebuilds stall - which
+                // is exactly what happened when it was added. A Shadow is one extra copy and gives
+                // most of the legibility for a fifth of the cost.
+                AddTextShadow(labelObject.GetComponent<RectTransform>());
 
                 _mapLabels.Add(new MapLabel
                 {
@@ -4598,12 +4622,38 @@ public sealed class ModEntry : MelonMod
         if (!string.Equals(_hoverLabelText.text, text, StringComparison.Ordinal))
             _hoverLabelText.text = text;
 
-        // Sits just above the thing it names, the way the game's own hover label does.
-        _hoverLabelRect.anchoredPosition = new Vector2(
+        // Sits just above the thing it names, the way the game's own hover label does. Written only
+        // when it moved, for the same reason as everywhere else: a RectTransform write dirties the
+        // layout even when the value is identical.
+        var tooltipPosition = new Vector2(
             ((mapUv.x - visibleUv.x) / visibleUv.width - 0.5f) * mapSize.x,
             ((mapUv.y - visibleUv.y) / visibleUv.height - 0.5f) * mapSize.y + 22f);
+        if (_hoverLabelRect.anchoredPosition != tooltipPosition)
+            _hoverLabelRect.anchoredPosition = tooltipPosition;
         if (!_hoverLabelRoot.activeSelf)
             _hoverLabelRoot.SetActive(true);
+    }
+
+    // A single offset copy behind the text, to lift it off the map's dark linework.
+    //
+    // Outline was tried first and was a mistake: it draws four extra copies of every glyph, which on
+    // hundreds of CJK labels multiplies the canvas vertex count until the UI stops keeping up. One
+    // shadow copy is a fifth of that cost and keeps the text readable.
+    private void AddTextShadow(RectTransform rect)
+    {
+        try
+        {
+            var effect = rect.gameObject.AddComponent<Shadow>();
+            if (ReferenceEquals(effect, null))
+                return;
+            effect.effectColor = new Color(0.97f, 0.95f, 0.90f, 0.85f);
+            effect.effectDistance = new Vector2(1.2f, -1.2f);
+            effect.useGraphicAlpha = false;
+        }
+        catch (Exception ex)
+        {
+            LoggerInstance.Warning($"Text shadow unavailable: {ex.Message}");
+        }
     }
 
     // Outlines a piece of label text so the map's dark linework cannot swallow it.
