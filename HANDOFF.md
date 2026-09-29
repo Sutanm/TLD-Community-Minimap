@@ -3241,3 +3241,86 @@ Framing probe offset: +600 world units -> delta=(0.00000,0.00000)
 `AllHarvestablesCollected` 三个条件的组合给出条数。
 **这个数字决定标记重写是「直接画」还是「必须先聚类/合并绘制」（§30 C3）。**
 §25.6 早就把 `m_IsSurveyed × m_IsUnlocked` 的组合列为待观察，现在它成了主线的下一步。
+
+---
+
+## 42. 第四次实测（2026-09-29 22:11 会话）：可见性**不是**由标志位决定的
+
+日志 `MelonLoader\Logs\26-9-29_22-11-46.log`。
+
+### 42.1 ❌ 被证伪：用 `m_IsSurveyed` / `m_IsUnlocked` 判可见性
+
+```
+Marker visibility (F11): surveyed 37, unlocked 7, surveyed&&unlocked 7,
+                         surveyed||unlocked 37, fully harvested 0
+                         Would draw under (surveyed||unlocked) && !fullyHarvested: 37
+                         Currently scraped from the panel's sprites: 162
+```
+
+CSV（`mapdetails_MountainTownRegion_221215.csv`，816 行）的三标志交叉表更直白：
+
+| 条数 | surveyed | discovered | unlocked |
+|---|---|---|---|
+| **765** | False | False | False |
+| 30 | True | False | False |
+| 7 | True | False | True |
+
+**765 / 802 个带精灵名的标记，三个标志全是 false** —— 而游戏**照样建了 162 个元素**。
+
+⇒ 按 `surveyed||unlocked` 画只有 **37** 个，比游戏少 **125** 个。
+**这就是「标记不全」的真正来源，而它恰好和用户最初的抱怨是同一件事**
+（「原版制图的图源标记不全啊，怎么只有自然资源的标记」）。
+⇒ **§37.2 设计第 4 条「可见性只由 `m_IsSurveyed` 决定」是错的，不能照做。**
+⇒ §25.6 那条待观察现在有答案了：`m_IsSurveyed` **不是**可见性判据。
+
+**`m_IsUnlocked` 是 `m_IsSurveyed` 的子集**（7 个全在 37 里），两个都解释不了 162。
+
+### 42.2 那么游戏到底按什么画？（**未解决**）
+
+已知的候选，**都没有证据**：
+
+- 迷雾（fog-of-war）可能作用在**贴图**上，而标记是**另建**的 ——
+  §35.1 观察到的 162→28 是**开过面板之后**精灵 `enabled` 被关掉的结果，
+  那是**渲染期**的旗标，和 `MapDetail` 上的字段是两回事。
+- 可能有一个我们还没读到的手工「已发现」集合。
+- 「只在点亮过区域内建」也解释不通 162 这个数字（surveyed 只有 37）。
+
+⇒ **唯一可信的「游戏画了什么」的陈述，是刮取到的集合本身（162 个）。**
+这就是为什么刮取路径**不能**像 §37.2 计划的那样被完全删掉 ——
+它可以不再决定**位置**，但它是目前唯一能告诉我们**哪些该画**的东西。
+
+### 42.3 密度问题的答案，以及为什么它现在不是瓶颈
+
+33 个分组里，前 8 组占了 802 中的 633：
+
+| sprite | 条数 |
+|---|---|
+| `icoMap_cattails` | 251 |
+| `icoMap_rosehips` | 127 |
+| `icoMap_limb` | 72 |
+| `icoMap_sapling` | 52 |
+| `icoMap_oldmansbeard` | 45 |
+| `icoMap_reishi` | 39 |
+| `icoMap_burdock` | 32 |
+| `icoMap_crossroads` | 24 |
+
+**全是可采集资源。** 所以「全画出来会是一堵图标墙」是**真的** —— 但只有在
+「全都画」的前提下才成立。**一旦确定了正确的可见性规则，密度大概率自动解决**，
+不需要先做聚类。⇒ §37.2 风险第一条（必须先做 §30 C3 合并绘制）
+**降级为「等可见性规则定了再看」**，不再是开工前提。
+
+### 42.4 下一步：按组对照（已加诊断，待测）
+
+`Marker census` 现在多打一行，把**游戏实际建的**和**数据里有的**按组并排：
+
+```
+Marker groups (scraped/total) [F11]: icoMap_cattails A/251, icoMap_rosehips B/127, ...
+```
+
+**判读方式**：
+
+- 某组 `刮取数 = 0` ⇒ 游戏**完全不画**这一类 ⇒ 重写时直接跳过。
+- 某组 `刮取数 = 总数` ⇒ 游戏**全画** ⇒ 直接照画。
+- 某组 `0 < 刮取数 < 总数` ⇒ 这一组内还有第二个判据（很可能就是我们要找的规则）。
+
+⇒ **这一行是决定过滤规则的关键**，而且**不需要改设置、不需要开面板**，按一次 F11 就有。
