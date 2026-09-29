@@ -87,6 +87,12 @@ public sealed class ModEntry : MelonMod
     // Set when the scene changes so both layers re-resolve their source on the next update even
     // though their setting did not change.
     private bool _layersDirty;
+    // Set once the layer that is not on screen has been loaded too, so the first switch to it does
+    // not pay for the decode. Reset per scene.
+    private bool _warmUpDone;
+    private DateTime _warmUpAfterUtc = DateTime.MinValue;
+    // Textures replaced this frame, freed at the start of the next one. See RetireTexture.
+    private List<Texture2D> _retiredTextures;
     // Global, not per-layer: LoadMapElementsForScene APPENDS to the panel's marker containers, so
     // calling it once per layer would duplicate every marker. The per-layer marker in MapLayer is a
     // separate fact ("this layer already has its markers") and never licenses a second call.
@@ -215,6 +221,9 @@ public sealed class ModEntry : MelonMod
 
     public override void OnUpdate()
     {
+        // First thing, so the previous frame has definitely finished drawing with them. There are
+        // several early returns below and none of them may skip this.
+        SweepRetiredTextures();
         TryExportSceneCatalog();
         TryReloadCalibrations();
 
@@ -302,7 +311,7 @@ public sealed class ModEntry : MelonMod
         // finish coming up; preserve that, because reading a 4400px JPEG during the load tail is
         // exactly the stall it was there to avoid.
         if (preferCommunity && !active.TextureReady && _loadAfterUtc == DateTime.MaxValue)
-            _loadAfterUtc = DateTime.UtcNow.AddSeconds(1);
+            RequestMapLoad(DateTime.UtcNow.AddSeconds(1));
 
         bool playerReady = GameManager.m_Instance != null &&
                            !GameManager.IsMainMenuActive() &&
@@ -374,6 +383,25 @@ public sealed class ModEntry : MelonMod
                 _loadAfterUtc = DateTime.UtcNow.AddSeconds(5);
         }
 
+        // Warm the layer that is NOT on screen once the one on screen is done. Without this the
+        // other layer decodes on the frame its view is first opened, which is a visible freeze:
+        // opening the full map showed a blank map for about two seconds while 4360x4198 decoded.
+        // One layer per frame, and only after the visible one is ready, so this can never delay
+        // what the player is looking at.
+        if (preferCommunity && playerReady && active.TextureReady && !_warmUpDone)
+        {
+            MapLayer other = _layers[ActiveLayerId == LayerMini ? LayerFull : LayerMini];
+            if (other.TextureReady)
+            {
+                _warmUpDone = true;
+            }
+            else if (other.Definition != null && DateTime.UtcNow >= _warmUpAfterUtc &&
+                     LoadCurrentMapIntoUnityUi(other))
+            {
+                _warmUpDone = true;
+            }
+        }
+
         // The temporary hide key is already folded into MiniMapVisible; testing it again here
         // would also hide the full map, which is exactly what the two layers were split to avoid.
         bool shouldShow = AnyLayerReady() && active.Definition != null && playerReady &&
@@ -425,6 +453,8 @@ public sealed class ModEntry : MelonMod
 
         ClearVanillaIcons();
         _layersDirty = true;
+        _warmUpDone = false;
+        _warmUpAfterUtc = DateTime.UtcNow.AddSeconds(4);
 
         MapDefinition definition = MapCatalog.Find(sceneName);
         for (int i = 0; i < _layers.Length; i++)
@@ -502,6 +532,9 @@ public sealed class ModEntry : MelonMod
         bool preferCommunity)
     {
         layer.RequestedSource = layer.Source;
+        // The other layer may now be the one that needs warming, or may already hold the right map.
+        _warmUpDone = false;
+        _warmUpAfterUtc = DateTime.UtcNow.AddSeconds(2);
 
         // Whichever source we are leaving, the texture it produced is destroyed when the other one
         // loads, so the "already requested this scene" marker becomes a lie and has to be cleared
@@ -526,9 +559,9 @@ public sealed class ModEntry : MelonMod
                                  layer.LoadedMapId == layer.Definition.Id &&
                                  !ReferenceEquals(layer.Texture, null);
             layer.TextureReady = alreadyLoaded;
-            _loadAfterUtc = alreadyLoaded
+            RequestMapLoad(alreadyLoaded
                 ? DateTime.MaxValue
-                : DateTime.UtcNow;
+                : DateTime.UtcNow);
             LoggerInstance.Msg($"Map source selected [{LayerName(layerId)}]: community map.");
         }
         else
@@ -538,7 +571,7 @@ public sealed class ModEntry : MelonMod
                                         StringComparison.Ordinal) &&
                                     !ReferenceEquals(layer.Texture, null);
             layer.TextureReady = capturedForScene;
-            _loadAfterUtc = DateTime.MaxValue;
+            RequestMapLoad(DateTime.MaxValue);
             LoggerInstance.Msg(capturedForScene
                 ? $"Map source selected [{LayerName(layerId)}]: vanilla surveyed map."
                 : $"Map source selected [{LayerName(layerId)}]: vanilla surveyed map; " +
@@ -547,6 +580,16 @@ public sealed class ModEntry : MelonMod
     }
 
     private static string LayerName(int layerId) => layerId == LayerMini ? "mini" : "full";
+
+    // _loadAfterUtc is one global clock shared by both layers, because only the layer on screen is
+    // ever loaded by the update loop. Letting a layer push it later re-arms a load for a texture
+    // that is already on disk in memory: that is what decoded 山间小镇 4360x4198 twice, four and a
+    // half seconds apart, the second time while the full map was open and visible.
+    private void RequestMapLoad(DateTime when)
+    {
+        if (when < _loadAfterUtc)
+            _loadAfterUtc = when;
+    }
 
     // True while any layer that wants the vanilla source already holds a texture. Used by the
     // panel-fallback path, which must not overwrite a good base map with the surveyed one.
@@ -978,6 +1021,30 @@ public sealed class ModEntry : MelonMod
                (s_fullMapActive || Time.frameCount <= s_suppressEscapeThroughFrame);
     }
 
+    // Swaps a layer's texture out and leaves the old one alive until the frame is over. The
+    // shared RawImage keeps pointing at the old texture until UpdateUnityUi rebinds, so destroying
+    // it here draws a blank white rectangle for as long as it takes the new one to arrive.
+    private void RetireTexture(MapLayer layer)
+    {
+        if (ReferenceEquals(layer.Texture, null))
+            return;
+        _retiredTextures ??= new List<Texture2D>();
+        _retiredTextures.Add(layer.Texture);
+    }
+
+    private void SweepRetiredTextures()
+    {
+        if (_retiredTextures == null || _retiredTextures.Count == 0)
+            return;
+        for (int i = 0; i < _retiredTextures.Count; i++)
+        {
+            Texture2D texture = _retiredTextures[i];
+            if (!ReferenceEquals(texture, null))
+                UnityEngine.Object.Destroy(texture);
+        }
+        _retiredTextures.Clear();
+    }
+
     private bool LoadCurrentMapIntoUnityUi(MapLayer layer)
     {
         string mapPath = Path.Combine(_mapsDirectory, layer.Definition.FileName);
@@ -1001,16 +1068,18 @@ public sealed class ModEntry : MelonMod
             texture.hideFlags = HideFlags.HideAndDontSave | HideFlags.DontUnloadUnusedAsset;
             UnityEngine.Object.DontDestroyOnLoad(texture);
 
-            Texture2D previousTexture = layer.Texture;
+            // Retire the old texture only once the UI has stopped pointing at it. Destroying it
+            // here would be a frame too early whenever this layer is the one on screen: the shared
+            // RawImage still references the old texture until UpdateUnityUi rebinds, and a widget
+            // pointing at a destroyed texture draws as a blank white rectangle. That is the
+            // two-second white full map, and it only shows up on a RELOAD of the visible layer.
+            RetireTexture(layer);
             layer.Texture = texture;
             layer.LoadedMapId = layer.Definition.Id;
             layer.TextureReady = true;
 
             // Do not bind this texture to the shared UI here: it belongs to the layer, and that
             // layer may not be the one on screen. UpdateUnityUi binds whichever layer is active.
-            if (!ReferenceEquals(previousTexture, null))
-                UnityEngine.Object.Destroy(previousTexture);
-
             LoggerInstance.Msg(
                 $"Loaded {layer.Definition.DisplayName}: {texture.width}x{texture.height}.");
             GC.KeepAlive(texture);
