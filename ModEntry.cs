@@ -1606,21 +1606,31 @@ public sealed class ModEntry : MelonMod
                            icon.MapUv.x - icon.MapUvSize.x * 0.5f <= visibleUv.xMax &&
                            icon.MapUv.y + icon.MapUvSize.y * 0.5f >= visibleUv.yMin &&
                            icon.MapUv.y - icon.MapUvSize.y * 0.5f <= visibleUv.yMax;
-            icon.Root.SetActive(visible);
+            if (icon.Root.activeSelf != visible)
+                icon.Root.SetActive(visible);
             if (!visible)
                 continue;
 
-            icon.Rect.anchoredPosition = new Vector2(
+            // Every RectTransform write marks the layout dirty, and this loop runs over the whole
+            // marker set each frame - hundreds of entries - so a value is only written when it
+            // actually changed. Writing unconditionally made dragging the map feel a beat behind,
+            // because each frame queued a rebuild of the whole icon layer.
+            var position = new Vector2(
                 ((icon.MapUv.x - visibleUv.x) / visibleUv.width - 0.5f) * mapSize.x,
                 ((icon.MapUv.y - visibleUv.y) / visibleUv.height - 0.5f) * mapSize.y);
+            if (icon.Rect.anchoredPosition != position)
+                icon.Rect.anchoredPosition = position;
+
             float markerScale = _settings.MarkerIconSize / Mathf.Max(1e-6f, _vanillaIconMaxUv);
             float ratioX = Mathf.Clamp(icon.MapUvSize.x * markerScale / _settings.MarkerIconSize,
                 0.6f, 1.8f);
             float ratioY = Mathf.Clamp(icon.MapUvSize.y * markerScale / _settings.MarkerIconSize,
                 0.6f, 1.8f);
-            icon.Rect.sizeDelta = new Vector2(
+            var size = new Vector2(
                 ratioX * _settings.MarkerIconSize,
                 ratioY * _settings.MarkerIconSize);
+            if (icon.Rect.sizeDelta != size)
+                icon.Rect.sizeDelta = size;
         }
     }
 
@@ -4385,6 +4395,15 @@ public sealed class ModEntry : MelonMod
 
             LoggerInstance.Msg($"Map labels: {added} placed from {details.Count} entries " +
                 $"(localization: {(s_localizationGet != null ? "found" : "missing")}).");
+            // How many markers ended up with a hover name, reported separately from the place names
+            // because they are resolved by the same lookup but used by a different feature.
+            int named = 0;
+            for (int i = 0; i < _vanillaIcons.Count; i++)
+            {
+                if (!string.IsNullOrEmpty(_vanillaIcons[i].Text))
+                    named++;
+            }
+            LoggerInstance.Msg($"Marker hover names: {named} of {_vanillaIcons.Count}.");
             if (_labelMisses.Count > 0)
             {
                 LoggerInstance.Msg($"Map labels with no text ({_labelMisses.Count}): " +
@@ -4508,13 +4527,18 @@ public sealed class ModEntry : MelonMod
             MapLabel label = _mapLabels[i];
             bool visible = label.MapUv.x >= visibleUv.xMin && label.MapUv.x <= visibleUv.xMax &&
                            label.MapUv.y >= visibleUv.yMin && label.MapUv.y <= visibleUv.yMax;
-            label.Root.SetActive(visible);
+            if (label.Root.activeSelf != visible)
+                label.Root.SetActive(visible);
             if (!visible)
                 continue;
 
-            label.Rect.anchoredPosition = new Vector2(
+            // Assigned only when it moved: a RectTransform write marks the layout dirty even when the
+            // value is unchanged, and that happens on every frame the map is up.
+            var position = new Vector2(
                 ((label.MapUv.x - visibleUv.x) / visibleUv.width - 0.5f) * mapSize.x,
                 ((label.MapUv.y - visibleUv.y) / visibleUv.height - 0.5f) * mapSize.y);
+            if (label.Rect.anchoredPosition != position)
+                label.Rect.anchoredPosition = position;
         }
     }
 
@@ -4560,16 +4584,26 @@ public sealed class ModEntry : MelonMod
             AddTextOutline(_hoverLabelRect, _hoverLabelText);
         }
 
-        // The font size is a setting, so it is re-applied rather than fixed at creation.
-        if (!ReferenceEquals(_hoverLabelText, null))
+        // Font size is a setting, but assigning it rebuilds the text mesh, so it is only written when
+        // it actually differs. The tooltip is positioned every frame while the pointer moves, and a
+        // rebuild per frame is what made dragging feel like the map was following a second behind.
+        if (!ReferenceEquals(_hoverLabelText, null) &&
+            _hoverLabelText.fontSize != _settings.LabelFontSize)
+        {
             _hoverLabelText.fontSize = _settings.LabelFontSize;
+        }
 
-        _hoverLabelText.text = text;
+        // Same reasoning for the string: Unity rebuilds the text mesh on assignment even when the
+        // value is identical.
+        if (!string.Equals(_hoverLabelText.text, text, StringComparison.Ordinal))
+            _hoverLabelText.text = text;
+
         // Sits just above the thing it names, the way the game's own hover label does.
         _hoverLabelRect.anchoredPosition = new Vector2(
             ((mapUv.x - visibleUv.x) / visibleUv.width - 0.5f) * mapSize.x,
             ((mapUv.y - visibleUv.y) / visibleUv.height - 0.5f) * mapSize.y + 22f);
-        _hoverLabelRoot.SetActive(true);
+        if (!_hoverLabelRoot.activeSelf)
+            _hoverLabelRoot.SetActive(true);
     }
 
     // Outlines a piece of label text so the map's dark linework cannot swallow it.
