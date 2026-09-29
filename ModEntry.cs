@@ -1593,6 +1593,66 @@ public sealed class ModEntry : MelonMod
                     $"({euler.x:F1},{euler.y:F1},{euler.z:F1}); the raw texture is not upright.");
             }
 
+            // The bounds comparison above is an intermediate. What actually decides whether one
+            // layer can inherit the other's projection is the FINAL uv: the pointer and the
+            // markers both run world -> panel map position -> local bounds -> texture uv, so feed
+            // one world position through both framings and compare the two answers. Run for the
+            // player, who is guaranteed to be a point on this region's map, and repeated across
+            // the region so a pure scale error cannot hide by cancelling at the centre.
+            Transform player = GameManager.GetPlayerTransform();
+            if (player != null)
+            {
+                Vector3 world = player.position;
+                Vector3 mapPosition = panel.WorldPositionToMapPosition(sceneName, world);
+
+                // Base map path: frozen bounds, full-texture uv (both set by UseVanillaBaseMap).
+                var baseBoundsFrozen = new Rect(-325f, -325f, 650f, 650f);
+                float baseLocalU = Mathf.InverseLerp(baseBoundsFrozen.xMin,
+                    baseBoundsFrozen.xMax, mapPosition.x);
+                float baseLocalV = Mathf.InverseLerp(baseBoundsFrozen.yMin,
+                    baseBoundsFrozen.yMax, mapPosition.y);
+                var baseUv = new Vector2(baseLocalU, baseLocalV);
+
+                // Panel path: the widget's own bounds and uv rect, exactly as CaptureVanillaMap
+                // stores them.
+                float panelLocalU = Mathf.InverseLerp(panelBounds.xMin,
+                    panelBounds.xMax, mapPosition.x);
+                float panelLocalV = Mathf.InverseLerp(panelBounds.yMin,
+                    panelBounds.yMax, mapPosition.y);
+                var panelUv = new Vector2(
+                    uvRect.x + panelLocalU * uvRect.width,
+                    uvRect.y + panelLocalV * uvRect.height);
+
+                float du = Mathf.Abs(panelUv.x - baseUv.x);
+                float dv = Mathf.Abs(panelUv.y - baseUv.y);
+                LoggerInstance.Msg(
+                    $"Framing probe player [{sceneName}]: world=({world.x:F1},{world.y:F1},{world.z:F1}) " +
+                    $"mapPos=({mapPosition.x:F1},{mapPosition.y:F1}) " +
+                    $"panelUv=({panelUv.x:F5},{panelUv.y:F5}) baseUv=({baseUv.x:F5},{baseUv.y:F5}) " +
+                    $"delta=({du:F5},{dv:F5}) px@2048=({du * 2048f:F1},{dv * 2048f:F1}) " +
+                    $"agree={(du < 0.002f && dv < 0.002f)}");
+
+                // Markers ride the same conversion, so an error that is invisible on the pointer
+                // still throws every icon off. Re-check ~600 world units away, which is roughly the
+                // spacing of the points the marker rewrite has to place.
+                Vector3 probeWorld = world + new Vector3(600f, 0f, 0f);
+                Vector3 probePos = panel.WorldPositionToMapPosition(sceneName, probeWorld);
+                float baseFarU = Mathf.InverseLerp(baseBoundsFrozen.xMin,
+                    baseBoundsFrozen.xMax, probePos.x);
+                float baseFarV = Mathf.InverseLerp(baseBoundsFrozen.yMin,
+                    baseBoundsFrozen.yMax, probePos.y);
+                float panelFarU = uvRect.x + Mathf.InverseLerp(panelBounds.xMin,
+                    panelBounds.xMax, probePos.x) * uvRect.width;
+                float panelFarV = uvRect.y + Mathf.InverseLerp(panelBounds.yMin,
+                    panelBounds.yMax, probePos.y) * uvRect.height;
+                float farDu = Mathf.Abs(panelFarU - baseFarU);
+                float farDv = Mathf.Abs(panelFarV - baseFarV);
+                LoggerInstance.Msg(
+                    $"Framing probe offset [{sceneName}]: +600 world units -> " +
+                    $"delta=({farDu:F5},{farDv:F5}) px@2048=({farDu * 2048f:F1},{farDv * 2048f:F1}) " +
+                    $"agree={(farDu < 0.002f && farDv < 0.002f)}");
+            }
+
             _framingDone = true;
         }
         catch (Exception ex)
