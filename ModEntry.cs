@@ -2045,6 +2045,7 @@ public sealed class ModEntry : MelonMod
     private void DumpMapDetails()
     {
         CensusMapDetails("F11");
+        ClassifyMapDetails("F11");
         try
         {
             var details = MapDetailManager.s_MapDetails;
@@ -2140,6 +2141,96 @@ public sealed class ModEntry : MelonMod
         }
         catch (Exception ex)
         {            LoggerInstance.Warning($"MapDetail dump failed: {ex.Message}");
+        }
+    }
+
+    // Counts what the MapDetail-driven marker path WOULD draw, without building a single object.
+    //
+    // This exists because section 37.2 calls the object count the most under-estimated part of the
+    // rewrite, and the number that matters is not 723 - it is how many of those resolve to a
+    // sprite, survive the label filter, and fall inside the region. Measuring it here costs nothing
+    // and decides whether the rewrite needs clustering before it needs drawing.
+    private void ClassifyMapDetails(string reason)
+    {
+        if (!_settings.DeveloperMode)
+            return;
+        try
+        {
+            var details = MapDetailManager.s_MapDetails;
+            if (ReferenceEquals(details, null))
+            {
+                LoggerInstance.Warning($"Marker census ({reason}): s_MapDetails is null.");
+                return;
+            }
+
+            int noSprite = 0, resolved = 0, fromTable = 0, fromAtlas = 0, unresolvable = 0;
+            int projected = 0, unprojected = 0;
+            // Per sprite name, so the "166 cattails" kind of pile-up is visible as a number rather
+            // than as an opinion about density.
+            var perSprite = new Dictionary<string, int>(StringComparer.Ordinal);
+
+            for (int i = 0; i < details.Count; i++)
+            {
+                MapDetail detail = details[i];
+                if (ReferenceEquals(detail, null))
+                    continue;
+
+                string name = detail.m_SpriteName;
+                // Text labels and area blobs carry no sprite name; section 37.2 filters them here.
+                if (string.IsNullOrEmpty(name))
+                {
+                    noSprite++;
+                    continue;
+                }
+
+                if (_iconBySpriteName.ContainsKey(name))
+                {
+                    resolved++;
+                    fromTable++;
+                }
+                else if (!ReferenceEquals(_mapIconAtlas, null) &&
+                         !ReferenceEquals(_mapIconAtlas.GetSprite(name), null))
+                {
+                    resolved++;
+                    fromAtlas++;
+                }
+                else
+                {
+                    unresolvable++;
+                }
+
+                perSprite.TryGetValue(name, out int seen);
+                perSprite[name] = seen + 1;
+
+                // The marker path shares the pointer's conversion, so this is the real test of
+                // whether a marker would land on the map at all.
+                if (TryPlayerToMapUv(detail.GetWorldPosition(), out Vector2 _))
+                    projected++;
+                else
+                    unprojected++;
+            }
+
+            // Largest groups first: that is the clustering question.
+            var groups = new List<KeyValuePair<string, int>>(perSprite);
+            groups.Sort((a, b) => b.Value.CompareTo(a.Value));
+            var top = new StringBuilder();
+            for (int i = 0; i < groups.Count && i < 8; i++)
+            {
+                if (i > 0)
+                    top.Append(", ");
+                top.Append(groups[i].Key).Append('=').Append(groups[i].Value);
+            }
+
+            LoggerInstance.Msg(
+                $"Marker census ({reason}): {details.Count} entries; {noSprite} without a sprite name " +
+                $"(labels/areas); {perSprite.Count} distinct sprite names. " +
+                $"Resolvable: {resolved} ({fromTable} from the scraped table, {fromAtlas} via the atlas), " +
+                $"unresolvable {unresolvable}. Projected onto the map: {projected}, not projected: {unprojected}. " +
+                $"Largest groups: {(top.Length > 0 ? top.ToString() : "none")}.");
+        }
+        catch (Exception ex)
+        {
+            LoggerInstance.Warning($"Marker census ({reason}) failed: {ex.Message}");
         }
     }
     // The game leaves a harvested resource in MapDetailManager.s_MapDetails and on the map, so
