@@ -1586,6 +1586,21 @@ public sealed class ModEntry : MelonMod
         _markerRoot.SetActive(true);
     }
 
+    // Re-reads the category switches onto the marker set when any of them changed.
+    //
+    // Called from both the draw loop and the hover pick rather than only the draw loop, because the
+    // draw loop can return early - an uncalibrated region, or a corner map with no projection - and a
+    // stale flag there would let a hidden category still answer a hover, which reads as a bug.
+    private void RefreshMarkerCategoryFlags()
+    {
+        int state = _settings.MarkerCategoryState();
+        if (state == _markerCategoryState)
+            return;
+        _markerCategoryState = state;
+        for (int i = 0; i < _vanillaIcons.Count; i++)
+            _vanillaIcons[i].CategoryEnabled = CategoryEnabled(_vanillaIcons[i].Category);
+    }
+
     private void UpdateVanillaIcons(Rect visibleUv, Vector2 mapSize)
     {
         // Markers used to be drawn only while the vanilla source was active, and that was the whole
@@ -1595,19 +1610,11 @@ public sealed class ModEntry : MelonMod
         // therefore a switch, not a feature - and it is the only path whose projection has been
         // fitted against real landmarks.
         bool show = ActiveLayer.UsingVanilla || _settings.MarkersOnCommunityMap;
-
-        bool categoriesChanged = _markerCategoryState != _settings.MarkerCategoryState();
-        if (categoriesChanged)
-            _markerCategoryState = _settings.MarkerCategoryState();
+        RefreshMarkerCategoryFlags();
 
         for (int i = 0; i < _vanillaIcons.Count; i++)
         {
             VanillaIcon icon = _vanillaIcons[i];
-            // The category switch is read once when it changes rather than every frame: a marker
-            // set can run to hundreds, and this loop already runs every frame.
-            if (categoriesChanged)
-                icon.CategoryEnabled = CategoryEnabled(icon.Category);
-
             bool visible = show && icon.CategoryEnabled &&
                            icon.MapUv.x + icon.MapUvSize.x * 0.5f >= visibleUv.xMin &&
                            icon.MapUv.x - icon.MapUvSize.x * 0.5f <= visibleUv.xMax &&
@@ -4515,6 +4522,11 @@ public sealed class ModEntry : MelonMod
             haveHover = hoverUv.x >= visibleUv.xMin && hoverUv.x <= visibleUv.xMax &&
                         hoverUv.y >= visibleUv.yMin && hoverUv.y <= visibleUv.yMax;
         }
+
+        // The hover pick reads CategoryEnabled, and the draw loop that normally keeps it current can
+        // have returned early, so it is refreshed here as well - otherwise a category the player just
+        // hid would still answer a hover.
+        RefreshMarkerCategoryFlags();
 
         // Nearest ICON to the pointer, in uv. Place names are deliberately not candidates: their text
         // is already on the map, so repeating it in a tooltip says nothing new - which is what made a
