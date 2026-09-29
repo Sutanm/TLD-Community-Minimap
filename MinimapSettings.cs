@@ -113,6 +113,11 @@ internal sealed class MinimapSettings : JsonModSettings
     [Description("打开全屏地图后，鼠标停在一个图标上显示它的名字（香蒲、玫瑰果、车、洞穴等），和游戏内置地图一样。需要「释放鼠标」处于打开状态。")]
     public bool HoverMapLabels = true;
 
+    [Name("标记字号")]
+    [Description("地名与悬停提示的文字大小。地图上深色线条较多，字号太小时文字容易被淹没。")]
+    [Slider(12, 40, 29)]
+    public int LabelFontSize = 20;
+
     [Name("资源")]
     [Description("可采集的植物、树枝、鸟巢与动物尸体等资源标记。数量最多的一类。")]
     public bool ShowMarkerResources = true;

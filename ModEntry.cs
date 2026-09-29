@@ -4280,6 +4280,8 @@ public sealed class ModEntry : MelonMod
     private GameObject _hoverLabelRoot;
     private RectTransform _hoverLabelRect;
     private Text _hoverLabelText;
+    // Font size in force on the existing label objects, so a settings change is applied once.
+    private int _appliedLabelFontSize = -1;
 
     // Place names, which the marker build deliberately skipped because they carry no sprite name.
     //
@@ -4360,7 +4362,7 @@ public sealed class ModEntry : MelonMod
                 Text label = labelObject.GetComponent<Text>();
                 label.text = text;
                 label.font = _hintFont;
-                label.fontSize = 18;
+                label.fontSize = _settings.LabelFontSize;
                 label.alignment = TextAnchor.MiddleCenter;
                 // Dark text, because the map art is light; a light outline would be needed on the
                 // dark community map, but this layer only exists on the vanilla source.
@@ -4368,6 +4370,7 @@ public sealed class ModEntry : MelonMod
                 label.horizontalOverflow = HorizontalWrapMode.Overflow;
                 label.verticalOverflow = VerticalWrapMode.Overflow;
                 label.raycastTarget = false;
+                AddTextOutline(labelObject.GetComponent<RectTransform>(), label);
 
                 _mapLabels.Add(new MapLabel
                 {
@@ -4419,6 +4422,19 @@ public sealed class ModEntry : MelonMod
                 _mapLabels[i].Root.SetActive(false);
             _hoverLabelRoot?.SetActive(false);
             return;
+        }
+
+        // Font size is a setting and the label set is not rebuilt for it, so it is pushed onto the
+        // existing labels when it changes.
+        if (_appliedLabelFontSize != _settings.LabelFontSize)
+        {
+            _appliedLabelFontSize = _settings.LabelFontSize;
+            for (int i = 0; i < _mapLabels.Count; i++)
+            {
+                Text existing = _mapLabels[i].Root.GetComponent<Text>();
+                if (!ReferenceEquals(existing, null))
+                    existing.fontSize = _appliedLabelFontSize;
+            }
         }
 
         // The pointer only means something while the cursor is actually free to move over the map.
@@ -4519,23 +4535,34 @@ public sealed class ModEntry : MelonMod
                 return;
 
             _hoverLabelRoot = CreateUiObject("MapHoverLabel",
-                typeof(RectTransform), typeof(CanvasRenderer), typeof(Text));
+                typeof(RectTransform), typeof(CanvasRenderer), typeof(Image), typeof(Text));
             _hoverLabelRoot.transform.SetParent(_mapRect, false);
             _hoverLabelRect = _hoverLabelRoot.GetComponent<RectTransform>();
             _hoverLabelRect.anchorMin = new Vector2(0.5f, 0.5f);
             _hoverLabelRect.anchorMax = new Vector2(0.5f, 0.5f);
             _hoverLabelRect.pivot = new Vector2(0.5f, 0.5f);
-            _hoverLabelRect.sizeDelta = new Vector2(260f, 28f);
+            _hoverLabelRect.sizeDelta = new Vector2(260f, 30f);
+
+            // A dark plate behind the text as well as an outline on it: over a pale map the plate is
+            // what makes the name read at a glance, and the outline keeps the glyphs crisp against it.
+            Image plate = _hoverLabelRoot.GetComponent<Image>();
+            plate.color = new Color(0.06f, 0.05f, 0.04f, 0.80f);
+            plate.raycastTarget = false;
 
             _hoverLabelText = _hoverLabelRoot.GetComponent<Text>();
             _hoverLabelText.font = _hintFont;
-            _hoverLabelText.fontSize = 18;
+            _hoverLabelText.fontSize = _settings.LabelFontSize;
             _hoverLabelText.alignment = TextAnchor.MiddleCenter;
-            _hoverLabelText.color = new Color(0.10f, 0.08f, 0.06f, 0.95f);
+            _hoverLabelText.color = new Color(0.98f, 0.96f, 0.92f, 1f);
             _hoverLabelText.horizontalOverflow = HorizontalWrapMode.Overflow;
             _hoverLabelText.verticalOverflow = VerticalWrapMode.Overflow;
             _hoverLabelText.raycastTarget = false;
+            AddTextOutline(_hoverLabelRect, _hoverLabelText);
         }
+
+        // The font size is a setting, so it is re-applied rather than fixed at creation.
+        if (!ReferenceEquals(_hoverLabelText, null))
+            _hoverLabelText.fontSize = _settings.LabelFontSize;
 
         _hoverLabelText.text = text;
         // Sits just above the thing it names, the way the game's own hover label does.
@@ -4543,6 +4570,30 @@ public sealed class ModEntry : MelonMod
             ((mapUv.x - visibleUv.x) / visibleUv.width - 0.5f) * mapSize.x,
             ((mapUv.y - visibleUv.y) / visibleUv.height - 0.5f) * mapSize.y + 22f);
         _hoverLabelRoot.SetActive(true);
+    }
+
+    // Outlines a piece of label text so the map's dark linework cannot swallow it.
+    //
+    // The map art is a light background crossed by heavy dark lines, and dark text laid straight on it
+    // disappears wherever a line passes behind. An outline of the opposite tone keeps every glyph
+    // readable without a background plate, which would hide the art the label is naming.
+    private void AddTextOutline(RectTransform rect, Text text)
+    {
+        try
+        {
+            var effect = rect.gameObject.AddComponent<Outline>();
+            if (ReferenceEquals(effect, null))
+                return;
+            effect.effectColor = new Color(0.97f, 0.95f, 0.90f, 0.95f);
+            effect.effectDistance = new Vector2(1.4f, -1.4f);
+            effect.useGraphicAlpha = false;
+        }
+        catch (Exception ex)
+        {
+            // An outline is a nicety; plain text is still legible, so a missing component is not a
+            // reason to drop the label.
+            LoggerInstance.Warning($"Text outline unavailable: {ex.Message}");
+        }
     }
 
     // Builds the marker set and the place names for one scene, and records which build is current.
