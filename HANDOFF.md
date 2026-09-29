@@ -3155,3 +3155,89 @@ Icon table [MountainTownRegion]: N sprite names, atlas present: True
 > **来源：AI 推断** —— 「`ForceUpdateRegion` + `LoadMapElementsForScene` 在社区图源下
 > 也能安全地把图集填上」是推断。依据是它俩本来就是与图源无关的游戏 API，
 > 且 §25.3 实测过面板关闭时精灵的 `atlas` 有值。**但这一步本身没有实测过。**
+
+---
+
+## 41. 第三次实测（2026-09-29 22:08 会话）：前置验证全部通过
+
+日志 `MelonLoader\Logs\26-9-29_22-8-28.log`。**关掉「接管游戏地图键」之后，
+游戏面板终于打开，探针跑起来了。**
+
+### 41.1 ✅ 原版两条路径的最终 uv 完全一致（§38.3 结案）
+
+```
+Framing probe 1 [MountainTownRegion]: regionMap=MountainTownSandbox_RegionMap
+  widget=650x650 texture=2048x2048
+  drawing=(-325.0,-325.0)-(325.0,325.0)  uvRect=(0.0000,0.0000,1.0000,1.0000)
+  panelBounds=(-325.0,-325.0,650.0x650.0) baseBounds=(-325.0,-325.0,650.0x650.0)
+  panelOverBase=1.0000x1.0000  offset=(0.0,0.0)  identical=True
+
+Framing probe player: world=(1104.9,269.7,1783.5) mapPos=(17.3,158.0)
+  panelUv=(0.52660,0.74301) baseUv=(0.52660,0.74301)
+  delta=(0.00000,0.00000)  px@2048=(0.0,0.0)  agree=True
+
+Framing probe offset: +600 world units -> delta=(0.00000,0.00000)
+  px@2048=(0.0,0.0)  agree=True
+```
+
+**两条链路算出的最终 uv 逐位相同**，在玩家处和偏离 600 世界单位处都是 **0.0 像素差**。
+⇒ §37.1「两层可以共用同一个原版基准」这个承重假设**有实测支撑了**。
+⇒ 偏移 600 单位那一测是关键：它排除了「纯比例误差在中心互相抵消」这种假阳性。
+
+**注意这次只有 `probe 1`**（成功即止，符合设计）。
+**仍然只覆盖 MountainTownRegion 一个区域** —— `window/dlc` 类区域的基准未测。
+
+### 41.2 ✅ 图集到手，802/802 全部可解析（§39.2 结案）
+
+```
+[22:09:26.700] Icon table [MountainTownRegion]: 8 sprite names, atlas present: True.
+[22:09:49.043] Marker census (F11): 816 entries; 14 without a sprite name;
+               33 distinct sprite names. Resolvable: 802
+               (205 from the scraped table, 597 via the atlas), unresolvable 0.
+               Projected onto the map: 802, not projected: 0.
+[22:09:49.044] MapDetail summary: 802 markers with a sprite name;
+               205 found among the scraped sprites, 597 more resolvable through the atlas
+               (100% total); atlas present: True; 14 carry no sprite name.
+```
+
+**与 §25.3 的原版图源数字完全吻合**（205 表内 + 597 图集 = 802，100%）。
+⇒ `PopulateIconTableOnce()` 在社区图源下**确实能填上图集**，
+⇒ §40.5 那条「AI 推断」现在**升级为实测通过**。
+⇒ **标记重写的最后一道前置障碍清除。**
+
+### 41.3 ⚠️ 逐层存投影导致过期值（**已修**）
+
+```
+[22:09:45.443] [layers] mini: src=automatic using=community tex=4360x4198 ready=True
+                        bounds=(-325,-325,650x650) ...
+               full: src=automatic using=community tex=4360x4198 ready=True
+                        bounds=(-1024,-1024,2048x2048) ...
+```
+
+`mini` 这一层用着社区图，`bounds` 却还是**原版**的 `(-325,-325,650x650)`。
+
+**成因**：base map 只写进**当时活动的**那一层。`UseVanillaBaseMap` 是按图层存的，
+而一次 base map 加载只会发生在活动层上，另一层就留住了它上次见到的旧值。
+
+**这是一次方向相反的跨层污染** —— 我原本担心的是「一层清空共享值影响另一层」，
+实际发生的是「一层写入不了另一层的副本」。**逐层存投影这个设计从头到尾没有带来任何好处**：
+两层永远算出同一个值，却被我按图层拆开，于是多了两种不同步的方式。
+
+⇒ 修法：投影值**不再按图层的作用域管理**。
+`ClearVanillaProjection()` 按**区域**清（在 `ObserveScene` 里，而不是切图源时），
+`UseVanillaBaseMap` 一次写进所有图层。切回原版的那一层会重新请求自己的 base map，
+请求标记本来就把这个顺序管住了。
+
+> **来源：AI 推断** —— 「切图源时不必清投影」是推断，未测。
+> 最坏后果是 `TryPlayerToMapUv` 在某一帧读到旧区域的值；按现有请求序列，
+> `VanillaProjectionScene` 会挡住它（它按场景名比对）。
+
+### 41.4 标记重写现在缺的只剩「可见性判据」
+
+§39.3 已知：**802 个带精灵名的标记里只有 39 个 surveyed**，
+而最大的几组（香蒲 251、玫瑰果 127、树枝 72…）**全是可采集资源**。
+
+⇒ 开工前还差一次**只统计不绘制**的普查：按 `m_IsSurveyed` / `m_IsUnlocked` /
+`AllHarvestablesCollected` 三个条件的组合给出条数。
+**这个数字决定标记重写是「直接画」还是「必须先聚类/合并绘制」（§30 C3）。**
+§25.6 早就把 `m_IsSurveyed × m_IsUnlocked` 的组合列为待观察，现在它成了主线的下一步。

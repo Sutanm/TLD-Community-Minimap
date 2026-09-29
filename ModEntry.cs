@@ -458,6 +458,8 @@ public sealed class ModEntry : MelonMod
             return;
 
         ClearVanillaIcons();
+        // A new region invalidates the framing outright, so no layer may keep the old one.
+        ClearVanillaProjection();
         _layersDirty = true;
         _warmUpDone = false;
         _warmUpAfterUtc = DateTime.UtcNow.AddSeconds(4);
@@ -560,7 +562,6 @@ public sealed class ModEntry : MelonMod
         if (preferCommunity)
         {
             layer.UsingVanilla = false;
-            layer.VanillaProjectionScene = "";
             bool alreadyLoaded = layer.Definition != null &&
                                  layer.LoadedMapId == layer.Definition.Id &&
                                  !ReferenceEquals(layer.Texture, null);
@@ -586,6 +587,30 @@ public sealed class ModEntry : MelonMod
     }
 
     private static string LayerName(int layerId) => layerId == LayerMini ? "mini" : "full";
+
+    // Drops every layer's vanilla projection.
+    //
+    // These values are a fact about the REGION, not about a layer: both layers ask the same
+    // Panel_Map about the same scene, and every measurement of both paths has reported the same
+    // numbers. Storing them per layer was an attempt to stop one layer's source switch disturbing
+    // the other, but it bought nothing - neither layer writes a different value - and it cost a
+    // real bug: a base map loads on whichever layer is active, so the OTHER layer keeps whatever
+    // framing it last saw. The 22:08 session shows it, a community layer still carrying the vanilla
+    // bounds (-325,-325,650x650).
+    //
+    // Clearing is therefore by region, not by source switch. A layer that switches back to vanilla
+    // re-requests its own base map and repopulates this on arrival, which is the sequence the
+    // request markers already enforce.
+    private void ClearVanillaProjection()
+    {
+        for (int i = 0; i < _layers.Length; i++)
+        {
+            MapLayer layer = _layers[i];
+            layer.VanillaProjectionScene = "";
+            layer.VanillaMapLocalBounds = new Rect(-1024f, -1024f, 2048f, 2048f);
+            layer.VanillaTextureUv = new Rect(0f, 0f, 1f, 1f);
+        }
+    }
 
     // _loadAfterUtc is one global clock shared by both layers, because only the layer on screen is
     // ever loaded by the update loop. Letting a layer push it later re-arms a load for a texture
@@ -2908,14 +2933,19 @@ public sealed class ModEntry : MelonMod
         Texture2D previous = layer.Texture;
         layer.Texture = texture;
         layer.LoadedMapId = "__basemap__" + sceneName;
-        layer.VanillaProjectionScene = sceneName;
-        // The base map shares the surveyed map's framing; section 38.1 confirmed the panel path
-        // reports exactly these bounds for MountainTownRegion. Recorded per layer, so the two
-        // layers never disagree about the framing they are projecting with.
-        layer.VanillaMapLocalBounds = new Rect(-325f, -325f, 650f, 650f);
-        layer.VanillaTextureUv = new Rect(0f, 0f, 1f, 1f);
         layer.UsingVanilla = true;
         layer.TextureReady = true;
+        // The base map shares the surveyed map's framing, confirmed by the framing probe: the panel
+        // path reported (-325,-325,650x650) with an identity uvRect, and both paths produced the
+        // same final uv for the player and 600 world units away. Recorded on every layer because
+        // the value belongs to the region, not to whichever layer happened to load it.
+        for (int i = 0; i < _layers.Length; i++)
+        {
+            MapLayer target = _layers[i];
+            target.VanillaProjectionScene = sceneName;
+            target.VanillaMapLocalBounds = new Rect(-325f, -325f, 650f, 650f);
+            target.VanillaTextureUv = new Rect(0f, 0f, 1f, 1f);
+        }
         if (!ReferenceEquals(previous, null) && !ReferenceEquals(previous, texture))
             UnityEngine.Object.Destroy(previous);
     }
