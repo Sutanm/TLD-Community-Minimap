@@ -4679,6 +4679,16 @@ public sealed class ModEntry : MelonMod
             if (!_hoverPlateRoot.activeSelf)
                 _hoverPlateRoot.SetActive(true);
         }
+
+        // The tooltip is created once, early, while the marker objects are added afterwards - and
+        // uGUI draws in hierarchy order, so anything created later covers it. The markers are laid on
+        // top of each other in places, so the tooltip was regularly hidden behind an icon. Moving it
+        // to the end of the sibling list each time it is shown keeps it above the whole marker set
+        // without having to re-order anything when markers are rebuilt. The plate goes last of the two
+        // so the text draws over its own background.
+        if (!ReferenceEquals(_hoverPlateRoot, null))
+            _hoverPlateRoot.transform.SetAsLastSibling();
+        _hoverLabelRoot.transform.SetAsLastSibling();
     }
 
     // Builds the one reusable tooltip.
