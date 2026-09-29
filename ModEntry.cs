@@ -4135,6 +4135,60 @@ public sealed class ModEntry : MelonMod
         }
     }
 
+    // Lists what a MapDetail actually exposes for reading a display name.
+    //
+    // Guessing has failed three times now - "Localization" was not a type name, m_LocalizedName is
+    // not in the interop assembly, and Il2Cpp.Locale.GetText answers with the key it was handed - so
+    // this enumerates the entry's own members instead. A name that the game puts on its map has to
+    // be reachable from the map data somehow, and this is what says how.
+    private static bool s_mapDetailMembersProbed;
+
+    private void ProbeMapDetailMembers()
+    {
+        if (s_mapDetailMembersProbed)
+            return;
+        s_mapDetailMembersProbed = true;
+        try
+        {
+            Type type = typeof(MapDetail);
+            var lines = new List<string>();
+            foreach (System.Reflection.MethodInfo method in type.GetMethods(
+                         System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance |
+                         System.Reflection.BindingFlags.DeclaredOnly))
+            {
+                if (method.ReturnType != typeof(string))
+                    continue;
+                lines.Add(method.Name + "(" +
+                    string.Join(",", System.Array.ConvertAll(method.GetParameters(),
+                        p => p.ParameterType.Name)) + ")");
+            }
+            LoggerInstance.Msg($"MapDetail string methods: " +
+                (lines.Count > 0 ? string.Join(", ", lines) : "<none>"));
+
+            var fields = new List<string>();
+            foreach (System.Reflection.FieldInfo field in type.GetFields(
+                         System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance))
+            {
+                fields.Add($"{field.Name}:{field.FieldType.Name}");
+            }
+            LoggerInstance.Msg($"MapDetail fields: " +
+                (fields.Count > 0 ? string.Join(", ", fields) : "<none>"));
+
+            var props = new List<string>();
+            foreach (System.Reflection.PropertyInfo property in type.GetProperties(
+                         System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance))
+            {
+                props.Add($"{property.Name}:{property.PropertyType.Name}");
+            }
+            LoggerInstance.Msg($"MapDetail properties: " +
+                (props.Count > 0 ? string.Join(", ", props) : "<none>"));
+        }
+        catch (Exception ex)
+        {
+            LoggerInstance.Warning($"MapDetail member probe failed: {ex.Message}");
+        }
+    }
+
     private void ProbeLocalization()
     {
         s_localizationProbed = true;
@@ -4246,6 +4300,8 @@ public sealed class ModEntry : MelonMod
             var details = MapDetailManager.s_MapDetails;
             if (ReferenceEquals(details, null))
                 return;
+
+            ProbeMapDetailMembers();
 
             int added = 0;
             for (int i = 0; i < details.Count; i++)
