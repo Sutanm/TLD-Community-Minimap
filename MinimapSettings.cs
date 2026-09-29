@@ -164,6 +164,13 @@ internal sealed class MinimapSettings : JsonModSettings
     [Description("在全屏地图底部显示一行操作提示（缩放 / 拖动 / 关闭）。找不到可用字体会自动隐藏，并写入日志。")]
     public bool ShowKeyHints = true;
 
+    // Configurable because a fixed key collides with whatever the player already runs. F7 was tried
+    // first and was swallowed by another program before it ever reached the game, so the key is a
+    // setting now rather than a constant that has to be edited and rebuilt.
+    [Name("抓取游戏地图的键")]
+    [Description("打开游戏自己的地图界面后按此键，把游戏绘制的高分辨率地图抓下来直接用于本模组，同时在 Mods\\CommunityMinimap 下存一张 PNG 供校准。默认 P —— 功能键 F5/F6/F8/F9/F10 被游戏占用，F11 是标记记录点，F7 曾被其它程序吃掉。")]
+    public KeyCode CaptureMapKey = KeyCode.P;
+
     [Name("木炭勘测后弹图")]
     [Description("用木炭点亮地图时，游戏会强制打开一次地图。游戏内置＝保持游戏原样；当前图源＝改弹本模组的全屏地图，用你上面选的图源；不弹＝直接吃掉这次弹窗（我们的地图本来就全亮，信息量相同，少一次打扰）。")]
     [Choice("游戏内置", "当前图源", "不弹")]

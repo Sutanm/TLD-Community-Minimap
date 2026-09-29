@@ -491,8 +491,16 @@ public sealed class ModEntry : MelonMod
         // HUD appears on scene load exactly like the community-map source.
         if (!preferCommunity && active.Definition != null && playerReady)
         {
-            TryRequestVanillaBaseMap(scene.name, active);
-            PollVanillaBaseMap(scene.name, active);
+            // A previously captured map beats the region's own 1024x1024 texture: it is the image the
+            // game actually draws, at twice the resolution, and it exists because the player lit the
+            // region by hand. Reading it here means the capture survives the session it was made in.
+            if (!active.TextureReady || !active.UsingVanilla)
+                TryLoadCapturedMap(scene.name, active);
+            if (!active.TextureReady)
+            {
+                TryRequestVanillaBaseMap(scene.name, active);
+                PollVanillaBaseMap(scene.name, active);
+            }
             if (!vanillaMapOpen && active.TextureReady)
                 TryLoadVanillaElementsWithoutPanel(scene.name, active);
         }
@@ -3161,6 +3169,9 @@ public sealed class ModEntry : MelonMod
             string path = Path.Combine(_modDirectory,
                 $"panelmap_{SanitizeFileName(sceneName)}.png");
             WriteTextureToPng(forFile, path);
+            // The copy the loader reads next session, so this capture only has to be made once.
+            SaveCapturedMap(forFile, sceneName);
+            WriteFramingSidecar(sceneName, bounds, textureUv);
             UnityEngine.Object.Destroy(forFile);
             LoggerInstance.Msg($"F7 wrote {path} for calibration.");
         }
@@ -4020,6 +4031,114 @@ public sealed class ModEntry : MelonMod
         {
             LoggerInstance.Warning($"Measuring base map content failed: {ex.Message}");
             return full;
+        }
+    }
+
+    // The captured map, kept on disk and reloaded automatically.
+    //
+    // Capturing happens once per region by hand, because only the player can light a region up. That
+    // work must not be thrown away when the session ends, and it must not depend on the capture
+    // being applied live - the first attempt at that did not show up on screen, and a saved image
+    // sidesteps the question entirely: the next time the region loads, the file is simply read like
+    // any other map image.
+    private string CapturedMapPath(string sceneName) =>
+        Path.Combine(_modDirectory, "captured", SanitizeFileName(sceneName) + ".png");
+
+    private void SaveCapturedMap(Texture2D texture, string sceneName)
+    {
+        try
+        {
+            string path = CapturedMapPath(sceneName);
+            Directory.CreateDirectory(Path.GetDirectoryName(path));
+            WriteTextureToPng(texture, path);
+            LoggerInstance.Msg($"Saved the captured map for {sceneName}: {path}");
+        }
+        catch (Exception ex)
+        {
+            LoggerInstance.Warning($"Saving the captured map for {sceneName} failed: {ex.Message}");
+        }
+    }
+
+    // Writes the panel's framing next to the captured image. Kept as text rather than folded into
+    // the image so a framing that ever needs adjusting can be corrected without re-capturing.
+    private void WriteFramingSidecar(string sceneName, Rect bounds, Rect textureUv)
+    {
+        try
+        {
+            string sidecar = CapturedMapPath(sceneName) + ".framing";
+            File.WriteAllText(sidecar, string.Join(",",
+                bounds.x.ToString("R", CultureInfo.InvariantCulture),
+                bounds.y.ToString("R", CultureInfo.InvariantCulture),
+                bounds.width.ToString("R", CultureInfo.InvariantCulture),
+                bounds.height.ToString("R", CultureInfo.InvariantCulture),
+                textureUv.x.ToString("R", CultureInfo.InvariantCulture),
+                textureUv.y.ToString("R", CultureInfo.InvariantCulture),
+                textureUv.width.ToString("R", CultureInfo.InvariantCulture),
+                textureUv.height.ToString("R", CultureInfo.InvariantCulture)));
+        }
+        catch (Exception ex)
+        {
+            LoggerInstance.Warning($"Writing framing for {sceneName} failed: {ex.Message}");
+        }
+    }
+
+    // Reads a previously captured map, if one exists, into the layer.
+    //
+    // The framing recorded with it is the panel's own bounds and uvRect, because that is what the
+    // game lays its markers out with. The sidecar is a plain text file so it can be inspected and
+    // corrected by hand if a capture ever needs adjusting.
+    private bool TryLoadCapturedMap(string sceneName, MapLayer layer)
+    {
+        try
+        {
+            string path = CapturedMapPath(sceneName);
+            if (!File.Exists(path))
+                return false;
+
+            Rect bounds = new(-325f, -325f, 650f, 650f);
+            Rect textureUv = new(0f, 0f, 1f, 1f);
+            string sidecar = path + ".framing";
+            if (File.Exists(sidecar))
+            {
+                string[] parts = File.ReadAllText(sidecar).Split(',');
+                if (parts.Length >= 8 &&
+                    float.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out float bx) &&
+                    float.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out float by) &&
+                    float.TryParse(parts[2], NumberStyles.Float, CultureInfo.InvariantCulture, out float bw) &&
+                    float.TryParse(parts[3], NumberStyles.Float, CultureInfo.InvariantCulture, out float bh) &&
+                    float.TryParse(parts[4], NumberStyles.Float, CultureInfo.InvariantCulture, out float ux) &&
+                    float.TryParse(parts[5], NumberStyles.Float, CultureInfo.InvariantCulture, out float uy) &&
+                    float.TryParse(parts[6], NumberStyles.Float, CultureInfo.InvariantCulture, out float uw) &&
+                    float.TryParse(parts[7], NumberStyles.Float, CultureInfo.InvariantCulture, out float uh))
+                {
+                    bounds = new Rect(bx, by, bw, bh);
+                    textureUv = new Rect(ux, uy, uw, uh);
+                }
+            }
+
+            byte[] bytes = File.ReadAllBytes(path);
+            var il2CppBytes = new Il2CppStructArray<byte>(bytes);
+            var texture = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+            if (!ImageConversion.LoadImage(texture, il2CppBytes, true))
+            {
+                LoggerInstance.Warning($"Captured map for {sceneName} failed to decode.");
+                return false;
+            }
+            texture.wrapMode = TextureWrapMode.Clamp;
+            texture.filterMode = FilterMode.Bilinear;
+            texture.hideFlags = HideFlags.HideAndDontSave | HideFlags.DontUnloadUnusedAsset;
+            UnityEngine.Object.DontDestroyOnLoad(texture);
+
+            UseVanillaBaseMap(texture, sceneName, layer, textureUv);
+            LoggerInstance.Msg(
+                $"Using the captured map for {sceneName}: {texture.width}x{texture.height}, " +
+                $"bounds={bounds}, uv={textureUv}.");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            LoggerInstance.Warning($"Loading the captured map for {sceneName} failed: {ex.Message}");
+            return false;
         }
     }
 
