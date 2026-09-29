@@ -48,6 +48,15 @@ public sealed class ModEntry : MelonMod
     private bool _openMapKeyHeld;
     private DateTime _nextOpenMapKeyLogUtc = DateTime.MinValue;
 
+    // Remote-diagnosis support: one compact state line on a timer, plus a census of the game's map
+    // data taken whenever the vanilla panel opens or closes. Both exist so a single play session
+    // answers the open questions - whether the harvestable links are populated at all, and whether
+    // the fog machinery exists while the panel is shut - without asking the player to do anything
+    // special or to read a wall of log.
+    private DateTime _nextHeartbeatUtc = DateTime.MinValue;
+    private DateTime _nextCensusUtc = DateTime.MinValue;
+    private bool _censusPanelWasOpen;
+
     private readonly MinimapSettings _settings = new();
     private string _modDirectory = "";
     private string _mapsDirectory = "";
@@ -224,6 +233,22 @@ public sealed class ModEntry : MelonMod
 
         Panel_Map vanillaPanel = null;
         bool vanillaMapOpen = TryGetOpenVanillaMap(out vanillaPanel);
+
+        // One census per panel transition. This is the measurement that tells apart "the
+        // harvestable links are filled in only once the panel has built its elements" from "they
+        // are never filled in at all" - section 20 recorded the latter, but MapIconFix works from
+        // exactly those fields, so one of the two readings has to be wrong.
+        if (vanillaMapOpen != _censusPanelWasOpen)
+        {
+            _censusPanelWasOpen = vanillaMapOpen;
+            _nextCensusUtc = DateTime.MinValue;      // transitions must never be throttled away
+            CensusMapDetails(vanillaMapOpen ? "panel opened" : "panel closed");
+        }
+
+        // Before the early returns below, so a session always leaves a readable trail even when
+        // there is no map for the scene and the HUD never appears.
+        LogStateHeartbeat();
+
         if (!vanillaMapOpen)
         {
             _vanillaMapWasOpen = false;
@@ -1505,10 +1530,163 @@ public sealed class ModEntry : MelonMod
     }
 
 
+    // One compact line describing the whole state, so a session can be reasoned about without
+    // asking the player what they saw. Deliberately cheap: it never walks the 816 map entries,
+    // because touching two interop lists on every one of them is not a per-frame cost worth paying.
+    private void LogStateHeartbeat()
+    {
+        if (DateTime.UtcNow < _nextHeartbeatUtc)
+            return;
+        _nextHeartbeatUtc = DateTime.UtcNow.AddSeconds(10);
+
+        string fog;
+        bool panelOpen = TryGetOpenVanillaMap(out _);
+        try
+        {
+            Panel_Map panel = InterfaceManager.GetPanel<Panel_Map>();
+            if (ReferenceEquals(panel, null))
+            {
+                fog = "no panel object";
+            }
+            else
+            {
+                var fogOfWar = panel.m_FogOfWar;
+                var surveys = panel.m_DetailSurveyPositions;
+                int fogCount = ReferenceEquals(fogOfWar, null) ? -1 : fogOfWar.Count;
+                int surveyCount = ReferenceEquals(surveys, null) ? -1 : surveys.Count;
+
+                // The revealed texture is the game's own "base map with fog already applied". If it
+                // is alive while the panel is shut, the fog feature can reuse it instead of us
+                // reconstructing the mask from survey circles.
+                string revealed = "no entry";
+                if (!ReferenceEquals(fogOfWar, null))
+                {
+                    foreach (var pair in fogOfWar)
+                    {
+                        if (ReferenceEquals(pair.Value, null))
+                            continue;
+                        revealed = ReferenceEquals(pair.Value.m_RevealedMapTex, null)
+                            ? "null" : $"{pair.Value.m_RevealedMapTex.width}x{pair.Value.m_RevealedMapTex.height}";
+                        break;
+                    }
+                }
+                fog = $"fogOfWar={fogCount} surveyScenes={surveyCount} revealedTex={revealed}";
+            }
+        }
+        catch (Exception ex)
+        {
+            fog = $"unreadable ({ex.GetType().Name})";
+        }
+
+        int detailCount;
+        try
+        {
+            var details = MapDetailManager.s_MapDetails;
+            detailCount = ReferenceEquals(details, null) ? -1 : details.Count;
+        }
+        catch { detailCount = -1; }
+
+        bool hasUv = false;
+        try
+        {
+            Transform player = GameManager.GetPlayerTransform();
+            hasUv = !ReferenceEquals(player, null) && TryPlayerToMapUv(player.position, out Vector2 _);
+        }
+        catch { }
+
+        string texture = "none";
+        if (!ReferenceEquals(_currentTexture, null))
+            texture = $"{_currentTexture.width}x{_currentTexture.height}";
+
+        LoggerInstance.Msg(
+            $"[state] scene={_observedSceneName} map={_currentDefinition?.Id ?? "-"} " +
+            $"calibrated={_currentDefinition?.IsCalibrated.ToString() ?? "-"} " +
+            $"source={(_usingVanillaMap ? "vanilla" : "community")} tex={texture} " +
+            $"textureReady={_textureReady} playerUv={hasUv} markers={_vanillaIcons.Count} " +
+            $"mapDetails={detailCount} vanillaPanelOpen={panelOpen} view={DescribeView()} {fog}");
+    }
+
+    // How many entries actually carry the links that would let us tell a collected marker from a
+    // live one. Section 20 recorded both fields as empty across all 816 entries, yet MapIconFix is
+    // said to work from exactly these fields - so either we read them at the wrong moment or we
+    // read them wrong. The panel open/close trigger exists to tell those two apart.
+    private void CensusMapDetails(string reason)
+    {
+        if (DateTime.UtcNow < _nextCensusUtc)
+            return;
+        _nextCensusUtc = DateTime.UtcNow.AddSeconds(2);
+
+        try
+        {
+            var details = MapDetailManager.s_MapDetails;
+            if (ReferenceEquals(details, null))
+            {
+                LoggerInstance.Warning($"Census ({reason}): s_MapDetails is null.");
+                return;
+            }
+
+            int withSprite = 0, surveyed = 0, withVisible = 0, withShared = 0;
+            int totalVisible = 0, totalShared = 0;
+            var csv = new StringBuilder();
+            csv.AppendLine("index,sprite,locid,type,surveyed,discovered,unlocked," +
+                           "world_x,world_y,world_z,harvestables_for_visibility,harvestables_sharing_icon");
+
+            for (int i = 0; i < details.Count; i++)
+            {
+                MapDetail detail = details[i];
+                if (ReferenceEquals(detail, null))
+                    continue;
+
+                int visible = 0, shared = 0;
+                try
+                {
+                    var list = detail.m_HarvestablesForMapVisibility;
+                    if (!ReferenceEquals(list, null))
+                        visible = list.Length;
+                }
+                catch { }
+                try
+                {
+                    var list = detail.m_HarvestablesSharingIcon;
+                    if (!ReferenceEquals(list, null))
+                        shared = list.Count;
+                }
+                catch { }
+
+                if (visible > 0) { withVisible++; totalVisible += visible; }
+                if (shared > 0) { withShared++; totalShared += shared; }
+                if (detail.m_IsSurveyed) surveyed++;
+                if (!string.IsNullOrEmpty(detail.m_SpriteName)) withSprite++;
+
+                Vector3 world = detail.GetWorldPosition();
+                csv.AppendLine(
+                    $"{i},{EscapeCsv(detail.m_SpriteName)},{EscapeCsv(detail.m_LocID)}," +
+                    $"{detail.m_IconType},{detail.m_IsSurveyed},{detail.m_IsDiscovered}," +
+                    $"{detail.m_IsUnlocked},{world.x:F2},{world.y:F2},{world.z:F2},{visible},{shared}");
+            }
+
+            LoggerInstance.Msg(
+                $"Census ({reason}): {details.Count} entries, {withSprite} with a sprite name, " +
+                $"{surveyed} surveyed. m_HarvestablesForMapVisibility populated on {withVisible} " +
+                $"entries ({totalVisible} objects); m_HarvestablesSharingIcon populated on " +
+                $"{withShared} entries ({totalShared} objects).");
+
+            string path = Path.Combine(_modDirectory,
+                $"mapdetails_{_observedSceneName}_{DateTime.Now:HHmmss}.csv");
+            File.WriteAllText(path, csv.ToString());
+            LoggerInstance.Msg($"Census written: {path}");
+        }
+        catch (Exception ex)
+        {
+            LoggerInstance.Warning($"Census ({reason}) failed: {ex.Message}");
+        }
+    }
+
     // Diagnostic: the marker data behind the game's map, which is the source the refactor will
     // read instead of scraping the panel's sprites. Prints what a marker actually carries.
     private void DumpMapDetails()
     {
+        CensusMapDetails("F11");
         try
         {
             var details = MapDetailManager.s_MapDetails;
