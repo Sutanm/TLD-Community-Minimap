@@ -1,3 +1,4 @@
+// 社区HUD地图 · sutanm — 世界坐标 ↔ 社区地图像素的仿射拟合
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -210,3 +211,4 @@ internal static class CalibrationStore
         }
     }
 }
+// — sutanm · 社区HUD地图

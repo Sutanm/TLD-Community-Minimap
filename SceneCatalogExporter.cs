@@ -1,3 +1,4 @@
+// 社区HUD地图 · sutanm — 导出游戏场景名目录
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -60,3 +61,4 @@ internal static class SceneCatalogExporter
     private static string EscapeCsv(string value) =>
         '"' + value.Replace("\"", "\"\"") + '"';
 }
+// — sutanm · 社区HUD地图

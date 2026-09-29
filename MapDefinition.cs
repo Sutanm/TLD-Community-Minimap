@@ -1,3 +1,4 @@
+// 社区HUD地图 · sutanm — 场景 → 地图定义的目录
 using System;
 using System.Collections.Generic;
 using UnityEngine;
@@ -132,3 +133,4 @@ internal static class MapCatalog
             ByScene[scene] = definition;
     }
 }
+// — sutanm · 社区HUD地图

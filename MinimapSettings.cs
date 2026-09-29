@@ -1,3 +1,4 @@
+// 社区HUD地图 · sutanm — 设置界面与条件显示
 using System.Reflection;
 using ModSettings;
 using UnityEngine;
@@ -194,3 +195,4 @@ internal sealed class MinimapSettings : JsonModSettings
         }
     }
 }
+// — sutanm · 社区HUD地图

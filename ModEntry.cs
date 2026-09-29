@@ -1,3 +1,4 @@
+// 社区HUD地图 · sutanm — 主模组：HUD、图层、标记、校准
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -157,7 +158,7 @@ public sealed class ModEntry : MelonMod
             message => LoggerInstance.Warning(message));
         _calibrationLastWriteUtc = File.GetLastWriteTimeUtc(_calibrationPath);
         _sceneCatalogAfterUtc = DateTime.UtcNow.AddSeconds(5);
-        LoggerInstance.Msg("社区HUD地图 0.7.0 initialized.");
+        LoggerInstance.Msg("社区HUD地图 0.7.0 initialized. · sutanm ·");
         LoggerInstance.Msg($"Map directory: {_mapsDirectory}");
     }
 
@@ -2497,3 +2498,4 @@ public sealed class ModEntry : MelonMod
 
     private static string EscapeCsv(string value) => '"' + value.Replace("\"", "\"\"") + '"';
 }
+// — sutanm · 社区HUD地图

@@ -1,3 +1,4 @@
+// 社区HUD地图 · sutanm — 拦游戏自己的地图动作，不按键名
 using System;
 using HarmonyLib;
 using Il2Cpp;
@@ -82,3 +83,4 @@ internal static class InputPatches
         return !ModEntry.HandleSurveyMapPopup("ExecuteOpenMapActionFromObjective");
     }
 }
+// — sutanm · 社区HUD地图
