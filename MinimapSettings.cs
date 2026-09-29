@@ -109,7 +109,7 @@ internal sealed class MinimapSettings : JsonModSettings
     [Section("高级")]
 
     [Name("开发者模式")]
-    [Description("打开后显示地图配准、标记诊断等开发用选项。关掉则隐藏它们，值不会丢失。")]
+    [Description("打开后显示地图配准、标记诊断等开发用选项。关掉则隐藏它们，值不会丢失。 · sutanm 制作")]
     public bool DeveloperMode = false;
 
     // The cycle key is deliberately not a developer-only row: it is a convenience the player may
