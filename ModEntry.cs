@@ -3079,6 +3079,10 @@ public sealed class ModEntry : MelonMod
     {
         try
         {
+            // Once per session per region, not once ever: the file is now overwritten every time,
+            // but re-exporting on every panel refresh would write a 2048x2048 PNG repeatedly for no
+            // gain. A new session re-captures, which is what makes a freshly revealed map replace a
+            // stale one.
             if (string.Equals(_panelTextureMeasuredForScene, sceneName, StringComparison.Ordinal))
                 return;
 
@@ -3104,11 +3108,12 @@ public sealed class ModEntry : MelonMod
 
             string path = Path.Combine(_modDirectory,
                 $"panelmap_{SanitizeFileName(sceneName)}.png");
-            if (!File.Exists(path))
-            {
-                WriteTextureToPng(owned, path);
-                LoggerInstance.Msg($"Exported panel map texture: {path}");
-            }
+            // Always overwrite. Skipping when the file exists meant the export kept the FIRST panel
+            // state it ever saw, which is the pre-reveal fog, and that stale image was then read as
+            // evidence about the map's extent for a whole round of investigation. The panel texture
+            // is a snapshot of a reveal state, so the newest one is the only one worth keeping.
+            WriteTextureToPng(owned, path);
+            LoggerInstance.Msg($"Exported panel map texture: {path}");
 
             _panelTextureMeasuredForScene = sceneName;
         }
