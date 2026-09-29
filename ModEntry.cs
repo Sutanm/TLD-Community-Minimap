@@ -4087,46 +4087,106 @@ public sealed class ModEntry : MelonMod
         return "";
     }
 
+    // Reads MapDetail's own display name, if it has one.
+    //
+    // The game shows these names on its map, so the text must already exist somewhere reachable from
+    // the map data - and a member named m_LocalizedName is the obvious candidate. Reading a property
+    // off the entry is far less fragile than resolving a key through a localization API whose type
+    // name and member name both had to be guessed. Reflection, because a missing property must fall
+    // through to the key lookup rather than fail the build.
+    private static System.Reflection.PropertyInfo s_localizedNameProperty;
+    private static bool s_localizedNameProbed;
+
+    private static string ReadLocalizedName(MapDetail detail)
+    {
+        if (!s_localizedNameProbed)
+        {
+            s_localizedNameProbed = true;
+            try
+            {
+                s_localizedNameProperty = typeof(MapDetail).GetProperty("m_LocalizedName",
+                    System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic |
+                    System.Reflection.BindingFlags.Instance);
+            }
+            catch
+            {
+                s_localizedNameProperty = null;
+            }
+        }
+
+        if (s_localizedNameProperty == null)
+            return "";
+        try
+        {
+            return s_localizedNameProperty.GetValue(detail) as string ?? "";
+        }
+        catch
+        {
+            return "";
+        }
+    }
+
     private void ProbeLocalization()
     {
         s_localizationProbed = true;
         try
         {
-            Type type = null;
+            // Enumerate rather than guess. Looking up the exact name "Localization" failed, which is
+            // the second time a name picked by string search turned out not to exist on the type it
+            // was assumed to be on. Listing what is actually loaded costs one pass and removes the
+            // guess: both the type name and the lookup member are discovered here.
+            var candidates = new List<string>();
             foreach (System.Reflection.Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())
             {
-                try
+                Type[] types;
+                try { types = assembly.GetTypes(); }
+                catch { continue; }
+
+                foreach (Type type in types)
                 {
-                    type = assembly.GetType("Localization");
-                    if (type != null)
-                        break;
+                    string full = type.FullName ?? type.Name;
+                    if (full.IndexOf("local", StringComparison.OrdinalIgnoreCase) < 0)
+                        continue;
+                    candidates.Add(full);
                 }
-                catch { }
             }
 
-            if (type == null)
-            {
-                LoggerInstance.Warning("Localization: type not found; map labels will be omitted.");
-                return;
-            }
+            LoggerInstance.Msg($"Localization: {candidates.Count} loaded types mention 'local': " +
+                string.Join(", ", candidates.GetRange(0, Math.Min(12, candidates.Count))) +
+                (candidates.Count > 12 ? ", ..." : ""));
 
-            string[] candidates = { "GetLocString", "GetString", "Translate", "GetText" };
-            foreach (string name in candidates)
+            // Now find a static string->string lookup on any of them, preferring names that read
+            // like a translation call.
+            string[] preferred = { "GetLocString", "Translate", "GetString", "GetText", "Localize" };
+            foreach (string wanted in preferred)
             {
-                System.Reflection.MethodInfo method = type.GetMethod(name,
-                    System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static,
-                    null, new[] { typeof(string) }, null);
-                if (method != null)
+                foreach (string fullName in candidates)
                 {
-                    s_locStringMethod = method;
-                    LoggerInstance.Msg($"Localization: using {type.FullName}.{name}(string) for map labels.");
-                    return;
+                    Type type = null;
+                    foreach (System.Reflection.Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())
+                    {
+                        try { type = assembly.GetType(fullName); } catch { }
+                        if (type != null)
+                            break;
+                    }
+                    if (type == null)
+                        continue;
+
+                    System.Reflection.MethodInfo method = type.GetMethod(wanted,
+                        System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static,
+                        null, new[] { typeof(string) }, null);
+                    if (method != null && method.ReturnType == typeof(string))
+                    {
+                        s_locStringMethod = method;
+                        LoggerInstance.Msg(
+                            $"Localization: using {fullName}.{wanted}(string) for map labels.");
+                        return;
+                    }
                 }
             }
 
             LoggerInstance.Warning(
-                "Localization: no static string lookup found among " +
-                string.Join(", ", candidates) + "; map labels will be omitted.");
+                "Localization: no static string lookup found; map labels will be omitted.");
         }
         catch (Exception ex)
         {
@@ -4173,7 +4233,9 @@ public sealed class ModEntry : MelonMod
                 if (!string.IsNullOrEmpty(detail.m_SpriteName))
                     continue;
 
-                string text = LocalizeLabel(detail.m_LocID);
+                string text = ReadLocalizedName(detail);
+                if (string.IsNullOrEmpty(text))
+                    text = LocalizeLabel(detail.m_LocID);
                 if (string.IsNullOrEmpty(text))
                     continue;
 
@@ -4226,7 +4288,9 @@ public sealed class ModEntry : MelonMod
                 added++;
             }
 
-            LoggerInstance.Msg($"Map labels: {added} placed from {details.Count} entries.");
+            LoggerInstance.Msg($"Map labels: {added} placed from {details.Count} entries " +
+                $"(display name available: {s_localizedNameProperty != null}, " +
+                $"key lookup: {(s_locStringMethod != null ? "yes" : "no")}).");
         }
         catch (Exception ex)
         {
