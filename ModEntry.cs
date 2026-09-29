@@ -1197,6 +1197,19 @@ public sealed class ModEntry : MelonMod
         }
     }
 
+    // The one place a panel map position becomes a texture uv. Both the live conversion below and
+    // the framing probe go through it, because a probe that re-derives the maths it is supposed to
+    // be checking measures a copy that can drift away from the real path without anything saying
+    // so. It is also the single point the layer split has to make layer-aware.
+    private static Vector2 VanillaMapPositionToUv(Vector3 mapPosition, Rect localBounds, Rect textureUv)
+    {
+        float localU = Mathf.InverseLerp(localBounds.xMin, localBounds.xMax, mapPosition.x);
+        float localV = Mathf.InverseLerp(localBounds.yMin, localBounds.yMax, mapPosition.y);
+        return new Vector2(
+            textureUv.x + localU * textureUv.width,
+            textureUv.y + localV * textureUv.height);
+    }
+
     private bool TryPlayerToMapUv(Vector3 worldPosition, out Vector2 uv)
     {
         uv = default;
@@ -1211,13 +1224,7 @@ public sealed class ModEntry : MelonMod
                 return false;
             Vector3 mapPosition = panel.WorldPositionToMapPosition(
                 _vanillaProjectionScene, worldPosition);
-            float localU = Mathf.InverseLerp(_vanillaMapLocalBounds.xMin,
-                _vanillaMapLocalBounds.xMax, mapPosition.x);
-            float localV = Mathf.InverseLerp(_vanillaMapLocalBounds.yMin,
-                _vanillaMapLocalBounds.yMax, mapPosition.y);
-            uv = new Vector2(
-                _vanillaTextureUv.x + localU * _vanillaTextureUv.width,
-                _vanillaTextureUv.y + localV * _vanillaTextureUv.height);
+            uv = VanillaMapPositionToUv(mapPosition, _vanillaMapLocalBounds, _vanillaTextureUv);
             return true;
         }
         catch (Exception ex)
@@ -1599,6 +1606,9 @@ public sealed class ModEntry : MelonMod
             // one world position through both framings and compare the two answers. Run for the
             // player, who is guaranteed to be a point on this region's map, and repeated across
             // the region so a pure scale error cannot hide by cancelling at the centre.
+            //
+            // Both sides go through VanillaMapPositionToUv, the same helper the live pointer path
+            // calls, so this cannot quietly measure a re-derivation instead of the real thing.
             Transform player = GameManager.GetPlayerTransform();
             if (player != null)
             {
@@ -1607,21 +1617,12 @@ public sealed class ModEntry : MelonMod
 
                 // Base map path: frozen bounds, full-texture uv (both set by UseVanillaBaseMap).
                 var baseBoundsFrozen = new Rect(-325f, -325f, 650f, 650f);
-                float baseLocalU = Mathf.InverseLerp(baseBoundsFrozen.xMin,
-                    baseBoundsFrozen.xMax, mapPosition.x);
-                float baseLocalV = Mathf.InverseLerp(baseBoundsFrozen.yMin,
-                    baseBoundsFrozen.yMax, mapPosition.y);
-                var baseUv = new Vector2(baseLocalU, baseLocalV);
+                var identityUv = new Rect(0f, 0f, 1f, 1f);
+                Vector2 baseUv = VanillaMapPositionToUv(mapPosition, baseBoundsFrozen, identityUv);
 
                 // Panel path: the widget's own bounds and uv rect, exactly as CaptureVanillaMap
                 // stores them.
-                float panelLocalU = Mathf.InverseLerp(panelBounds.xMin,
-                    panelBounds.xMax, mapPosition.x);
-                float panelLocalV = Mathf.InverseLerp(panelBounds.yMin,
-                    panelBounds.yMax, mapPosition.y);
-                var panelUv = new Vector2(
-                    uvRect.x + panelLocalU * uvRect.width,
-                    uvRect.y + panelLocalV * uvRect.height);
+                Vector2 panelUv = VanillaMapPositionToUv(mapPosition, panelBounds, uvRect);
 
                 float du = Mathf.Abs(panelUv.x - baseUv.x);
                 float dv = Mathf.Abs(panelUv.y - baseUv.y);
@@ -1637,16 +1638,10 @@ public sealed class ModEntry : MelonMod
                 // spacing of the points the marker rewrite has to place.
                 Vector3 probeWorld = world + new Vector3(600f, 0f, 0f);
                 Vector3 probePos = panel.WorldPositionToMapPosition(sceneName, probeWorld);
-                float baseFarU = Mathf.InverseLerp(baseBoundsFrozen.xMin,
-                    baseBoundsFrozen.xMax, probePos.x);
-                float baseFarV = Mathf.InverseLerp(baseBoundsFrozen.yMin,
-                    baseBoundsFrozen.yMax, probePos.y);
-                float panelFarU = uvRect.x + Mathf.InverseLerp(panelBounds.xMin,
-                    panelBounds.xMax, probePos.x) * uvRect.width;
-                float panelFarV = uvRect.y + Mathf.InverseLerp(panelBounds.yMin,
-                    panelBounds.yMax, probePos.y) * uvRect.height;
-                float farDu = Mathf.Abs(panelFarU - baseFarU);
-                float farDv = Mathf.Abs(panelFarV - baseFarV);
+                Vector2 baseFarUv = VanillaMapPositionToUv(probePos, baseBoundsFrozen, identityUv);
+                Vector2 panelFarUv = VanillaMapPositionToUv(probePos, panelBounds, uvRect);
+                float farDu = Mathf.Abs(panelFarUv.x - baseFarUv.x);
+                float farDv = Mathf.Abs(panelFarUv.y - baseFarUv.y);
                 LoggerInstance.Msg(
                     $"Framing probe offset [{sceneName}]: +600 world units -> " +
                     $"delta=({farDu:F5},{farDv:F5}) px@2048=({farDu * 2048f:F1},{farDv * 2048f:F1}) " +
@@ -2247,16 +2242,8 @@ public sealed class ModEntry : MelonMod
             CaptureVanillaIconsRecursive(transform.GetChild(i), mapElements, allowInactive);
     }
 
-    private Vector2 VanillaLocalToTextureUv(float x, float y)
-    {
-        float localU = Mathf.InverseLerp(_vanillaMapLocalBounds.xMin,
-            _vanillaMapLocalBounds.xMax, x);
-        float localV = Mathf.InverseLerp(_vanillaMapLocalBounds.yMin,
-            _vanillaMapLocalBounds.yMax, y);
-        return new Vector2(
-            _vanillaTextureUv.x + localU * _vanillaTextureUv.width,
-            _vanillaTextureUv.y + localV * _vanillaTextureUv.height);
-    }
+    private Vector2 VanillaLocalToTextureUv(float x, float y) =>
+        VanillaMapPositionToUv(new Vector3(x, y, 0f), _vanillaMapLocalBounds, _vanillaTextureUv);
 
     private void ClearVanillaIcons()
     {
