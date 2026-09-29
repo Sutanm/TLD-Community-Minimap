@@ -87,6 +87,9 @@ public sealed class ModEntry : MelonMod
     // Set when the scene changes so both layers re-resolve their source on the next update even
     // though their setting did not change.
     private bool _layersDirty;
+    // The marker category switches as of the last draw, so the marker loop can tell in one
+    // comparison whether it needs to re-resolve every icon's category.
+    private int _markerCategoryState = -1;
     // Set once the layer that is not on screen has been loaded too, so the first switch to it does
     // not pay for the decode. Reset per scene.
     private bool _warmUpDone;
@@ -146,12 +149,108 @@ public sealed class ModEntry : MelonMod
     private float _vanillaIconMaxUv = 1f;
     private DateTime _nextMarkerCleanupUtc = DateTime.MinValue;
 
+    // The five buckets the game's own map filter offers, so a player already knows what they mean.
+    // They are SEMANTIC, and deliberately not the MapIconType enum: that one says how big an icon
+    // is drawn (small entry / detail / top), and DetailEntry alone holds both cattails and deer
+    // carcasses, which belong in different buckets here.
+    //
+    // Classified by sprite name. Anything not recognised lands in Unclassified and is always drawn:
+    // guessing a bucket for a name we cannot place would hide a category of marker silently, which
+    // is the failure this whole rewrite exists to fix.
+    internal enum MarkerCategory
+    {
+        Resources,
+        Structures,
+        Corpses,
+        RockCaches,
+        SprayMarks,
+        Unclassified,
+    }
+
+    internal static MarkerCategory CategorizeSprite(string spriteName)
+    {
+        if (string.IsNullOrEmpty(spriteName))
+            return MarkerCategory.Unclassified;
+
+        switch (spriteName)
+        {
+            // Harvestable plants and animals lying in the world.
+            case "icoMap_cattails":
+            case "icoMap_rosehips":
+            case "icoMap_oldmansbeard":
+            case "icoMap_reishi":
+            case "icoMap_burdock":
+            case "icoMap_sapling":
+            case "icoMap_limb":          // a limb is a harvestable branch pile
+            case "icoMap_ptarmiganNest":
+            case "icoMap_rabbit":
+            case "icoMap_deerCarcass":
+            case "icoMap_corpse":
+                return MarkerCategory.Resources;
+
+            // Buildings and the man-made things on the map.
+            case "icoMap_churchMilton":
+            case "icoMap_farmhouseMilton":
+            case "icoMap_greyMother":
+            case "icoMap_willAirplane":
+            case "icoMap_radioTower":
+            case "icoMap_orcaGas":
+            case "icoMap_trailer":
+            case "icoMap_bus":
+            case "icoMap_car":
+            case "icoMap_bridge":
+            case "icoMap_crossroads":
+            case "icoMap_burntHusk":
+            case "icoMap_rope":
+            case "icoMap_spences":
+            case "icoMap_3Strikes":
+            case "icoMap_hatch":
+            case "icoMap_cave":
+            case "map_transition_map":
+                return MarkerCategory.Structures;
+
+            // Not placed yet. `icoMap_container`, `icoMap_Generic`, `ico_Radial_pack` and
+            // `ico_collections_polaroids` are the candidates but there is no evidence which, if any,
+            // is a rock cache or a spray mark. Reported by the marker census so the table can be
+            // completed from a real session instead of a guess.
+            default:
+                return MarkerCategory.Unclassified;
+        }
+    }
+
+    internal static string CategoryName(MarkerCategory category) => category switch
+    {
+        MarkerCategory.Resources => "资源",
+        MarkerCategory.Structures => "结构",
+        MarkerCategory.Corpses => "尸骸",
+        MarkerCategory.RockCaches => "岩石贮藏处",
+        MarkerCategory.SprayMarks => "油漆喷罐标记",
+        _ => "未分类",
+    };
+
+    private bool CategoryEnabled(MarkerCategory category) => category switch
+    {
+        MarkerCategory.Resources => _settings.ShowMarkerResources,
+        MarkerCategory.Structures => _settings.ShowMarkerStructures,
+        MarkerCategory.Corpses => _settings.ShowMarkerCorpses,
+        MarkerCategory.RockCaches => _settings.ShowMarkerRockCaches,
+        MarkerCategory.SprayMarks => _settings.ShowMarkerSprayMarks,
+        // Never filtered out: an unrecognised name must not vanish because we could not place it.
+        _ => true,
+    };
+
+
     private sealed class VanillaIcon
     {
         public GameObject Root;
         public RectTransform Rect;
         public Vector2 MapUv;
         public Vector2 MapUvSize;
+        // Resolved once when the icon is built. The category comes from the sprite name, and the
+        // switch that hides it is read from the settings - both are stable for the icon's lifetime
+        // and looking either up per frame would cost more than the draw call it guards.
+        public MarkerCategory Category;
+        public bool CategoryEnabled;
     }
 
     // The corner HUD and the full-screen map are two independent layers, so each carries its own
@@ -1389,10 +1488,19 @@ public sealed class ModEntry : MelonMod
     private void UpdateVanillaIcons(Rect visibleUv, Vector2 mapSize)
     {
         bool show = ActiveLayer.UsingVanilla;
+        bool categoriesChanged = _markerCategoryState != _settings.MarkerCategoryState();
+        if (categoriesChanged)
+            _markerCategoryState = _settings.MarkerCategoryState();
+
         for (int i = 0; i < _vanillaIcons.Count; i++)
         {
             VanillaIcon icon = _vanillaIcons[i];
-            bool visible = show &&
+            // The category switch is read once when it changes rather than every frame: a marker
+            // set can run to hundreds, and this loop already runs every frame.
+            if (categoriesChanged)
+                icon.CategoryEnabled = CategoryEnabled(icon.Category);
+
+            bool visible = show && icon.CategoryEnabled &&
                            icon.MapUv.x + icon.MapUvSize.x * 0.5f >= visibleUv.xMin &&
                            icon.MapUv.x - icon.MapUvSize.x * 0.5f <= visibleUv.xMax &&
                            icon.MapUv.y + icon.MapUvSize.y * 0.5f >= visibleUv.yMin &&
@@ -2393,6 +2501,36 @@ public sealed class ModEntry : MelonMod
                 groupLine.Append(key).Append(' ').Append(scraped).Append('/').Append(compared[i].Value);
             }
             LoggerInstance.Msg($"Marker groups (scraped/total) [{reason}]: {groupLine}.");
+
+            // Which sprite names the filter table does not place, and how the five buckets come
+            // out. Unclassified names are always drawn, so this is the list that has to be worked
+            // off before the filter can be trusted not to hide something by omission.
+            var categoryCounts = new Dictionary<MarkerCategory, int>();
+            var unclassified = new List<string>();
+            foreach (var pair in perSprite)
+            {
+                MarkerCategory category = CategorizeSprite(pair.Key);
+                categoryCounts.TryGetValue(category, out int seen);
+                categoryCounts[category] = seen + pair.Value;
+                if (category == MarkerCategory.Unclassified)
+                    unclassified.Add($"{pair.Key}={pair.Value}");
+            }
+            var categoryLine = new StringBuilder();
+            foreach (MarkerCategory value in Enum.GetValues(typeof(MarkerCategory)))
+            {
+                categoryCounts.TryGetValue(value, out int count);
+                if (categoryLine.Length > 0)
+                    categoryLine.Append(", ");
+                categoryLine.Append(CategoryName(value)).Append(' ').Append(count);
+            }
+            LoggerInstance.Msg($"Marker categories [{reason}]: {categoryLine}.");
+
+            if (unclassified.Count > 0)
+            {
+                unclassified.Sort(StringComparer.Ordinal);
+                LoggerInstance.Msg($"Marker categories unclassified [{reason}] " +
+                    $"({unclassified.Count} names, always drawn): {string.Join(", ", unclassified)}.");
+            }
         }
         catch (Exception ex)
         {
@@ -2638,12 +2776,15 @@ public sealed class ModEntry : MelonMod
                     color.a = alpha;
                     image.color = color;
                     image.raycastTarget = false;
+                    MarkerCategory category = CategorizeSprite(spriteName);
                     _pendingVanillaIcons.Add(new VanillaIcon
                     {
                         Root = iconObject,
                         Rect = rect,
                         MapUv = (minUv + maxUv) * 0.5f,
-                        MapUvSize = sizeUv
+                        MapUvSize = sizeUv,
+                        Category = category,
+                        CategoryEnabled = CategoryEnabled(category)
                     });
                 }
             }

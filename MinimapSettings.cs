@@ -86,6 +86,47 @@ internal sealed class MinimapSettings : JsonModSettings
     [Slider(10, 120, 111)]
     public int MarkerIconSize = 44;
 
+    // The same five buckets the game's own map filter offers, so there is nothing to learn. All on
+    // by default: the rewrite exists because markers were going missing, so nothing is hidden until
+    // the player chooses to hide it.
+    //
+    // Names are the keys in the settings file, so only the [Name] strings are free to change.
+    [Section("地图标记筛选")]
+
+    [Name("资源")]
+    [Description("可采集的植物、树枝、鸟巢与动物尸体等资源标记。数量最多的一类。")]
+    public bool ShowMarkerResources = true;
+
+    [Name("结构")]
+    [Description("建筑物、车辆、桥梁、绳点、洞穴等人工地物标记。")]
+    public bool ShowMarkerStructures = true;
+
+    [Name("尸骸")]
+    [Description("尸体标记。")]
+    public bool ShowMarkerCorpses = true;
+
+    [Name("岩石贮藏处")]
+    [Description("岩石贮藏处标记。")]
+    public bool ShowMarkerRockCaches = true;
+
+    [Name("油漆喷罐标记")]
+    [Description("玩家用油漆喷罐在地图上留下的标记。")]
+    public bool ShowMarkerSprayMarks = true;
+
+    // One integer that changes whenever any of the five switches does, so the per-frame marker loop
+    // can decide whether to re-resolve categories with a single comparison instead of five reads
+    // per marker.
+    internal int MarkerCategoryState()
+    {
+        int state = 0;
+        if (ShowMarkerResources) state |= 1;
+        if (ShowMarkerStructures) state |= 2;
+        if (ShowMarkerCorpses) state |= 4;
+        if (ShowMarkerRockCaches) state |= 8;
+        if (ShowMarkerSprayMarks) state |= 16;
+        return state;
+    }
+
     // The section header is the only text in this menu that is always on screen - the
     // per-setting descriptions only appear once the player selects a row - so the one thing a
     // new player cannot guess goes here rather than only in a description.
