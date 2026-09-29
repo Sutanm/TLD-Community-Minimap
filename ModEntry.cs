@@ -154,6 +154,8 @@ public sealed class ModEntry : MelonMod
     // scene|source of the last marker build, so a rebuild happens when either changes and not
     // otherwise.
     private string _markersBuiltForScene = "";
+    // Place names, which the marker build skips because they carry no sprite name.
+    private readonly List<MapLabel> _mapLabels = new();
     // Region whose panel texture has already been measured and exported, so the diagram is written
     // once instead of on every panel refresh.
     private string _panelTextureMeasuredForScene = "";
@@ -530,7 +532,12 @@ public sealed class ModEntry : MelonMod
                     if (ReferenceEquals(_mapIconAtlas, null) && _iconBySpriteName.Count == 0)
                         _markersBuiltForScene = "";
                     else
+                    {
                         RebuildMarkersFromMapDetails();
+                        // Place names come from the same map data and are rebuilt on the same
+                        // trigger, so the two can never disagree about which region they describe.
+                        RebuildLabelsFromMapDetails();
+                    }
                 }
                 else
                 {
@@ -626,6 +633,7 @@ public sealed class ModEntry : MelonMod
             return;
 
         ClearVanillaIcons();
+        ClearLabels();
         // The marker set belongs to the region that just went away.
         _markersBuiltForScene = "";
         // A new region invalidates the framing outright, so no layer may keep the old one.
@@ -1526,6 +1534,7 @@ public sealed class ModEntry : MelonMod
         }
 
         UpdateVanillaIcons(visibleUv, mapSize);
+        UpdateMapLabels(visibleUv, mapSize);
 
         // The markers live in the texture's own uv space, so they are still worth drawing on an
         // uncalibrated map. Only the player pointer needs a projection.
@@ -4043,6 +4052,220 @@ public sealed class ModEntry : MelonMod
     // any other map image.
     private string CapturedMapPath(string sceneName) =>
         Path.Combine(_modDirectory, "captured", SanitizeFileName(sceneName) + ".png");
+
+    // Turns a localization key such as GAMEPLAY_mtTownCentre into display text.
+    //
+    // The lookup is tried through a short list of candidate members and the first that works is
+    // remembered, because the interop assemblies cannot be reflected outside the game - so the exact
+    // member name cannot be confirmed offline and a single guess would be a coin flip. Whatever
+    // succeeds is logged once, which is the measurement that replaces the guess.
+    private static System.Reflection.MethodInfo s_locStringMethod;
+    private static bool s_localizationProbed;
+
+    private string LocalizeLabel(string locId)
+    {
+        if (string.IsNullOrEmpty(locId))
+            return "";
+
+        if (!s_localizationProbed)
+            ProbeLocalization();
+        if (s_locStringMethod == null)
+            return "";
+
+        try
+        {
+            string result = s_locStringMethod.Invoke(null, new object[] { locId }) as string;
+            // A key that does not resolve comes back as the key itself, which is worse than nothing
+            // on the map, so treat that as a miss.
+            if (!string.IsNullOrEmpty(result) && !string.Equals(result, locId, StringComparison.Ordinal))
+                return result;
+        }
+        catch
+        {
+            // The method exists but rejected the call; the label is simply omitted.
+        }
+        return "";
+    }
+
+    private void ProbeLocalization()
+    {
+        s_localizationProbed = true;
+        try
+        {
+            Type type = null;
+            foreach (System.Reflection.Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                try
+                {
+                    type = assembly.GetType("Localization");
+                    if (type != null)
+                        break;
+                }
+                catch { }
+            }
+
+            if (type == null)
+            {
+                LoggerInstance.Warning("Localization: type not found; map labels will be omitted.");
+                return;
+            }
+
+            string[] candidates = { "GetLocString", "GetString", "Translate", "GetText" };
+            foreach (string name in candidates)
+            {
+                System.Reflection.MethodInfo method = type.GetMethod(name,
+                    System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static,
+                    null, new[] { typeof(string) }, null);
+                if (method != null)
+                {
+                    s_locStringMethod = method;
+                    LoggerInstance.Msg($"Localization: using {type.FullName}.{name}(string) for map labels.");
+                    return;
+                }
+            }
+
+            LoggerInstance.Warning(
+                "Localization: no static string lookup found among " +
+                string.Join(", ", candidates) + "; map labels will be omitted.");
+        }
+        catch (Exception ex)
+        {
+            LoggerInstance.Warning($"Localization probe failed: {ex.Message}");
+        }
+    }
+
+    private sealed class MapLabel
+    {
+        public GameObject Root;
+        public RectTransform Rect;
+        public Vector2 MapUv;
+        // Kept for a later hover test: the game shows these names on hover, and having the key and
+        // its text together is what would make that possible without re-reading the map data.
+        public string LocId;
+        public string Text;
+    }
+
+    // Place names, which the marker build deliberately skipped because they carry no sprite name.
+    //
+    // These are the labels the game's own map shows, and without them the HUD map is missing the one
+    // thing that makes a map readable. They are drawn as text at the position each entry carries, so
+    // they cost nothing while off screen and there are only a handful per region.
+    private void RebuildLabelsFromMapDetails()
+    {
+        EnsureUnityUi();
+        ClearLabels();
+
+        try
+        {
+            var details = MapDetailManager.s_MapDetails;
+            if (ReferenceEquals(details, null))
+                return;
+
+            int added = 0;
+            for (int i = 0; i < details.Count; i++)
+            {
+                MapDetail detail = details[i];
+                if (ReferenceEquals(detail, null))
+                    continue;
+
+                // A label is exactly an entry with no sprite name; anything with a sprite is a
+                // marker and is handled by the marker build.
+                if (!string.IsNullOrEmpty(detail.m_SpriteName))
+                    continue;
+
+                string text = LocalizeLabel(detail.m_LocID);
+                if (string.IsNullOrEmpty(text))
+                    continue;
+
+                Vector2 mapUv;
+                try
+                {
+                    if (!TryWorldToMarkerUv(detail.GetWorldPosition(), out mapUv))
+                        continue;
+                }
+                catch
+                {
+                    continue;
+                }
+
+                // The hint bar already found a font that can render CJK; reuse it rather than
+                // probing for a second one.
+                ResolveHintFont();
+                if (ReferenceEquals(_hintFont, null))
+                    return;
+
+                GameObject labelObject = CreateUiObject("MapLabel",
+                    typeof(RectTransform), typeof(CanvasRenderer), typeof(Text));
+                labelObject.transform.SetParent(_mapRect, false);
+                RectTransform rect = labelObject.GetComponent<RectTransform>();
+                rect.anchorMin = new Vector2(0.5f, 0.5f);
+                rect.anchorMax = new Vector2(0.5f, 0.5f);
+                rect.pivot = new Vector2(0.5f, 0.5f);
+                rect.sizeDelta = new Vector2(220f, 26f);
+
+                Text label = labelObject.GetComponent<Text>();
+                label.text = text;
+                label.font = _hintFont;
+                label.fontSize = 18;
+                label.alignment = TextAnchor.MiddleCenter;
+                // Dark text, because the map art is light; a light outline would be needed on the
+                // dark community map, but this layer only exists on the vanilla source.
+                label.color = new Color(0.10f, 0.08f, 0.06f, 0.92f);
+                label.horizontalOverflow = HorizontalWrapMode.Overflow;
+                label.verticalOverflow = VerticalWrapMode.Overflow;
+                label.raycastTarget = false;
+
+                _mapLabels.Add(new MapLabel
+                {
+                    Root = labelObject,
+                    Rect = rect,
+                    MapUv = mapUv,
+                    LocId = detail.m_LocID,
+                    Text = text,
+                });
+                added++;
+            }
+
+            LoggerInstance.Msg($"Map labels: {added} placed from {details.Count} entries.");
+        }
+        catch (Exception ex)
+        {
+            LoggerInstance.Warning($"Map label build failed: {ex.Message}");
+        }
+    }
+
+    private void ClearLabels()
+    {
+        for (int i = 0; i < _mapLabels.Count; i++)
+        {
+            if (!ReferenceEquals(_mapLabels[i].Root, null))
+                UnityEngine.Object.Destroy(_mapLabels[i].Root);
+        }
+        _mapLabels.Clear();
+    }
+
+    // Positions each label for the visible window, and hides it when it falls outside.
+    private void UpdateMapLabels(Rect visibleUv, Vector2 mapSize)
+    {
+        if (_mapLabels.Count == 0)
+            return;
+
+        bool show = _settings.ShowMapLabels && (ActiveLayer.UsingVanilla || _settings.MarkersOnCommunityMap);
+        for (int i = 0; i < _mapLabels.Count; i++)
+        {
+            MapLabel label = _mapLabels[i];
+            bool visible = show &&
+                           label.MapUv.x >= visibleUv.xMin && label.MapUv.x <= visibleUv.xMax &&
+                           label.MapUv.y >= visibleUv.yMin && label.MapUv.y <= visibleUv.yMax;
+            label.Root.SetActive(visible);
+            if (!visible)
+                continue;
+
+            label.Rect.anchoredPosition = new Vector2(
+                ((label.MapUv.x - visibleUv.x) / visibleUv.width - 0.5f) * mapSize.x,
+                ((label.MapUv.y - visibleUv.y) / visibleUv.height - 0.5f) * mapSize.y);
+        }
+    }
 
     private void SaveCapturedMap(Texture2D texture, string sceneName)
     {
