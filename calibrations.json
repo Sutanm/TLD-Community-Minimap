@@ -224,6 +224,48 @@
           "label": "孤独家宅附近木棚"
         }
       ]
+    },
+    {
+      "mapId": "timberwolf_mountain",
+      "imageWidth": 4380,
+      "imageHeight": 4302,
+      "points": [
+        {
+          "worldX": 927.089,
+          "worldZ": 1178.602,
+          "mapX": 1938.7,
+          "mapY": 1712.1,
+          "label": "机尾"
+        },
+        {
+          "worldX": 888.605,
+          "worldZ": 342.435,
+          "mapX": 1855.1,
+          "mapY": 3447.6,
+          "label": "登山者棚屋"
+        },
+        {
+          "worldX": 431.252,
+          "worldZ": 283.077,
+          "mapX": 906.0,
+          "mapY": 3568.8,
+          "label": "起落架"
+        },
+        {
+          "worldX": 1570.803,
+          "worldZ": 475.992,
+          "mapX": 3271.2,
+          "mapY": 3173.4,
+          "label": "机翼-右下角"
+        },
+        {
+          "worldX": 429.086,
+          "worldZ": 1816.675,
+          "mapX": 908.3,
+          "mapY": 385.5,
+          "label": "瀑布山洞"
+        }
+      ]
     }
   ]
 }
