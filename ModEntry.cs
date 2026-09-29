@@ -372,6 +372,12 @@ public sealed class ModEntry : MelonMod
                 TryLoadVanillaElementsWithoutPanel(scene.name, active);
         }
 
+        // Fill the icon table and atlas whatever the source is. In the vanilla path above this has
+        // already happened and the global one-shot marker makes this a no-op; in the community path
+        // - the default whenever the images are installed - this is the only thing that fills them.
+        if (active.Definition != null && playerReady && !vanillaMapOpen)
+            PopulateIconTableOnce(scene.name);
+
         TryRefreshVanillaIcons();
 
         if (preferCommunity && !active.TextureReady && active.Definition != null && playerReady &&
@@ -2795,6 +2801,57 @@ public sealed class ModEntry : MelonMod
         catch (Exception ex)
         {
             LoggerInstance.Warning($"Region base map load failed for {sceneName}: {ex.Message}");
+        }
+    }
+
+    // Fills the icon table and the atlas, whatever map source the layers are using.
+    //
+    // The atlas used to arrive as a side effect of the vanilla marker scrape, and that scrape only
+    // ran while a layer wanted vanilla. With the community map active - which is what automatic
+    // picks whenever the image is installed, so most installs - the atlas stayed null and the icon
+    // table stayed empty: the 22:04 session reported "Resolvable: 0 ... atlas present: False" for
+    // all 802 markers. Section 25.3's "100% resolvable" was measured on the vanilla source and does
+    // not hold in the default configuration.
+    //
+    // This is the same one-shot panel call the vanilla path used, minus everything that depended on
+    // a texture: it needs the atlas, not the base map, so it must not wait for one.
+    private void PopulateIconTableOnce(string sceneName)
+    {
+        if (string.Equals(_elementsLoadedForScene, sceneName, StringComparison.Ordinal))
+            return;
+        if (DateTime.UtcNow < _elementLoadAfterUtc)
+            return;
+        _elementLoadAfterUtc = DateTime.UtcNow.AddSeconds(2);
+
+        try
+        {
+            Panel_Map panel = InterfaceManager.GetPanel<Panel_Map>();
+            if (panel == null)
+                return;
+
+            try { panel.ForceUpdateRegion(); }
+            catch (Exception ex) { LoggerInstance.Warning($"ForceUpdateRegion failed: {ex.Message}"); }
+
+            try { panel.LoadMapElementsForScene(sceneName); }
+            catch (Exception ex) { LoggerInstance.Warning($"LoadMapElementsForScene failed: {ex.Message}"); }
+
+            _elementsLoadedForScene = sceneName;
+            Transform mapElements = FindChildByName(panel.transform, "MapElements");
+            if (mapElements == null)
+            {
+                LoggerInstance.Warning($"Icon table [{sceneName}]: no MapElements container.");
+                return;
+            }
+
+            _vanillaIconSignature = ComputeVanillaIconSignature(mapElements);
+            CaptureVanillaIcons(mapElements, true, true);
+            LoggerInstance.Msg(
+                $"Icon table [{sceneName}]: {_iconBySpriteName.Count} sprite names, " +
+                $"atlas present: {!ReferenceEquals(_mapIconAtlas, null)}.");
+        }
+        catch (Exception ex)
+        {
+            LoggerInstance.Warning($"Icon table [{sceneName}] failed: {ex.Message}");
         }
     }
 
