@@ -4312,6 +4312,9 @@ public sealed class ModEntry : MelonMod
     private Text _hoverLabelText;
     // Font size in force on the existing label objects, so a settings change is applied once.
     private int _appliedLabelFontSize = -1;
+    // Set when the tooltip could not be constructed, so the failure costs one log line rather than an
+    // exception every frame the pointer moves.
+    private bool _hoverTooltipDisabled;
 
     // Place names, which the marker build deliberately skipped because they carry no sprite name.
     //
@@ -4569,6 +4572,9 @@ public sealed class ModEntry : MelonMod
     // One reusable tooltip, created on first use so an idle map allocates nothing.
     private void ShowHoverLabel(string text, Vector2 mapUv, Rect visibleUv, Vector2 mapSize)
     {
+        if (_hoverTooltipDisabled)
+            return;
+
         if (string.IsNullOrEmpty(text))
         {
             if (!ReferenceEquals(_hoverLabelRoot, null))
@@ -4582,30 +4588,27 @@ public sealed class ModEntry : MelonMod
             if (ReferenceEquals(_hintFont, null))
                 return;
 
-            _hoverLabelRoot = CreateUiObject("MapHoverLabel",
-                typeof(RectTransform), typeof(CanvasRenderer), typeof(Image), typeof(Text));
-            _hoverLabelRoot.transform.SetParent(_mapRect, false);
-            _hoverLabelRect = _hoverLabelRoot.GetComponent<RectTransform>();
-            _hoverLabelRect.anchorMin = new Vector2(0.5f, 0.5f);
-            _hoverLabelRect.anchorMax = new Vector2(0.5f, 0.5f);
-            _hoverLabelRect.pivot = new Vector2(0.5f, 0.5f);
-            _hoverLabelRect.sizeDelta = new Vector2(260f, 30f);
+            try
+            {
+                CreateHoverTooltip();
+            }
+            catch (Exception ex)
+            {
+                // The full exception, once, because a bare message with no line number cost a round of
+                // guessing: the stack named the method but not the statement. A per-frame throw is far
+                // more expensive than the tooltip is worth, so one failure disables it.
+                LoggerInstance.Warning($"Hover tooltip creation failed: {ex}");
+                _hoverTooltipDisabled = true;
+                if (!ReferenceEquals(_hoverLabelRoot, null))
+                {
+                    UnityEngine.Object.Destroy(_hoverLabelRoot);
+                    _hoverLabelRoot = null;
+                }
+                return;
+            }
 
-            // A dark plate behind the text as well as an outline on it: over a pale map the plate is
-            // what makes the name read at a glance, and the outline keeps the glyphs crisp against it.
-            Image plate = _hoverLabelRoot.GetComponent<Image>();
-            plate.color = new Color(0.06f, 0.05f, 0.04f, 0.80f);
-            plate.raycastTarget = false;
-
-            _hoverLabelText = _hoverLabelRoot.GetComponent<Text>();
-            _hoverLabelText.font = _hintFont;
-            _hoverLabelText.fontSize = _settings.LabelFontSize;
-            _hoverLabelText.alignment = TextAnchor.MiddleCenter;
-            _hoverLabelText.color = new Color(0.98f, 0.96f, 0.92f, 1f);
-            _hoverLabelText.horizontalOverflow = HorizontalWrapMode.Overflow;
-            _hoverLabelText.verticalOverflow = VerticalWrapMode.Overflow;
-            _hoverLabelText.raycastTarget = false;
-            AddTextOutline(_hoverLabelRect, _hoverLabelText);
+            if (ReferenceEquals(_hoverLabelRoot, null))
+                return;
         }
 
         // Font size is a setting, but assigning it rebuilds the text mesh, so it is only written when
@@ -4632,6 +4635,44 @@ public sealed class ModEntry : MelonMod
             _hoverLabelRect.anchoredPosition = tooltipPosition;
         if (!_hoverLabelRoot.activeSelf)
             _hoverLabelRoot.SetActive(true);
+    }
+
+    // Builds the one reusable tooltip. Kept separate so its failure is caught and reported with the
+    // full exception, rather than surfacing as a bare null reference once per frame.
+    private void CreateHoverTooltip()
+    {
+        _hoverLabelRoot = CreateUiObject("MapHoverLabel",
+            typeof(RectTransform), typeof(CanvasRenderer), typeof(Image), typeof(Text));
+        _hoverLabelRoot.transform.SetParent(_mapRect, false);
+        _hoverLabelRect = _hoverLabelRoot.GetComponent<RectTransform>();
+        _hoverLabelRect.anchorMin = new Vector2(0.5f, 0.5f);
+        _hoverLabelRect.anchorMax = new Vector2(0.5f, 0.5f);
+        _hoverLabelRect.pivot = new Vector2(0.5f, 0.5f);
+        _hoverLabelRect.sizeDelta = new Vector2(260f, 30f);
+
+        // A dark plate behind the text as well as a shadow on it: over a pale map the plate is what
+        // makes the name read at a glance, and the offset copy keeps the glyphs crisp against it.
+        Image plate = _hoverLabelRoot.GetComponent<Image>();
+        if (!ReferenceEquals(plate, null))
+        {
+            plate.color = new Color(0.06f, 0.05f, 0.04f, 0.80f);
+            plate.raycastTarget = false;
+        }
+
+        _hoverLabelText = _hoverLabelRoot.GetComponent<Text>();
+        if (ReferenceEquals(_hoverLabelRect, null) || ReferenceEquals(_hoverLabelText, null))
+            throw new InvalidOperationException(
+                $"tooltip components missing (rect={_hoverLabelRect != null}, " +
+                $"text={_hoverLabelText != null}, plate={plate != null})");
+
+        _hoverLabelText.font = _hintFont;
+        _hoverLabelText.fontSize = _settings.LabelFontSize;
+        _hoverLabelText.alignment = TextAnchor.MiddleCenter;
+        _hoverLabelText.color = new Color(0.98f, 0.96f, 0.92f, 1f);
+        _hoverLabelText.horizontalOverflow = HorizontalWrapMode.Overflow;
+        _hoverLabelText.verticalOverflow = VerticalWrapMode.Overflow;
+        _hoverLabelText.raycastTarget = false;
+        AddTextOutline(_hoverLabelRect, _hoverLabelText);
     }
 
     // A single offset copy behind the text, to lift it off the map's dark linework.
