@@ -1924,8 +1924,12 @@ public sealed class ModEntry : MelonMod
             // scattered off a map that otherwise looks correct. Measured, not reasoned about.
             MeasureAndExportPanelTexture(main, sceneName);
             // The panel's own label objects only exist while it is open, and they carry the finished
-            // display text, so this is the only moment they can be read.
+            // display text, so this is the only moment they can be read. It renders text through NGUI
+            // rather than UnityEngine.UI, which is why looking for a Text component found nothing.
             CapturePanelLabelTexts();
+            // Full component listing of the panel, once per region, so the text renderer it actually
+            // uses is read off the objects instead of assumed.
+            DumpVanillaMapHierarchy(panel);
 
             // The region base map normally supplies the terrain on its own. Only when it could
             // not be loaded do we fall back to this surveyed texture, which is the path that
@@ -4230,11 +4234,9 @@ public sealed class ModEntry : MelonMod
     //
     // The localization class has three GetText overloads and none of them translates these keys, so
     // the lookup route is a dead end - but the panel already shows the names, which means it has
-    // already resolved them into text somewhere. Reading those Text components gives finished, already
-    // translated strings, which is both simpler and immune to whatever API the game uses internally.
-    //
-    // Matched by the entry's world position against the panel's own label objects, so no assumption
-    // is made about ordering.
+    // already resolved them into text. The panel is NGUI, so that text lives on UILabel components
+    // rather than UnityEngine.UI.Text; searching for the latter is why the first attempt found
+    // nothing.
     private void CapturePanelLabelTexts()
     {
         try
@@ -4247,29 +4249,26 @@ public sealed class ModEntry : MelonMod
             if (mapElements == null)
                 return;
 
-            var texts = mapElements.GetComponentsInChildren<Text>(true);
-            if (texts == null || texts.Length == 0)
+            var labels = mapElements.GetComponentsInChildren<UILabel>(true);
+            if (labels == null || labels.Length == 0)
             {
-                LoggerInstance.Msg("Panel label text: MapElements has no Text components.");
+                LoggerInstance.Msg("Panel label text: MapElements has no UILabel components.");
                 return;
             }
 
             int withText = 0;
             var sample = new List<string>();
-            for (int i = 0; i < texts.Length; i++)
+            for (int i = 0; i < labels.Length; i++)
             {
-                Text text = texts[i];
-                if (ReferenceEquals(text, null) || string.IsNullOrEmpty(text.text))
+                UILabel label = labels[i];
+                if (ReferenceEquals(label, null) || string.IsNullOrEmpty(label.text))
                     continue;
                 withText++;
-                if (sample.Count < 8)
-                {
-                    Text parentText = text;
-                    sample.Add($"'{parentText.text}'@{parentText.transform.name}");
-                }
+                if (sample.Count < 10)
+                    sample.Add($"'{label.text}'");
             }
 
-            LoggerInstance.Msg($"Panel label text: {withText} non-empty of {texts.Length} Text " +
+            LoggerInstance.Msg($"Panel label text: {withText} non-empty of {labels.Length} UILabel " +
                 $"components. Sample: {string.Join(", ", sample)}");
         }
         catch (Exception ex)
@@ -4755,6 +4754,21 @@ public sealed class ModEntry : MelonMod
             Texture texture = uiTexture.mainTexture;
             output.Append(" | UITexture=").Append(texture.name)
                 .Append(' ').Append(texture.width).Append('x').Append(texture.height);
+        }
+
+        // NGUI draws its text through UILabel, not UnityEngine.UI.Text, which is why searching for a
+        // Text component on the panel found nothing. The text itself is the whole point here, so the
+        // dump carries the string rather than just the component type.
+        UILabel uiLabel = transform.GetComponent<UILabel>();
+        if (uiLabel != null)
+        {
+            output.Append(" | UILabel='").Append(uiLabel.text).Append('\'');
+        }
+
+        Text uguiLabel = transform.GetComponent<Text>();
+        if (uguiLabel != null)
+        {
+            output.Append(" | Text='").Append(uguiLabel.text).Append('\'');
         }
 
         Renderer renderer = transform.GetComponent<Renderer>();
