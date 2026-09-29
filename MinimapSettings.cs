@@ -106,8 +106,12 @@ internal sealed class MinimapSettings : JsonModSettings
     public bool MarkersOnCommunityMap = true;
 
     [Name("地名标签")]
-    [Description("在地图上显示地名（米尔顿小镇、教堂、盆地等）。这些是游戏地图本来就会显示的名字，之前因为不带图标而被跳过了。文字颜色按原版浅色底图调的，社区图上可能看不清。")]
+    [Description("在地图上常显地名（米尔顿小镇、盆地、教堂等）。这些是游戏地图本来就画的地名，生存与剧情模式下数量不同，但位置相同。")]
     public bool ShowMapLabels = true;
+
+    [Name("悬停显示图标名字")]
+    [Description("打开全屏地图后，鼠标停在一个图标上显示它的名字（香蒲、玫瑰果、车、洞穴等），和游戏内置地图一样。需要「释放鼠标」处于打开状态。")]
+    public bool HoverMapLabels = true;
 
     [Name("资源")]
     [Description("可采集的植物、树枝、鸟巢与动物尸体等资源标记。数量最多的一类。")]

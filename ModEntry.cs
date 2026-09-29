@@ -271,6 +271,9 @@ public sealed class ModEntry : MelonMod
         // and looking either up per frame would cost more than the draw call it guards.
         public MarkerCategory Category;
         public bool CategoryEnabled;
+        // The name shown on hover, resolved once at build time. Markers with no name simply never
+        // win the hover pick.
+        public string Text;
     }
 
     // The corner HUD and the full-screen map are two independent layers, so each carries its own
@@ -2950,6 +2953,12 @@ public sealed class ModEntry : MelonMod
                 VanillaIcon built = BuildMarkerIcon(icon, mapUv, uvSize, Color.white);
                 built.Category = category;
                 built.CategoryEnabled = CategoryEnabled(category);
+                // The name the game shows when the pointer rests on this icon. Resolved once here
+                // rather than on hover, because hover runs every frame and this walks a localization
+                // lookup.
+                built.Text = !string.IsNullOrEmpty(detail.m_CustomName)
+                    ? detail.m_CustomName
+                    : LocalizeLabel(detail.m_LocID);
                 _pendingVanillaIcons.Add(built);
             }
 
@@ -4261,11 +4270,16 @@ public sealed class ModEntry : MelonMod
         public GameObject Root;
         public RectTransform Rect;
         public Vector2 MapUv;
-        // Kept for a later hover test: the game shows these names on hover, and having the key and
-        // its text together is what would make that possible without re-reading the map data.
+        // Kept so a hover tooltip can name the same thing without re-reading the map data.
         public string LocId;
         public string Text;
     }
+
+    // The single hover tooltip, reused instead of one per marker. Hundreds of markers exist, so a
+    // label object each would be the same allocation problem the marker set already has.
+    private GameObject _hoverLabelRoot;
+    private RectTransform _hoverLabelRect;
+    private Text _hoverLabelText;
 
     // Place names, which the marker build deliberately skipped because they carry no sprite name.
     //
@@ -4391,17 +4405,92 @@ public sealed class ModEntry : MelonMod
     }
 
     // Positions each label for the visible window, and hides it when it falls outside.
+    // Positions each label for the visible window, and decides which of them to show.
+    //
+    // In always-on mode every label inside the window is drawn, which is what the user saw - including
+    // names the game only shows in story mode. In hover mode nothing is drawn until the pointer is
+    // near something, matching what the game's own map does: one name at a time, under the cursor.
     private void UpdateMapLabels(Rect visibleUv, Vector2 mapSize)
     {
-        if (_mapLabels.Count == 0)
-            return;
-
         bool show = _settings.ShowMapLabels && (ActiveLayer.UsingVanilla || _settings.MarkersOnCommunityMap);
+        if (!show)
+        {
+            for (int i = 0; i < _mapLabels.Count; i++)
+                _mapLabels[i].Root.SetActive(false);
+            _hoverLabelRoot?.SetActive(false);
+            return;
+        }
+
+        // The pointer only means something while the cursor is actually free to move over the map.
+        bool hoverMode = _settings.HoverMapLabels && FullMapVisible &&
+                         _settings.ReleaseMouseOnFullMap;
+        Vector2 hoverUv = default;
+        bool haveHover = false;
+        if (hoverMode)
+        {
+            // Invert the projection UpdateUnityUi used: anchored position measured from the map
+            // centre, as a fraction of the visible window.
+            Vector2 local = new(
+                (Input.mousePosition.x - Screen.width * 0.5f) / Mathf.Max(1f, mapSize.x),
+                (Input.mousePosition.y - Screen.height * 0.5f) / Mathf.Max(1f, mapSize.y));
+            hoverUv = new Vector2(
+                local.x * visibleUv.width + visibleUv.x + visibleUv.width * 0.5f,
+                local.y * visibleUv.height + visibleUv.y + visibleUv.height * 0.5f);
+            haveHover = hoverUv.x >= visibleUv.xMin && hoverUv.x <= visibleUv.xMax &&
+                        hoverUv.y >= visibleUv.yMin && hoverUv.y <= visibleUv.yMax;
+        }
+
+        // Nearest named thing to the pointer, in uv. A radius rather than exact hit testing, because
+        // markers and labels are small on screen and exact overlap would be frustrating.
+        float best = float.MaxValue;
+        string bestText = null;
+        Vector2 bestUv = default;
+        if (haveHover)
+        {
+            const float radius = 0.02f;
+            for (int i = 0; i < _mapLabels.Count; i++)
+            {
+                MapLabel label = _mapLabels[i];
+                float distance = Vector2.Distance(label.MapUv, hoverUv);
+                if (distance < best && distance <= radius)
+                {
+                    best = distance;
+                    bestText = label.Text;
+                    bestUv = label.MapUv;
+                }
+            }
+
+            for (int i = 0; i < _vanillaIcons.Count; i++)
+            {
+                VanillaIcon icon = _vanillaIcons[i];
+                if (!icon.CategoryEnabled || string.IsNullOrEmpty(icon.Text))
+                    continue;
+                float distance = Vector2.Distance(icon.MapUv, hoverUv);
+                if (distance < best && distance <= radius)
+                {
+                    best = distance;
+                    bestText = icon.Text;
+                    bestUv = icon.MapUv;
+                }
+            }
+        }
+
+        if (hoverMode)
+        {
+            // Place names stay hidden in this mode; the tooltip carries whichever name is nearest.
+            for (int i = 0; i < _mapLabels.Count; i++)
+                _mapLabels[i].Root.SetActive(false);
+            ShowHoverLabel(bestText, bestUv, visibleUv, mapSize);
+            return;
+        }
+
+        if (!ReferenceEquals(_hoverLabelRoot, null))
+            _hoverLabelRoot.SetActive(false);
+
         for (int i = 0; i < _mapLabels.Count; i++)
         {
             MapLabel label = _mapLabels[i];
-            bool visible = show &&
-                           label.MapUv.x >= visibleUv.xMin && label.MapUv.x <= visibleUv.xMax &&
+            bool visible = label.MapUv.x >= visibleUv.xMin && label.MapUv.x <= visibleUv.xMax &&
                            label.MapUv.y >= visibleUv.yMin && label.MapUv.y <= visibleUv.yMax;
             label.Root.SetActive(visible);
             if (!visible)
@@ -4411,6 +4500,49 @@ public sealed class ModEntry : MelonMod
                 ((label.MapUv.x - visibleUv.x) / visibleUv.width - 0.5f) * mapSize.x,
                 ((label.MapUv.y - visibleUv.y) / visibleUv.height - 0.5f) * mapSize.y);
         }
+    }
+
+    // One reusable tooltip, created on first use so an idle map allocates nothing.
+    private void ShowHoverLabel(string text, Vector2 mapUv, Rect visibleUv, Vector2 mapSize)
+    {
+        if (string.IsNullOrEmpty(text))
+        {
+            if (!ReferenceEquals(_hoverLabelRoot, null))
+                _hoverLabelRoot.SetActive(false);
+            return;
+        }
+
+        if (ReferenceEquals(_hoverLabelRoot, null))
+        {
+            ResolveHintFont();
+            if (ReferenceEquals(_hintFont, null))
+                return;
+
+            _hoverLabelRoot = CreateUiObject("MapHoverLabel",
+                typeof(RectTransform), typeof(CanvasRenderer), typeof(Text));
+            _hoverLabelRoot.transform.SetParent(_mapRect, false);
+            _hoverLabelRect = _hoverLabelRoot.GetComponent<RectTransform>();
+            _hoverLabelRect.anchorMin = new Vector2(0.5f, 0.5f);
+            _hoverLabelRect.anchorMax = new Vector2(0.5f, 0.5f);
+            _hoverLabelRect.pivot = new Vector2(0.5f, 0.5f);
+            _hoverLabelRect.sizeDelta = new Vector2(260f, 28f);
+
+            _hoverLabelText = _hoverLabelRoot.GetComponent<Text>();
+            _hoverLabelText.font = _hintFont;
+            _hoverLabelText.fontSize = 18;
+            _hoverLabelText.alignment = TextAnchor.MiddleCenter;
+            _hoverLabelText.color = new Color(0.10f, 0.08f, 0.06f, 0.95f);
+            _hoverLabelText.horizontalOverflow = HorizontalWrapMode.Overflow;
+            _hoverLabelText.verticalOverflow = VerticalWrapMode.Overflow;
+            _hoverLabelText.raycastTarget = false;
+        }
+
+        _hoverLabelText.text = text;
+        // Sits just above the thing it names, the way the game's own hover label does.
+        _hoverLabelRect.anchoredPosition = new Vector2(
+            ((mapUv.x - visibleUv.x) / visibleUv.width - 0.5f) * mapSize.x,
+            ((mapUv.y - visibleUv.y) / visibleUv.height - 0.5f) * mapSize.y + 22f);
+        _hoverLabelRoot.SetActive(true);
     }
 
     // Builds the marker set and the place names for one scene, and records which build is current.
