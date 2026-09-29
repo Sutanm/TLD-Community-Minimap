@@ -58,6 +58,16 @@ public sealed class ModEntry : MelonMod
     private DateTime _nextCensusUtc = DateTime.MinValue;
     private bool _censusPanelWasOpen;
 
+    // Framing probe for the layer split (section 37.1). The vanilla base map and the vanilla map
+    // panel are two different textures reached by two different paths, and the base-map path
+    // hard-codes the local bounds on the assumption that both share one framing. That assumption
+    // is load-bearing once each layer can hold a different texture, so it gets measured rather
+    // than assumed. Bounded to a handful of attempts per scene and a few lines of log.
+    private string _framingScene = "";
+    private int _framingAttempts;
+    private DateTime _framingAfterUtc = DateTime.MinValue;
+    private bool _framingDone;
+
     private readonly MinimapSettings _settings = new();
     private string _modDirectory = "";
     private string _mapsDirectory = "";
@@ -254,6 +264,12 @@ public sealed class ModEntry : MelonMod
             _nextCensusUtc = DateTime.MinValue;      // transitions must never be throttled away
             CensusMapDetails(vanillaMapOpen ? "panel opened" : "panel closed");
         }
+
+        // Runs off the same transition but deliberately outside the source switch: the answer is
+        // needed even while the community map is the active source, which is the state the tester
+        // is in.
+        if (vanillaMapOpen)
+            ProbeVanillaFraming(scene.name);
 
         // Before the early returns below, so a session always leaves a readable trail even when
         // there is no map for the scene and the HUD never appears.
@@ -1479,6 +1495,110 @@ public sealed class ModEntry : MelonMod
         {
             LoggerInstance.Warning($"Failed refreshing vanilla map: {ex}");
             return false;
+        }
+    }
+
+    // Measures what each vanilla path would hand the HUD, so the layer split rests on numbers
+    // instead of on the note in UseVanillaBaseMap that says the two agree. Reports the panel's own
+    // framing, the hard-coded base-map framing, and how the two relate - identity, a scale, or an
+    // offset - because only identity means one layer can carry the other's projection.
+    //
+    // This runs from the per-frame update, so it rate-limits itself: the panel becomes active a
+    // moment before its region map is built, and FindActiveRegionMap needs that map to exist. It
+    // gives up after 30s so a scene whose panel never builds one does not retry forever. Whatever
+    // it reports about the panel path is equally true in either map-source mode, since this reads
+    // the game's objects rather than our copy of them.
+    private void ProbeVanillaFraming(string sceneName)
+    {
+        if (!_settings.DeveloperMode)
+            return;
+        if (!string.Equals(_framingScene, sceneName, StringComparison.Ordinal))
+        {
+            _framingScene = sceneName;
+            _framingAttempts = 0;
+            _framingDone = false;
+            _framingAfterUtc = DateTime.MinValue;
+        }
+        if (_framingDone || DateTime.UtcNow < _framingAfterUtc)
+            return;
+
+        _framingAfterUtc = DateTime.UtcNow.AddSeconds(1.5);
+        _framingAttempts++;
+        if (_framingAttempts > 20)
+        {
+            LoggerInstance.Msg($"Framing probe [{sceneName}]: gave up after 20 attempts; " +
+                "the panel never produced a region map with a texture.");
+            _framingDone = true;
+            return;
+        }
+        try
+        {
+            Panel_Map panel = InterfaceManager.GetPanel<Panel_Map>();
+            if (panel == null)
+            {
+                LoggerInstance.Msg($"Framing probe {_framingAttempts}: no panel object yet.");
+                return;
+            }
+
+            Transform regionMap = FindActiveRegionMap(panel.transform);
+            if (regionMap == null)
+            {
+                LoggerInstance.Msg($"Framing probe {_framingAttempts}: no active *_RegionMap yet.");
+                return;
+            }
+
+            UITexture main = regionMap.GetComponent<UITexture>();
+            if (main == null)
+            {
+                LoggerInstance.Msg($"Framing probe {_framingAttempts}: {regionMap.name} has no UITexture.");
+                return;
+            }
+
+            Vector4 drawing = main.drawingDimensions;
+            Rect uvRect = main.uvRect;
+            Texture mainTexture = main.mainTexture;
+
+            // Captured on the panel path and consumed on the base-map path, so the two have to
+            // agree or the player pointer lands somewhere else depending on which one loaded.
+            var panelBounds = new Rect(drawing.x, drawing.y,
+                drawing.z - drawing.x, drawing.w - drawing.y);
+            var baseBounds = new Rect(-325f, -325f, 650f, 650f);
+
+            float widthRatio = baseBounds.width > 1e-6f
+                ? panelBounds.width / baseBounds.width : 0f;
+            float heightRatio = baseBounds.height > 1e-6f
+                ? panelBounds.height / baseBounds.height : 0f;
+
+            LoggerInstance.Msg(
+                $"Framing probe {_framingAttempts} [{sceneName}]: regionMap={regionMap.name} " +
+                $"widget={main.width}x{main.height} " +
+                $"texture={(mainTexture != null ? $"{mainTexture.width}x{mainTexture.height}" : "null")} " +
+                $"drawing=({drawing.x:F1},{drawing.y:F1})-({drawing.z:F1},{drawing.w:F1}) " +
+                $"uvRect=({uvRect.x:F4},{uvRect.y:F4},{uvRect.width:F4},{uvRect.height:F4}) " +
+                $"panelBounds=({panelBounds.xMin:F1},{panelBounds.yMin:F1}," +
+                $"{panelBounds.width:F1}x{panelBounds.height:F1}) " +
+                $"baseBounds=({baseBounds.xMin:F1},{baseBounds.yMin:F1}," +
+                $"{baseBounds.width:F1}x{baseBounds.height:F1}) " +
+                $"panelOverBase={widthRatio:F4}x{heightRatio:F4} " +
+                $"offset=({panelBounds.xMin - baseBounds.xMin:F1},{panelBounds.yMin - baseBounds.yMin:F1}) " +
+                $"identical={panelBounds.xMin == baseBounds.xMin && panelBounds.yMin == baseBounds.yMin && panelBounds.width == baseBounds.width && panelBounds.height == baseBounds.height}");
+
+            // The rotation question from section 18.4 changes which way the raw texture has to be
+            // read, and it is free to answer while the object is in hand.
+            Vector3 euler = regionMap.localEulerAngles;
+            if (euler.x != 0f || euler.y != 0f || euler.z != 0f)
+            {
+                LoggerInstance.Msg(
+                    $"Framing probe: {regionMap.name} is rotated " +
+                    $"({euler.x:F1},{euler.y:F1},{euler.z:F1}); the raw texture is not upright.");
+            }
+
+            _framingDone = true;
+        }
+        catch (Exception ex)
+        {
+            LoggerInstance.Warning($"Framing probe failed: {ex.Message}");
+            _framingDone = true;
         }
     }
 
