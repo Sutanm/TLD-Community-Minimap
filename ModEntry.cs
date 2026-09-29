@@ -4073,30 +4073,34 @@ public sealed class ModEntry : MelonMod
 
     // Turns a localization key such as GAMEPLAY_mtTownCentre into display text.
     //
-    // The lookup is tried through a short list of candidate members and the first that works is
-    // remembered, because the interop assemblies cannot be reflected outside the game - so the exact
-    // member name cannot be confirmed offline and a single guess would be a coin flip. Whatever
-    // succeeds is logged once, which is the measurement that replaces the guess.
-    private static System.Reflection.MethodInfo s_locStringMethod;
-    private static bool s_localizationProbed;
-
+    // The member that does this was found by scanning, not by naming it: see
+    // ResolveLocalizationMembers for what the scan produced and why.
     private string LocalizeLabel(string locId)
     {
         if (string.IsNullOrEmpty(locId))
             return "";
 
-        if (!s_localizationProbed)
-            ProbeLocalization();
-        if (s_locStringMethod == null)
+        ResolveLocalizationMembers();
+        if (s_localizationGet == null)
             return "";
 
         try
         {
-            string result = s_locStringMethod.Invoke(null, new object[] { locId }) as string;
+            string result = s_localizationGet.Invoke(null, new object[] { locId }) as string;
             // A key that does not resolve comes back as the key itself, which is worse than nothing
             // on the map, so treat that as a miss.
             if (!string.IsNullOrEmpty(result) && !string.Equals(result, locId, StringComparison.Ordinal))
                 return result;
+
+            // The fallback language answers in English when the chosen language has no entry, which
+            // still beats showing the raw key.
+            if (s_localizationFallback != null)
+            {
+                string fallback = s_localizationFallback.Invoke(null, new object[] { locId }) as string;
+                if (!string.IsNullOrEmpty(fallback) &&
+                    !string.Equals(fallback, locId, StringComparison.Ordinal))
+                    return fallback;
+            }
         }
         catch
         {
@@ -4159,77 +4163,6 @@ public sealed class ModEntry : MelonMod
         }
     }
 
-    // Lists what Il2Cpp.Locale actually offers, and tests the candidates.
-    //
-    // Both value sources for a place name are now ruled out by measurement: m_CustomName is empty for
-    // all 14 label entries, and Il2Cpp.Locale.GetText answers with the key it is handed. The key is a
-    // real localization key - the game's own map shows 米尔顿小镇 for GAMEPLAY_mtTownCentre - so the
-    // translation exists; what is wrong is which member performs it. Guessing that member has failed
-    // four times, so this enumerates the class and tries what it finds against a key whose expected
-    // answer is known.
-    private static bool s_localeMembersProbed;
-
-    private void ProbeLocaleMembers()
-    {
-        if (s_localeMembersProbed)
-            return;
-        s_localeMembersProbed = true;
-        try
-        {
-            Type type = null;
-            foreach (System.Reflection.Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())
-            {
-                try { type = assembly.GetType("Il2Cpp.Locale"); } catch { }
-                if (type != null)
-                    break;
-            }
-            if (type == null)
-            {
-                LoggerInstance.Warning("Locale member probe: Il2Cpp.Locale not found.");
-                return;
-            }
-
-            LoggerInstance.Msg($"Locale members on {type.FullName}:");
-            foreach (System.Reflection.MethodInfo method in type.GetMethods(
-                         System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static))
-            {
-                if (method.IsSpecialName)
-                    continue;
-                var parameters = method.GetParameters();
-                LoggerInstance.Msg($"  {(method.ReturnType == typeof(string) ? "string" : method.ReturnType.Name)} " +
-                    $"{method.Name}({string.Join(",", System.Array.ConvertAll(parameters, p => p.ParameterType.Name))})");
-            }
-
-            // Try every static string-returning single-string method against a key whose answer is
-            // known from the game's own map, so a candidate can be judged rather than assumed.
-            const string knownKey = "GAMEPLAY_mtTownCentre";
-            foreach (System.Reflection.MethodInfo method in type.GetMethods(
-                         System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static))
-            {
-                if (method.IsSpecialName || method.ReturnType != typeof(string))
-                    continue;
-                var parameters = method.GetParameters();
-                if (parameters.Length != 1 || parameters[0].ParameterType != typeof(string))
-                    continue;
-                try
-                {
-                    string answer = method.Invoke(null, new object[] { knownKey }) as string;
-                    LoggerInstance.Msg($"  try {method.Name}(\"{knownKey}\") = " +
-                        $"{(string.IsNullOrEmpty(answer) ? "<empty>" : $"'{answer}'")}" +
-                        (string.Equals(answer, knownKey, StringComparison.Ordinal) ? "  (echoes the key)" : ""));
-                }
-                catch (Exception ex)
-                {
-                    LoggerInstance.Msg($"  try {method.Name} threw {ex.GetType().Name}.");
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            LoggerInstance.Warning($"Locale member probe failed: {ex.Message}");
-        }
-    }
-
     // Reads the place names straight off the game's own map objects.
     //
     // The localization class has three GetText overloads and none of them translates these keys, so
@@ -4277,173 +4210,51 @@ public sealed class ModEntry : MelonMod
         }
     }
 
-    // Finds the member that resolves a location key by testing every candidate against a key whose
-    // answer is already known to exist.
+    // The members that resolve a location key, found by scanning rather than by naming them.
     //
-    // The finished text is definitely produced: the hierarchy dump shows the panel's own text objects
-    // carrying 米尔顿小镇 and even 香蒲 for harvestables. Il2Cpp.Locale is not doing it - all three of
-    // its GetText overloads echo the key - so the resolver is somewhere else, and naming it by hand
-    // has failed four times. Scanning for a (string) -> string member and calling it is a test rather
-    // than a guess: a candidate that returns the key unchanged is rejected, and one that returns
-    // something else is the answer.
-    private static bool s_locatorScanDone;
+    // A scan of every static (string)->string member, called against a key whose answer was known to
+    // exist on the panel's own text objects, produced these two:
+    //   Il2Cpp.Localization.Get                    "GAMEPLAY_mtTownCentre" -> 米尔顿小镇
+    //   Il2Cpp.Localization.GetForFallbackLanguage "GAMEPLAY_mtTownCentre" -> Town of Milton
+    // Four hand-picked names had been wrong before this - m_MapTex, a type named Localization, a
+    // property m_LocalizedName, and Il2Cpp.Locale.GetText - which is why the member is discovered
+    // and verified here instead of assumed.
+    private static System.Reflection.MethodInfo s_localizationGet;
+    private static System.Reflection.MethodInfo s_localizationFallback;
+    private static bool s_localizationResolved;
 
-    private void ScanForLocator()
+    private static void ResolveLocalizationMembers()
     {
-        if (s_locatorScanDone)
+        if (s_localizationResolved)
             return;
-        s_locatorScanDone = true;
+        s_localizationResolved = true;
 
-        const string knownKey = "GAMEPLAY_mtTownCentre";
-        int tried = 0;
         try
         {
+            Type type = null;
             foreach (System.Reflection.Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())
             {
-                Type[] types;
-                try { types = assembly.GetTypes(); }
-                catch { continue; }
-
-                foreach (Type type in types)
-                {
-                    string typeName = type.FullName ?? type.Name;
-                    if (typeName.StartsWith("System.", StringComparison.Ordinal) ||
-                        typeName.StartsWith("UnityEngine", StringComparison.Ordinal) ||
-                        typeName.StartsWith("MelonLoader", StringComparison.Ordinal))
-                        continue;
-
-                    System.Reflection.MethodInfo[] methods;
-                    try
-                    {
-                        methods = type.GetMethods(System.Reflection.BindingFlags.Public |
-                                                  System.Reflection.BindingFlags.NonPublic |
-                                                  System.Reflection.BindingFlags.Static |
-                                                  System.Reflection.BindingFlags.Instance |
-                                                  System.Reflection.BindingFlags.DeclaredOnly);
-                    }
-                    catch { continue; }
-
-                    foreach (System.Reflection.MethodInfo method in methods)
-                    {
-                        if (method.IsSpecialName || method.ReturnType != typeof(string))
-                            continue;
-                        var parameters = method.GetParameters();
-                        if (parameters.Length != 1 || parameters[0].ParameterType != typeof(string))
-                            continue;
-                        if (!method.IsStatic)
-                            continue;
-
-                        tried++;
-                        try
-                        {
-                            string answer = method.Invoke(null, new object[] { knownKey }) as string;
-                            if (string.IsNullOrEmpty(answer) ||
-                                string.Equals(answer, knownKey, StringComparison.Ordinal))
-                                continue;
-
-                            LoggerInstance.Msg(
-                                $"Locator found: {typeName}.{method.Name}(\"{knownKey}\") = '{answer}'.");
-                        }
-                        catch
-                        {
-                            // Wrong shape for this key; not a candidate.
-                        }
-                    }
-                }
+                try { type = assembly.GetType("Il2Cpp.Localization"); } catch { }
+                if (type != null)
+                    break;
             }
-            LoggerInstance.Msg($"Locator scan finished: {tried} static (string)->string " +
-                "candidates tried.");
+            if (type == null)
+                return;
+
+            s_localizationGet = type.GetMethod("Get",
+                System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static,
+                null, new[] { typeof(string) }, null);
+            s_localizationFallback = type.GetMethod("GetForFallbackLanguage",
+                System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static,
+                null, new[] { typeof(string) }, null);
         }
-        catch (Exception ex)
+        catch
         {
-            LoggerInstance.Warning($"Locator scan failed: {ex.Message}");
+            s_localizationGet = null;
+            s_localizationFallback = null;
         }
     }
 
-    private void ProbeLocalization()
-    {
-        s_localizationProbed = true;
-        try
-        {
-            // Enumerate rather than guess. Looking up the exact name "Localization" failed, which is
-            // the second time a name picked by string search turned out not to exist on the type it
-            // was assumed to be on. Listing what is actually loaded costs one pass and removes the
-            // guess: both the type name and the lookup member are discovered here.
-            var candidates = new List<string>();
-            foreach (System.Reflection.Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())
-            {
-                Type[] types;
-                try { types = assembly.GetTypes(); }
-                catch { continue; }
-
-                foreach (Type type in types)
-                {
-                    string full = type.FullName ?? type.Name;
-                    if (full.IndexOf("local", StringComparison.OrdinalIgnoreCase) < 0)
-                        continue;
-                    candidates.Add(full);
-                }
-            }
-
-            LoggerInstance.Msg($"Localization: {candidates.Count} loaded types mention 'local': " +
-                string.Join(", ", candidates.GetRange(0, Math.Min(12, candidates.Count))) +
-                (candidates.Count > 12 ? ", ..." : ""));
-
-            // Now find a static string->string lookup on any of them, preferring names that read
-            // like a translation call.
-            string[] preferred = { "GetLocString", "Translate", "GetString", "GetText", "Localize" };
-            foreach (string wanted in preferred)
-            {
-                foreach (string fullName in candidates)
-                {
-                    Type type = null;
-                    foreach (System.Reflection.Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())
-                    {
-                        try { type = assembly.GetType(fullName); } catch { }
-                        if (type != null)
-                            break;
-                    }
-                    if (type == null)
-                        continue;
-
-                    System.Reflection.MethodInfo method = type.GetMethod(wanted,
-                        System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static,
-                        null, new[] { typeof(string) }, null);
-                    if (method != null && method.ReturnType == typeof(string))
-                    {
-                        s_locStringMethod = method;
-                        LoggerInstance.Msg(
-                            $"Localization: using {fullName}.{wanted}(string) for map labels.");
-
-                        // Prove the lookup actually returns text before the label build depends on
-                        // it. A method that exists but answers with the key, or with nothing, would
-                        // otherwise look identical to a build that never ran.
-                        try
-                        {
-                            string probe = method.Invoke(null, new object[] { "GAMEPLAY_mtTownCentre" })
-                                as string;
-                            LoggerInstance.Msg(
-                                $"Localization probe: GetText(\"GAMEPLAY_mtTownCentre\") = " +
-                                $"{(string.IsNullOrEmpty(probe) ? "<empty>" : $"'{probe}'")}.");
-                        }
-                        catch (Exception ex)
-                        {
-                            LoggerInstance.Warning(
-                                $"Localization probe call failed: {ex.GetType().Name}: {ex.Message}");
-                        }
-                        return;
-                    }
-                }
-            }
-
-            LoggerInstance.Warning(
-                "Localization: no static string lookup found; map labels will be omitted.");
-        }
-        catch (Exception ex)
-        {
-            LoggerInstance.Warning($"Localization probe failed: {ex.Message}");
-        }
-    }
 
     private sealed class MapLabel
     {
@@ -4473,9 +4284,9 @@ public sealed class ModEntry : MelonMod
             if (ReferenceEquals(details, null))
                 return;
 
-            ProbeMapDetailMembers();
-            ProbeLocaleMembers();
-            ScanForLocator();
+            // The members that resolve a location key were found by scanning every static
+            // (string)->string candidate and testing it; see ResolveLocalizationMembers.
+            ResolveLocalizationMembers();
 
             int added = 0;
             for (int i = 0; i < details.Count; i++)
@@ -4556,7 +4367,7 @@ public sealed class ModEntry : MelonMod
             }
 
             LoggerInstance.Msg($"Map labels: {added} placed from {details.Count} entries " +
-                $"(key lookup: {(s_locStringMethod != null ? "yes" : "no")}).");
+                $"(localization: {(s_localizationGet != null ? "found" : "missing")}).");
             if (_labelMisses.Count > 0)
             {
                 LoggerInstance.Msg($"Map labels with no text ({_labelMisses.Count}): " +
