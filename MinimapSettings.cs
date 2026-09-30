@@ -86,6 +86,11 @@ internal sealed class MinimapSettings : JsonModSettings
     [Slider(10, 120, 111)]
     public int MarkerIconSize = 44;
 
+    [Name("标记颜色")]
+    [Description("标记图标的颜色。图集本身是白色图案，游戏自己绘制时会另加色调，所以原版地图上的图标是深色的；原版地图是浅色底，白图标几乎看不见。自动＝原版地图用深色、社区地图用白色。")]
+    [Choice("自动", "白色", "深色", "棕色（同游戏）")]
+    public int MarkerTint = 0;
+
     // The same five buckets the game's own map filter offers, so there is nothing to learn. All on
     // by default: the rewrite exists because markers were going missing, so nothing is hidden until
     // the player chooses to hide it.
