@@ -282,6 +282,9 @@ public sealed partial class ModEntry : MelonMod
     {
         public GameObject Root;
         public RectTransform Rect;
+        // The dark outlined copy drawn behind this marker, when the outline setting is on. Kept so it
+        // can be positioned with the icon and destroyed with it.
+        public GameObject Backing;
         public Vector2 MapUv;
         public Vector2 MapUvSize;
         // Resolved once when the icon is built. The category comes from the sprite name, and the

@@ -110,6 +110,8 @@ public sealed partial class ModEntry : MelonMod
                            icon.MapUv.y - icon.MapUvSize.y * 0.5f <= visibleUv.yMax;
             if (icon.Root.activeSelf != visible)
                 icon.Root.SetActive(visible);
+            if (!ReferenceEquals(icon.Backing, null) && icon.Backing.activeSelf != visible)
+                icon.Backing.SetActive(visible);
             if (!visible)
                 continue;
 
@@ -133,6 +135,21 @@ public sealed partial class ModEntry : MelonMod
                 ratioY * _settings.MarkerIconSize);
             if (icon.Rect.sizeDelta != size)
                 icon.Rect.sizeDelta = size;
+
+            // The backing is the same icon a couple of pixels larger in each direction, which is what
+            // leaves a visible dark edge around the white one.
+            if (!ReferenceEquals(icon.Backing, null))
+            {
+                RectTransform backingRect = icon.Backing.GetComponent<RectTransform>();
+                if (!ReferenceEquals(backingRect, null))
+                {
+                    if (backingRect.anchoredPosition != position)
+                        backingRect.anchoredPosition = position;
+                    var backingSize = new Vector2(size.x + BackingMargin, size.y + BackingMargin);
+                    if (backingRect.sizeDelta != backingSize)
+                        backingRect.sizeDelta = backingSize;
+                }
+            }
         }
     }
 
@@ -311,6 +328,34 @@ public sealed partial class ModEntry : MelonMod
     // and size from the sprite's world corners; this one is handed both, which is the point of the
     // rewrite: position comes from GetWorldPosition, the same coordinate system the calibration
     // uses, instead of from where the game happened to lay a widget out.
+    // A dark copy of the icon, slightly larger, drawn behind it so the white one reads as outlined.
+    //
+    // This exists because of a constraint the first two colour attempts ignored: the community map's
+    // own icons are painted into the image and scale with the zoom, while these markers are a fixed
+    // screen size. There is therefore no single colour that works - white vanishes against the cream
+    // paper when zoomed out, and dark merges with the dark terrain when zoomed in, which is how a
+    // whole hillside of markers turned into one black mass. An outlined icon is legible against both,
+    // which is why the game's own map labels are drawn that way.
+    //
+    // The backing samples the same atlas rectangle, only once and only for the sprite region, so it
+    // costs one extra object per marker rather than any texture work.
+    private GameObject BuildMarkerBacking(IconRef icon)
+    {
+        GameObject backingObject = CreateUiObject("VanillaMapIconEdge",
+            typeof(RectTransform), typeof(CanvasRenderer), typeof(RawImage));
+        backingObject.transform.SetParent(_mapRect, false);
+        RectTransform rect = backingObject.GetComponent<RectTransform>();
+        rect.anchorMin = new Vector2(0.5f, 0.5f);
+        rect.anchorMax = new Vector2(0.5f, 0.5f);
+        rect.pivot = new Vector2(0.5f, 0.5f);
+        RawImage image = backingObject.GetComponent<RawImage>();
+        image.texture = icon.Texture;
+        image.uvRect = icon.Uv;
+        image.color = new Color(0.05f, 0.05f, 0.06f, 0.95f);
+        image.raycastTarget = false;
+        return backingObject;
+    }
+
     private VanillaIcon BuildMarkerIcon(IconRef icon, Vector2 mapUv, Vector2 uvSize, Color color)
     {
         GameObject iconObject = CreateUiObject("VanillaMapIcon",
@@ -405,7 +450,15 @@ public sealed partial class ModEntry : MelonMod
                 var uvSize = new Vector2(iconUv, iconUv);
 
                 MarkerCategory category = CategorizeSprite(spriteName);
-                VanillaIcon built = BuildMarkerIcon(icon, mapUv, uvSize, MarkerColourForActiveLayer());
+                Color markerColour = MarkerColourForActiveLayer();
+                // The dark backing is created FIRST so it sits behind the icon in the draw order,
+                // which is hierarchy order in uGUI - the same trap that once had the hover tooltip
+                // hidden behind the marker set.
+                GameObject backing = _settings.MarkerOutline
+                    ? BuildMarkerBacking(icon)
+                    : null;
+                VanillaIcon built = BuildMarkerIcon(icon, mapUv, uvSize, markerColour);
+                built.Backing = backing;
                 built.Category = category;
                 built.CategoryEnabled = CategoryEnabled(category);
                 // The name the game shows when the pointer rests on this icon. Resolved once here
@@ -566,38 +619,39 @@ public sealed partial class ModEntry : MelonMod
     }
 
 
+    // How much larger the dark backing is than the icon, in pixels. Enough to read as an outline at
+    // the default marker size without looking like a heavy border.
+    private const float BackingMargin = 3f;
+
     private void ClearVanillaIcons()
     {
         for (int i = 0; i < _vanillaIcons.Count; i++)
         {
             if (!ReferenceEquals(_vanillaIcons[i].Root, null))
                 UnityEngine.Object.Destroy(_vanillaIcons[i].Root);
+            if (!ReferenceEquals(_vanillaIcons[i].Backing, null))
+                UnityEngine.Object.Destroy(_vanillaIcons[i].Backing);
         }
         _vanillaIcons.Clear();
     }
 
 
-    // Builds the marker set and the place names for one scene, and records which build is current.
     // The colour the marker atlas is drawn in.
     //
-    // The atlas itself is white artwork: the game tints it when it draws its own map. Which colour is
-    // readable depends entirely on what is behind it, and the two layers are opposites - the vanilla
-    // map is pale parchment and wants white, while the community map is a white sheet covered in fine
-    // detail and wants something dark. Getting the correspondence the wrong way round makes both
-    // worse, so the automatic default is keyed to the layer.
-    //
-    // The dark is a neutral near-black rather than the brown first tried: on the community map's busy
-    // white art the brown read as muddy.
+    // The atlas is white artwork that the game tints when drawing its own map. Matching the tint to
+    // the layer was tried twice and abandoned, and the reason is worth keeping: a single colour for
+    // the whole set only works if it contrasts with everything behind it, and the community map is
+    // cream paper with dark terrain painted into it. Dark icons vanish into that terrain, and where
+    // markers crowd together they merge into one black mass - reported, fairly, as looking haunted.
+    // White at least reads against the terrain; it is the cream paper it struggles with, and that is
+    // what the outline setting exists to solve.
     private Color MarkerColourForActiveLayer()
     {
-        var dark = new Color(0.13f, 0.13f, 0.15f, 1f);
-
         return _settings.MarkerTint switch
         {
-            1 => Color.white,
-            2 => dark,
-            3 => dark,                 // legacy value, kept so an existing config still resolves
-            _ => ActiveLayer.UsingVanilla ? Color.white : dark,
+            2 => new Color(0.13f, 0.13f, 0.15f, 1f),
+            3 => new Color(0.13f, 0.13f, 0.15f, 1f),   // legacy value from the removed brown option
+            _ => Color.white,
         };
     }
 

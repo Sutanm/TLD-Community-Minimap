@@ -87,9 +87,13 @@ internal sealed class MinimapSettings : JsonModSettings
     public int MarkerIconSize = 44;
 
     [Name("标记颜色")]
-    [Description("标记图标的颜色。图集本身是白色图案，游戏自己绘制时会另加色调。原版地图是浅色羊皮纸底，白标记最清楚；社区地图是白底细线，需要深色标记。自动＝按当前图源选择。")]
-    [Choice("自动", "白色", "深色")]
+    [Description("标记图标的颜色。图集本身是白色图案，游戏自己绘制时会另加色调。白色在浅色羊皮纸和社区图上都清楚；深色在社区图的深色地形上会糊成一片。")]
+    [Choice("白色", "深色")]
     public int MarkerTint = 0;
+
+    [Name("标记描边")]
+    [Description("在标记背后画一层深色轮廓，使白色图标在浅色羊皮纸和社区图的深色地形上都能看清。社区地图的图标画在图里、随缩放变化，而标记是固定屏幕大小，所以单一颜色在某个缩放级别必然看不清。关闭则只有纯色图标。")]
+    public bool MarkerOutline = true;
 
     // The same five buckets the game's own map filter offers, so there is nothing to learn. All on
     // by default: the rewrite exists because markers were going missing, so nothing is hidden until
