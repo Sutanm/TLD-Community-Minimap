@@ -10,7 +10,8 @@
 | **[STATUS.md](STATUS.md)** | 剩余工作量、当前进度、未解决的问题 | **接手第一份就读它** |
 | **[ARCHITECTURE.md](ARCHITECTURE.md)** | 代码结构、图层系统、标记管线、坐标系 | 要改代码之前 |
 | **[PITFALLS.md](PITFALLS.md)** | 踩过的坑与硬性纪律（IL2CPP、UI、构建） | **每次动手之前扫一遍** |
-| **[PERFORMANCE.md](PERFORMANCE.md)** | 性能问题的记录、已修与未修 | 出现卡顿时 |
+| **[PERFORMANCE.md](PERFORMANCE.md)** | 性能问题的记录、已修与未修、怎么测量 | 出现卡顿时 |
+| **[SETTINGS.md](SETTINGS.md)** | 每一个设置项与按键的作用 | 回答用户提问时 |
 
 ## 与旧文档的关系
 
