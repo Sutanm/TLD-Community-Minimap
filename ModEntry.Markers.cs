@@ -580,21 +580,24 @@ public sealed partial class ModEntry : MelonMod
     // Builds the marker set and the place names for one scene, and records which build is current.
     // The colour the marker atlas is drawn in.
     //
-    // The atlas itself is white artwork: the game tints it when it draws its own map, which is why
-    // the panel's icons come out dark brown while ours came out white. On the vanilla map - pale
-    // parchment crossed by dark lines - white icons are nearly invisible, which is exactly what was
-    // reported. The default therefore follows the layer: white over the community map, whose art is
-    // busy and mid-toned, and dark over the pale vanilla map.
+    // The atlas itself is white artwork: the game tints it when it draws its own map. Which colour is
+    // readable depends entirely on what is behind it, and the two layers are opposites - the vanilla
+    // map is pale parchment and wants white, while the community map is a white sheet covered in fine
+    // detail and wants something dark. Getting the correspondence the wrong way round makes both
+    // worse, so the automatic default is keyed to the layer.
+    //
+    // The dark is a neutral near-black rather than the brown first tried: on the community map's busy
+    // white art the brown read as muddy.
     private Color MarkerColourForActiveLayer()
     {
+        var dark = new Color(0.13f, 0.13f, 0.15f, 1f);
+
         return _settings.MarkerTint switch
         {
             1 => Color.white,
-            2 => new Color(0.12f, 0.10f, 0.09f, 1f),          // dark, for the pale vanilla map
-            3 => new Color(0.35f, 0.16f, 0.10f, 1f),          // the brown the game's own map uses
-            _ => ActiveLayer.UsingVanilla
-                ? new Color(0.12f, 0.10f, 0.09f, 1f)
-                : Color.white,
+            2 => dark,
+            3 => dark,                 // legacy value, kept so an existing config still resolves
+            _ => ActiveLayer.UsingVanilla ? Color.white : dark,
         };
     }
 
