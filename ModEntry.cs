@@ -874,22 +874,68 @@ public sealed class ModEntry : MelonMod
         _fullMapOn = full;
     }
 
-    // Corner map -> full map -> nothing -> corner map.
-    //
-    // The next state is derived from the current one rather than from a stored index, because
-    // the game's map key moves between the same states: an index would go stale and skip one.
-    // Going to the full map deliberately leaves the corner map switched on underneath, so
-    // closing the full map with the game key returns to the corner map instead of to nothing.
+    // The orders the cycle key can walk. A state is "which of the two layers is on screen": the
+    // corner map alone, the full map, or neither. Two-step entries are the plain toggles.
+    private static readonly (bool Mini, bool Full)[] CycleMiniFull =
+        { (true, false), (false, true) };
+    private static readonly (bool Mini, bool Full)[] CycleMiniFullNone =
+        { (true, false), (false, true), (false, false) };
+    private static readonly (bool Mini, bool Full)[] CycleMiniOnly =
+        { (true, false), (false, false) };
+    private static readonly (bool Mini, bool Full)[] CycleFullOnly =
+        { (false, true), (false, false) };
+
+    private List<(bool Mini, bool Full)> BuildCycle()
+    {
+        (bool Mini, bool Full)[] source = _settings.CyclePreset switch
+        {
+            0 => CycleMiniFull,
+            2 => CycleMiniOnly,
+            3 => CycleFullOnly,
+            _ => CycleMiniFullNone,
+        };
+
+        // A step that reaches a layer the player switched off would just show nothing, so those
+        // steps are dropped. If that leaves fewer than two, the key has nothing to cycle and the
+        // caller does nothing rather than sitting on one state.
+        var steps = new List<(bool Mini, bool Full)>(source.Length);
+        foreach ((bool mini, bool full) in source)
+        {
+            if (mini && !_settings.Enabled)
+                continue;
+            steps.Add((mini, full));
+        }
+        return steps;
+    }
+
+    // The next state comes from what is on screen rather than from a remembered step, because the
+    // game's map key moves between the same states: a stored index would go stale and skip one.
+    // While the full map is up the corner map is still switched on underneath, so the full map is
+    // what decides which step we are on.
     private void CycleView()
     {
-        if (_fullMapOn)
-            ApplyViewState(false, false);
-        else if (_miniMapOn)
-            ApplyViewState(true, true);
-        else
-            ApplyViewState(_settings.Enabled, !_settings.Enabled);
+        List<(bool Mini, bool Full)> steps = BuildCycle();
+        if (steps.Count < 2)
+            return;
 
-        LoggerInstance.Msg($"View cycle: {DescribeView()}.");
+        int current = -1;
+        for (int i = 0; i < steps.Count; i++)
+        {
+            bool matches = _fullMapOn
+                ? steps[i].Full
+                : _miniMapOn
+                    ? steps[i].Mini && !steps[i].Full
+                    : !steps[i].Mini && !steps[i].Full;
+            if (matches)
+            {
+                current = i;
+                break;
+            }
+        }
+
+        (bool Mini, bool Full) next = steps[(current + 1) % steps.Count];
+        ApplyViewState(next.Mini, next.Full);
+        LoggerInstance.Msg($"View cycle: {DescribeView()} ({current + 2}/{steps.Count}).");
     }
 
     private void OpenFullMap()

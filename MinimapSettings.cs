@@ -207,8 +207,13 @@ internal sealed class MinimapSettings : JsonModSettings
     public bool EnableCycleKey = true;
 
     [Name("视图轮换按键")]
-    [Description("在 小地图 → 全屏地图 → 不显示 之间轮换。游戏自己的默认键位里 Tab 是生存面板（显示时间），如果你把这里也设成 Tab，两者会同时响应——冲突就换成别的键。")]
+    [Description("按此键在下面「轮换内容」选定的几个视图之间循环。游戏自己的默认键位里 Tab 是生存面板（显示时间），如果你把这里也设成 Tab，两者会同时响应——冲突就换成别的键。")]
     public KeyCode CycleViewKey = KeyCode.Tab;
+
+    [Name("轮换内容")]
+    [Description("按轮换键时依次显示哪些视图。小地图＝角落 HUD；大地图＝全屏地图；无＝两个都不显示。两步的档位就是在这两者之间来回切。")]
+    [Choice("小地图 → 大地图", "小地图 → 大地图 → 无", "小地图 → 无", "大地图 → 无")]
+    public int CyclePreset = 1;
 
     [Name("显示坐标诊断")]
     [Description("在小地图下方显示场景名、玩家世界坐标和朝向，供地图配准使用。")]
@@ -272,6 +277,7 @@ internal sealed class MinimapSettings : JsonModSettings
             SetFieldVisible(nameof(Margin), !customPosition);
 
             SetFieldVisible(nameof(CycleViewKey), cycleKey);
+            SetFieldVisible(nameof(CyclePreset), cycleKey);
 
             RefreshGUI();
         }
