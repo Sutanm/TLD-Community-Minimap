@@ -73,16 +73,27 @@
 
 来自 `mapdetails_MountainTownRegion_*.csv`（山间小镇实测）：
 
-| 指标 | 数值 |
-|---|---|
-| `s_MapDetails` 条目 | **816** |
-| 其中有 sprite 名（= 标记） | **802** |
-| 无 sprite 名（= **地名**，走 Labels 管线） | **14** |
-| **唯一 sprite 名** | **33** |
-| 唯一 `sprite × m_IconType` 组合（= 唯一贴图变体） | **34** |
-| `surveyed=true`（全图点亮后） | 599 |
+| 指标 | 数值 | 依据 |
+|---|---|---|
+| `s_MapDetails` 条目 | **816** | census CSV 816 行 |
+| 其中有 sprite 名（= 标记） | **802** | 日志 `802 drawn`；816 − 14 = 802 |
+| 无 sprite 名（= **地名**，走 Labels 管线） | **14** | 日志 `Map labels: 14 placed from 816 entries` |
+| **唯一 sprite 名** | **33** | 日志 `33 distinct sprite names` |
+| 唯一 `sprite × m_IconType` 组合（= 唯一贴图变体） | **34** | 对 census CSV 按 `sprite\|type` 去重 |
+| `surveyed=true`（全图点亮**后**） | **599** | census CSV 与日志一致 |
+| `surveyed=true`（点亮**前**） | **37** | 日志 `surveyed 37, unlocked 7` |
+| 旧刮取路径的上限 | **162** | 日志 `Currently scraped from the panel's sprites: 162` |
+
+> ⚠️ **两个容易搞错的地方（我都错了一次，实测纠正）**：
+>
+> 1. **`m_IconType == Area` 的 3 条不是地名。** 它们**带 sprite 名**
+>    （`icoMap_Generic`，locid 是 `GAMEPLAY_VisorNoteMapIcon` 系列），
+>    按当前代码**会被建成标记**。真正走地名管线的**只有那 14 条无 sprite 名的 `Text`**。
+>    **不要以为"Area 就是地名"。**
+> 2. **点亮后的 `surveyed` 是 599，不是 601。**
 
 **关键**: 香蒲 251 个、玫瑰果 127 个、树枝 72 个 —— 但**图只有一张**。
+前 8 组占 **633 / 802**，所以全画确实是一面图标墙。
 
 ### 新旧路径的覆盖度差距
 
@@ -151,28 +162,54 @@
 <游戏目录>\MelonLoader\Logs\*.log        ← 按时间排序取最新的
 ```
 
-> **没有 `Latest.log`** —— 不要去找它。
+> **没有 `Latest.log`** —— 实测确认不存在，不要去找它。
+> 一次会话一个文件，文件名是 `<年>-<月>-<日>_<时>-<分>-<秒>.log`。
+
+### 关键日志行（对账用）
+
+| 行 | 含义 |
+|---|---|
+| `Markers rebuilt from MapDetail: N drawn, M skipped (labels, off-map), K unresolved.` | 标记对账，正常是 **802 / 14 / 0** |
+| `Map labels: N placed from M entries (localization: found\|missing).` | 地名对账，正常是 **14 / 816** |
+| `Marker hover names: N of M.` | 悬停名字覆盖面，正常 **802 / 802** |
+| `Marker census (F11): … 33 distinct sprite names.` | 规模与可解析率 |
+| `Marker visibility (F11): surveyed … unlocked …` | 可见性组合与"游戏实际建了几个" |
+| `Marker groups (scraped/total) [F11]: …` | 组级对照。判读：`0/N` = 游戏完全不画；`N/N` = 全画；**中间值 = 还有第二个判据** |
+| `Census (panel opened/closed): 816 entries, 802 with a sprite name, N surveyed.` | 面板开 / 关各一条 |
+| `[state] scene=… markers=… view=…` + `[layers] mini: … \| full: …` | 10 秒一次心跳，证明两个图层互不覆盖 |
+| `Framing probe …` | 原版面板投影基准（需**关掉**「接管游戏地图键」才触发） |
 
 ### 常用的日志计数
 
 ```powershell
-# 异常数（性能问题的第一嫌疑）
+# 异常数 —— 判断卡顿的第一步
 Select-String -Path <日志> -Pattern 'Exception' | Measure-Object | Select-Object Count
 
-# 标记重建结果
-Select-String -Path <日志> -Pattern 'Markers rebuilt from MapDetail'
+# 标记重建与对账
+Select-String -Path <日志> -Pattern 'Markers rebuilt from MapDetail|Marker hover names|Map labels'
 
 # 图源与投影
 Select-String -Path <日志> -Pattern 'Using the captured map'
 
-# 逐帧写值的残留（应该没有输出）
+# 不该出现的输出（旧启发式仍在生效的标志）
 Select-String -Path <日志> -Pattern 'Kept .* markers'
 ```
 
 ### 游戏内探针
 
-开启设置里的 **「开发者模式」** 后，会输出普查与探针日志，并导出到
-`<游戏目录>\Mods\CommunityMinimap\`：
+开启设置里的 **「开发者模式」**（默认关）后启用。所有探针都**只在开发者模式下运行** ——
+注释里写明理由：普查会写出 **70 KB** 的 CSV，「绝不能为一个没要求的玩家跑」。
+
+| 探针 | 触发 / 产物 |
+|---|---|
+| `CensusMapDetails` | 每 2 秒限流；写 `mapdetails_<场景>_<HHmmss>.csv`（**70 KB**） |
+| `ClassifyMapDetails` | **只统计不建对象**，打印上面那四行 census / visibility / groups / categories。测量成本为零 |
+| `ProbeRegionTextures` / 资源探针 | 枚举 `RegionSpecification` 的贴图成员 —— **"1024 是上限"这个否定性结论就是这么来的** |
+| `LogStateHeartbeat` | 每 10 秒一条 `[state]` + `[layers]`。注释：「Deliberately cheap: it never walks the 816 map entries」 |
+| `DumpMapDetails` | 随 `记录校准点`（默认 `F11`）一起触发 |
+| `ShowDiagnostics` | 小地图下方的坐标文字 |
+
+导出到 `<游戏目录>\Mods\CommunityMinimap\`：
 
 | 文件 | 内容 |
 |---|---|
@@ -184,14 +221,33 @@ Select-String -Path <日志> -Pattern 'Kept .* markers'
 
 > **只有 `mapdetails_*` 会堆积**（带时间戳）。曾经积累到 **89 个文件 / 6.9 MB**，已清理。
 > 其余都是固定名、每次覆盖。
+>
+> 分析用 `tools/analyse-census.py <csv>`：按 `m_IconType` 分组、三标志计数、
+> 带 sprite 名的条目与唯一名数量、`m_HarvestablesForMapVisibility` 覆盖。
 
 ### 构建与安装
 
 ```powershell
+# 只构建（安全）
 dotnet build .\CommunityMinimap.csproj -c Release -p:GameDirectory='<游戏目录>'
+
+# 构建 + 安装（覆盖游戏里的 DLL）
 .\build.ps1 -GameDirectory '<游戏目录>'
 ```
 
-- **游戏进程名是 `tld`**，`build.ps1` 靠它判断能否安装
-- 它**在检查进程之前不理会 `-SkipInstall`**，所以游戏运行时无法绕过
 - 要求 **0 警告 0 错误**
+- **游戏进程名是 `tld`** —— **不是 `TheLongDark`**。`build.ps1` 靠它判断能否安装；
+  早期按 `TheLongDark` 查会**静默地永不匹配**，于是安装跑进被锁定的文件，
+  表现为看不懂的 `Copy-Item: IOException`
+- 进程检查在 `-SkipInstall` 判断**之前**，所以游戏运行时**无法**绕过
+- 安装前自动备份到 `Mods\CommunityMinimap\backups\CommunityMinimap_<yyyyMMdd_HHmmss>.dll`，
+  安装后**用 SHA256 比对**"装上去的就是刚构建的"；产物缺失或时间戳早于任一源文件都会中止
+- 改 `calibrations.json` **不需要重建**（运行中热重载，每秒查一次 `LastWriteTimeUtc`）
+
+### 仍然存在的 O(802) 遍历
+
+`UpdateVanillaIcons` 每帧遍历全部标记做可见性判断，
+`RefreshMarkerCategoryFlags` 每帧比对一次分类开关状态（只在变化时才写字段）。
+
+**这是 O(n) 遍历，但不写 UI** —— 所以不会触发 layout 重建。
+「来源：AI 推断」：这一点没有单独测量过，是从"写 UI 才标脏"推出来的。

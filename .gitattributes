@@ -1,19 +1,28 @@
 # Line endings.
 #
-# This project has been edited from Windows throughout and every file in it is CRLF. Normalising on
-# checkout keeps it that way when a tool or an editor on another platform writes LF - the Python
-# helpers under tools/ were added from a Linux-like environment and arrived with LF, which git then
-# warned about on every commit.
-* text=auto eol=crlf
+# Every checkout of this repository is on Windows, so the working tree is CRLF while git
+# keeps LF in the index - the normal arrangement, verified with `git ls-files --eol`.
+# `text` with `eol=crlf` states both halves explicitly, so an editor or script that writes
+# LF cannot leave the tree mixed and turn a one-line change into a whole-file diff.
+#
+# Text and binary are declared by extension instead of being inferred. An earlier attempt
+# at normalising the tree leaned on git's `binary` attribute to decide per file and got
+# its meaning backwards twice - `binary: unspecified` is the NORMAL state for text, and
+# only `binary: set` marks a binary - which ran eight tracked PNGs through a line-ending
+# rewrite and corrupted them on two separate runs, both restored from git. Listing the
+# binary types removes the need to interpret that attribute at all.
+* text eol=crlf
 
-# Binary types that must never be line-ending converted. The map images are licensed art and the
-# exported PNGs are evidence used to verify measurements, so corrupting a byte of either would be
-# worse than a cosmetic diff.
+# Never line-ending convert these. The map images are licensed art and the exported PNGs
+# are measurement evidence, so one altered byte matters more than a tidy diff.
 *.png binary
 *.jpg binary
 *.jpeg binary
 *.dll binary
 *.pdb binary
+*.ico binary
+*.zip binary
 
-# Keep patch and diff output readable rather than treating it as text to convert.
+# Patch and diff output stays exactly as produced.
 *.patch -text
+*.diff -text
