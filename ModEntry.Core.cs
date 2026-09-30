@@ -557,15 +557,27 @@ public sealed partial class ModEntry : MelonMod
             if (_markersBuiltForScene != markerScene)
             {
                 // Rebuilding is expensive - hundreds of objects - and the entry count can wobble by a
-                // few as the region streams, so a build is only repeated after the count has settled
-                // for a moment, or when it has grown enough to matter.
-                if (_markersBuiltForScene.EndsWith("|" + detailCount, StringComparison.Ordinal))
+                // few as the region streams, so one rebuild is allowed every couple of seconds.
+                //
+                // The rate limit must not swallow a change of PROJECTION, which is what the first
+                // version of this guard did: it compared only the trailing entry count, so switching
+                // the map source from vanilla to community produced a different key that still ended
+                // in the same "|816" and was treated as "nothing to do". The markers then stayed in
+                // vanilla uv and were drawn across the community map, offset - reported by the user
+                // as "the markers are all shifted, it is not using the community coordinates".
+                // A projection change is not a streaming wobble; it invalidates every position, so it
+                // rebuilds immediately and only the same-projection case is rate limited.
+                string lastProjection = LastProjection(_markersBuiltForScene);
+                bool sameProjection = string.Equals(lastProjection, projection, StringComparison.Ordinal);
+                bool sameCount = _markersBuiltForScene.EndsWith("|" + detailCount, StringComparison.Ordinal);
+
+                if (sameProjection && sameCount)
                 {
-                    // Same count as last time: nothing to do.
+                    // Same projection, same entry count: nothing to do.
                 }
-                else if (DateTime.UtcNow < _nextMarkerRebuildUtc)
+                else if (sameProjection && DateTime.UtcNow < _nextMarkerRebuildUtc)
                 {
-                    // Too soon; leave the current set in place and re-check on a later frame.
+                    // Same projection but the count moved; wait for it to settle.
                 }
                 else
                 {
@@ -616,6 +628,19 @@ public sealed partial class ModEntry : MelonMod
         UpdateUnityUi(GameManager.GetPlayerTransform());
     }
 
+    // Reads the projection part out of a marker build key of the form
+    // "scene|markerSource|projection|entryCount".
+    //
+    // Its own method because the key is assembled in one place and parsed in another, and a change
+    // to the format that only updates one of them would quietly reintroduce the bug this parsing
+    // exists to fix: markers staying in vanilla uv while the community map is drawn.
+    private static string LastProjection(string buildKey)
+    {
+        if (string.IsNullOrEmpty(buildKey))
+            return "";
+        string[] parts = buildKey.Split('|');
+        return parts.Length >= 3 ? parts[parts.Length - 2] : "";
+    }
 
     public override void OnSceneWasInitialized(int buildIndex, string sceneName)
     {
