@@ -81,10 +81,19 @@ internal sealed class MinimapSettings : JsonModSettings
     [Choice("珊瑚红", "酒红", "淡紫", "青绿色", "琥珀金", "鲜红")]
     public int PointerPalette = 0;
 
-    [Name("地图标记尺寸")]
-    [Description("原版地图标记（物资、建筑等图标）的屏幕像素大小，小地图和全屏地图共用。固定尺寸，不随缩放变大。")]
+    [Name("全屏地图显示玩家指针")]
+    [Description("在全屏地图上显示玩家当前位置与朝向。关闭后小地图仍显示指针，全屏地图则从整张地图中央打开。")]
+    public bool ShowFullMapPlayerPointer = true;
+
+    [Name("小地图标记尺寸")]
+    [Description("角落小地图中原版地图标记（物资、建筑等图标）的屏幕像素大小。固定尺寸，不随缩放变大。")]
     [Slider(10, 120, 111)]
-    public int MarkerIconSize = 44;
+    public int MiniMapMarkerIconSize = 44;
+
+    [Name("全屏地图标记尺寸")]
+    [Description("全屏地图中原版地图标记（物资、建筑等图标）的屏幕像素大小。固定尺寸，不随缩放变大。")]
+    [Slider(10, 120, 111)]
+    public int FullMapMarkerIconSize = 44;
 
     [Name("标记颜色")]
     [Description("标记图标的颜色。图集本身是白色图案，游戏自己绘制时会另加色调。白色在浅色羊皮纸和社区图上都清楚；深色在社区图的深色地形上会糊成一片。")]

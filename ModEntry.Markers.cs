@@ -98,6 +98,9 @@ public sealed partial class ModEntry : MelonMod
         // therefore a switch, not a feature - and it is the only path whose projection has been
         // fitted against real landmarks.
         bool show = ActiveLayer.UsingVanilla || _settings.MarkersOnCommunityMap;
+        float markerIconSize = FullMapVisible
+            ? _settings.FullMapMarkerIconSize
+            : _settings.MiniMapMarkerIconSize;
         RefreshMarkerCategoryFlags();
 
         for (int i = 0; i < _vanillaIcons.Count; i++)
@@ -119,20 +122,18 @@ public sealed partial class ModEntry : MelonMod
             // marker set each frame - hundreds of entries - so a value is only written when it
             // actually changed. Writing unconditionally made dragging the map feel a beat behind,
             // because each frame queued a rebuild of the whole icon layer.
-            var position = new Vector2(
-                ((icon.MapUv.x - visibleUv.x) / visibleUv.width - 0.5f) * mapSize.x,
-                ((icon.MapUv.y - visibleUv.y) / visibleUv.height - 0.5f) * mapSize.y);
+            Vector2 position = MapUvToLocal(icon.MapUv, visibleUv, mapSize);
             if (icon.Rect.anchoredPosition != position)
                 icon.Rect.anchoredPosition = position;
 
-            float markerScale = _settings.MarkerIconSize / Mathf.Max(1e-6f, _vanillaIconMaxUv);
-            float ratioX = Mathf.Clamp(icon.MapUvSize.x * markerScale / _settings.MarkerIconSize,
+            float markerScale = markerIconSize / Mathf.Max(1e-6f, _vanillaIconMaxUv);
+            float ratioX = Mathf.Clamp(icon.MapUvSize.x * markerScale / markerIconSize,
                 0.6f, 1.8f);
-            float ratioY = Mathf.Clamp(icon.MapUvSize.y * markerScale / _settings.MarkerIconSize,
+            float ratioY = Mathf.Clamp(icon.MapUvSize.y * markerScale / markerIconSize,
                 0.6f, 1.8f);
             var size = new Vector2(
-                ratioX * _settings.MarkerIconSize,
-                ratioY * _settings.MarkerIconSize);
+                ratioX * markerIconSize,
+                ratioY * markerIconSize);
             if (icon.Rect.sizeDelta != size)
                 icon.Rect.sizeDelta = size;
 
@@ -221,7 +222,7 @@ public sealed partial class ModEntry : MelonMod
         }
         if (_vanillaIconMaxUv <= 1e-5f)
             _vanillaIconMaxUv = 1f;
-        _markerRoot.transform.SetAsLastSibling();
+        OrderMapMarkers();
         LoggerInstance.Msg(
             $"Captured {_vanillaIcons.Count} vanilla map marker layers " +
             $"({(allowInactive ? "panel-free" : "panel-open")}).");
@@ -301,13 +302,23 @@ public sealed partial class ModEntry : MelonMod
             if (data == null)
                 return false;
             Texture texture = _mapIconAtlas.texture;
-            if (ReferenceEquals(texture, null))
+            if (ReferenceEquals(texture, null) || texture.width <= 0 || texture.height <= 0)
                 return false;
 
+            // UISpriteData stores its rectangle in atlas pixels with Y measured from the top.
+            // RawImage.uvRect expects normalized texture coordinates with Y measured from the
+            // bottom. Passing the pixel rectangle through unchanged made the lookup succeed while
+            // sampling far outside the texture: the marker still answered hover tests, but its
+            // artwork was invisible. Keep every IconRef in the same normalized convention as the
+            // live UISprite scrape above.
             var resolved = new IconRef
             {
                 Texture = texture,
-                Uv = new Rect(data.x, data.y, data.width, data.height),
+                Uv = new Rect(
+                    (float)data.x / texture.width,
+                    1f - (float)(data.y + data.height) / texture.height,
+                    (float)data.width / texture.width,
+                    (float)data.height / texture.height),
                 PixelWidth = data.width,
                 PixelHeight = data.height,
             };
@@ -380,16 +391,16 @@ public sealed partial class ModEntry : MelonMod
     }
 
 
-    // Draws every marker the game has registered for this region, from MapDetail data.
+    // Draws every revealed marker the game has registered for this region, from MapDetail data.
     //
     // This is the rewrite section 37.2 describes. The panel only instantiates 162 of the region's
     // 802 registered markers - measured, not assumed - so scraping could never show more than that
     // however well it worked. Reading s_MapDetails shows all of them, and the icon for each comes
     // from the atlas, which resolves every one of the 802.
     //
-    // Visibility is NOT decided here (section 35.3): everything registered is built, and whether it
-    // is drawn is settled per frame in UpdateVanillaIcons against the live category switches. That
-    // is also the groundwork the fog mode needs.
+    // Reveal visibility is decided here: the registry contains future/unsurveyed resources as well
+    // as things the player has actually put on the map. Category visibility is still settled per
+    // frame in UpdateVanillaIcons so settings switches remain instant.
     private void RebuildMarkersFromMapDetails()
     {
         EnsureUnityUi();
@@ -444,9 +455,12 @@ public sealed partial class ModEntry : MelonMod
 
                 // Markers are drawn at a constant on-screen size that keeps the set's proportions,
                 // exactly as the scraped path does; the icon's own pixel size only sets the ratio.
-                float iconUv = icon.Texture.width > 0
-                    ? Mathf.Max(icon.Uv.width, icon.Uv.height) / icon.Texture.width
-                    : 0.05f;
+                // IconRef.Uv is normalized for both the live-sprite and atlas lookup paths. Dividing
+                // it by the texture width again shrank live-sprite icons by another atlas-sized
+                // factor and made the two resolution paths disagree.
+                float iconUv = Mathf.Max(icon.Uv.width, icon.Uv.height);
+                if (iconUv <= 0f)
+                    iconUv = 0.05f;
                 var uvSize = new Vector2(iconUv, iconUv);
 
                 MarkerCategory category = CategorizeSprite(spriteName);
@@ -461,6 +475,7 @@ public sealed partial class ModEntry : MelonMod
                 built.Backing = backing;
                 built.Category = category;
                 built.CategoryEnabled = CategoryEnabled(category);
+                built.DrawPriority = MarkerDrawPriority(spriteName, category);
                 // The name the game shows when the pointer rests on this icon. Resolved once here
                 // rather than on hover, because hover runs every frame and this walks a localization
                 // lookup.
@@ -490,11 +505,11 @@ public sealed partial class ModEntry : MelonMod
             }
             if (_vanillaIconMaxUv <= 1e-5f)
                 _vanillaIconMaxUv = 1f;
-            _markerRoot.transform.SetAsLastSibling();
+            OrderMapMarkers();
 
             LoggerInstance.Msg(
                 $"Markers rebuilt from MapDetail: {_vanillaIcons.Count} drawn, " +
-                $"{_mapDetailSkipped} skipped (labels, off-map), " +
+                $"{_mapDetailSkipped} skipped (hidden, labels, off-map), " +
                 $"{_mapDetailUnresolved} unresolved.");
         }
         catch (Exception ex)
@@ -608,7 +623,8 @@ public sealed partial class ModEntry : MelonMod
                         MapUv = (minUv + maxUv) * 0.5f,
                         MapUvSize = sizeUv,
                         Category = category,
-                        CategoryEnabled = CategoryEnabled(category)
+                        CategoryEnabled = CategoryEnabled(category),
+                        DrawPriority = MarkerDrawPriority(spriteName, category)
                     });
                 }
             }
@@ -622,6 +638,26 @@ public sealed partial class ModEntry : MelonMod
     // How much larger the dark backing is than the icon, in pixels. Enough to read as an outline at
     // the default marker size without looking like a heavy border.
     private const float BackingMargin = 3f;
+
+    private static int MarkerDrawPriority(string spriteName, MarkerCategory category) =>
+        string.Equals(spriteName, "map_transition_map", StringComparison.Ordinal) ? 2
+        : category == MarkerCategory.Structures ? 1 : 0;
+
+    private void OrderMapMarkers()
+    {
+        var ordered = new List<VanillaIcon>(_vanillaIcons);
+        ordered.Sort((left, right) => left.DrawPriority.CompareTo(right.DrawPriority));
+        for (int i = 0; i < ordered.Count; i++)
+        {
+            VanillaIcon icon = ordered[i];
+            if (!ReferenceEquals(icon.Backing, null))
+                icon.Backing.transform.SetAsLastSibling();
+            if (!ReferenceEquals(icon.Root, null))
+                icon.Root.transform.SetAsLastSibling();
+        }
+        if (!ReferenceEquals(_markerRoot, null))
+            _markerRoot.transform.SetAsLastSibling();
+    }
 
     private void ClearVanillaIcons()
     {
@@ -670,6 +706,9 @@ public sealed partial class ModEntry : MelonMod
             // Place names come from the same map data and are rebuilt on the same trigger, so the
             // two can never disagree about which region they describe.
             RebuildLabelsFromMapDetails();
+            // Labels are created after icons, so restore semantic icon ordering once both sets
+            // exist. Transition arrows remain readable and the player pointer stays topmost.
+            OrderMapMarkers();
         }
         else
         {

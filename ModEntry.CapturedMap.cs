@@ -34,43 +34,54 @@ public sealed partial class ModEntry : MelonMod
     // risks reintroducing the mismatch that made markers land off the map.
     private void CaptureGameMapImage()
     {
+        Texture2D owned = null;
+        Texture2D forFile = null;
         try
         {
+            string captureKey = _settings.CaptureMapKey.ToString();
             Panel_Map panel = InterfaceManager.GetPanel<Panel_Map>();
             if (panel == null || !panel.gameObject.activeInHierarchy)
             {
-                LoggerInstance.Msg("F7: the game map is not open, so there is nothing to capture.");
+                LoggerInstance.Msg(
+                    $"{captureKey}: the game map is not open, so there is nothing to capture.");
                 return;
             }
 
             Transform regionMap = FindActiveRegionMap(panel.transform);
             if (regionMap == null)
             {
-                LoggerInstance.Msg("F7: no active region map in the panel.");
+                LoggerInstance.Msg($"{captureKey}: no active region map in the panel.");
                 return;
             }
 
             UITexture main = regionMap.GetComponent<UITexture>();
             if (main == null || ReferenceEquals(main.mainTexture, null))
             {
-                LoggerInstance.Msg("F7: the region map widget has no texture yet.");
+                LoggerInstance.Msg($"{captureKey}: the region map widget has no texture yet.");
                 return;
             }
 
             string sceneName = _observedSceneName;
+            if (MapCatalog.Find(sceneName) == null)
+            {
+                LoggerInstance.Msg(
+                    $"{captureKey}: {sceneName} has no independent map definition; " +
+                    "the panel is only showing a parent-region fallback, so it was not captured.");
+                return;
+            }
             var bounds = new Rect(main.drawingDimensions.x, main.drawingDimensions.y,
                 main.drawingDimensions.z - main.drawingDimensions.x,
                 main.drawingDimensions.w - main.drawingDimensions.y);
             Rect textureUv = main.uvRect;
 
-            Texture2D owned = CaptureTexture(main.mainTexture);
+            owned = CaptureTexture(main.mainTexture);
             LoggerInstance.Msg(
-                $"F7 captured the game map for {sceneName}: {owned.width}x{owned.height}, " +
+                $"{captureKey} captured the game map for {sceneName}: {owned.width}x{owned.height}, " +
                 $"bounds={bounds}, uv={textureUv}.");
 
             // Keep a separate copy for the file, so the one handed to a layer can be destroyed by
             // that layer later without the export depending on its lifetime.
-            Texture2D forFile = CaptureTexture(main.mainTexture);
+            forFile = CaptureTexture(main.mainTexture);
 
             // Hand it to every layer that is showing the vanilla source: the capture is region-wide,
             // so a layer that wants vanilla wants this image. Each layer takes its own texture, and
@@ -82,14 +93,20 @@ public sealed partial class ModEntry : MelonMod
                 if (!layer.UsingVanilla || layer.Definition == null)
                     continue;
                 Texture2D copy = applied == 0 ? owned : CaptureTexture(main.mainTexture);
-                UseVanillaBaseMap(copy, sceneName, layer, textureUv);
+                UseVanillaBaseMap(copy, sceneName, layer, textureUv, bounds);
+                if (applied == 0)
+                    owned = null; // ownership transferred to the layer
                 applied++;
             }
 
             if (applied == 0)
+            {
                 UnityEngine.Object.Destroy(owned);
+                owned = null;
+            }
             else
-                LoggerInstance.Msg($"F7 applied the game map to {applied} vanilla layer(s).");
+                LoggerInstance.Msg(
+                    $"{captureKey} applied the game map to {applied} vanilla layer(s).");
 
             // The projection fields the panel path would have set, so the two routes agree.
             for (int i = 0; i < _layers.Length; i++)
@@ -108,11 +125,19 @@ public sealed partial class ModEntry : MelonMod
             SaveCapturedMap(forFile, sceneName);
             WriteFramingSidecar(sceneName, bounds, textureUv);
             UnityEngine.Object.Destroy(forFile);
-            LoggerInstance.Msg($"F7 wrote {path} for calibration.");
+            forFile = null;
+            LoggerInstance.Msg($"{captureKey} wrote {path} for calibration.");
         }
         catch (Exception ex)
         {
-            LoggerInstance.Warning($"F7 capture failed: {ex.Message}");
+            LoggerInstance.Warning($"Map capture failed: {ex.Message}");
+        }
+        finally
+        {
+            if (!ReferenceEquals(owned, null))
+                UnityEngine.Object.Destroy(owned);
+            if (!ReferenceEquals(forFile, null))
+                UnityEngine.Object.Destroy(forFile);
         }
     }
 
@@ -126,6 +151,7 @@ public sealed partial class ModEntry : MelonMod
     // for the misplaced markers assumed it was true.
     private void MeasureAndExportPanelTexture(UITexture main, string sceneName)
     {
+        Texture2D owned = null;
         try
         {
             // Once per session per region, not once ever: the file is now overwritten every time,
@@ -148,7 +174,7 @@ public sealed partial class ModEntry : MelonMod
                 $"widget={main.width}x{main.height}.");
 
             // The asset itself is not CPU-readable and belongs to Addressables, so measure a copy.
-            Texture2D owned = CaptureTexture(source);
+            owned = CaptureTexture(source);
             Rect content = MeasureOpaqueUv(owned);
             LoggerInstance.Msg(
                 $"Panel texture content [{sceneName}]: {owned.width}x{owned.height} " +
@@ -169,6 +195,13 @@ public sealed partial class ModEntry : MelonMod
         catch (Exception ex)
         {
             LoggerInstance.Warning($"Panel texture measurement [{sceneName}] failed: {ex.Message}");
+        }
+        finally
+        {
+            // Diagnostic exports used to leak one persistent 2048x2048 RGBA texture per scene
+            // (about 16 MiB before driver overhead). The PNG is the only lasting artifact needed.
+            if (!ReferenceEquals(owned, null))
+                UnityEngine.Object.Destroy(owned);
         }
     }
 
@@ -264,6 +297,7 @@ public sealed partial class ModEntry : MelonMod
             if (!ImageConversion.LoadImage(texture, il2CppBytes, true))
             {
                 LoggerInstance.Warning($"Captured map for {sceneName} failed to decode.");
+                UnityEngine.Object.Destroy(texture);
                 return false;
             }
             texture.wrapMode = TextureWrapMode.Clamp;
@@ -271,7 +305,7 @@ public sealed partial class ModEntry : MelonMod
             texture.hideFlags = HideFlags.HideAndDontSave | HideFlags.DontUnloadUnusedAsset;
             UnityEngine.Object.DontDestroyOnLoad(texture);
 
-            UseVanillaBaseMap(texture, sceneName, layer, textureUv);
+            UseVanillaBaseMap(texture, sceneName, layer, textureUv, bounds);
             LoggerInstance.Msg(
                 $"Using the captured map for {sceneName}: {texture.width}x{texture.height}, " +
                 $"bounds={bounds}, uv={textureUv}.");

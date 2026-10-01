@@ -292,6 +292,9 @@ public sealed partial class ModEntry : MelonMod
         // and looking either up per frame would cost more than the draw call it guards.
         public MarkerCategory Category;
         public bool CategoryEnabled;
+        // Resources < structures < scene-transition arrows. The player pointer is a separate
+        // object and is always placed above the entire marker stack.
+        public int DrawPriority;
         // The name shown on hover, resolved once at build time. Markers with no name simply never
         // win the hover pick.
         public string Text;
@@ -316,6 +319,7 @@ public sealed partial class ModEntry : MelonMod
         public bool UsingVanilla;
         public bool TextureReady;
         public AsyncOperationHandle<Texture2D> BaseMapHandle;
+        public bool BaseMapHandleValid;
         public bool BaseMapPending;
         public string BaseMapRequestedScene = "";
         public DateTime BaseMapRequestUtc = DateTime.MinValue;
@@ -369,7 +373,8 @@ public sealed partial class ModEntry : MelonMod
         // it to the HUD immediately, and keep a PNG for calibration. That is one key press in the
         // session where the player revealed the map, instead of a file that only refreshes on the
         // first panel open of a session and then has to be carried back to the workspace by hand.
-        if (Input.GetKeyDown(KeyCode.F7))
+        if (_settings.CaptureMapKey != KeyCode.None &&
+            Input.GetKeyDown(_settings.CaptureMapKey))
             CaptureGameMapImage();
 
         if (Input.GetKeyDown(_settings.ToggleKey))
@@ -498,7 +503,7 @@ public sealed partial class ModEntry : MelonMod
             _capturedThisVanillaMapOpen = false;
             _vanillaCaptureAfterUtc = DateTime.UtcNow.AddSeconds(1);
         }
-        else if (!preferCommunity && !_capturedThisVanillaMapOpen &&
+        else if (active.Definition != null && !preferCommunity && !_capturedThisVanillaMapOpen &&
                  DateTime.UtcNow >= _vanillaCaptureAfterUtc)
         {
             if (CaptureVanillaMap(vanillaPanel, scene.name))
@@ -576,7 +581,7 @@ public sealed partial class ModEntry : MelonMod
 
                 if (sameProjection && sameCount)
                 {
-                    // Same projection, same entry count: nothing to do.
+                    // Same projection and entry count: nothing to do.
                 }
                 else if (sameProjection && DateTime.UtcNow < _nextMarkerRebuildUtc)
                 {
@@ -642,7 +647,7 @@ public sealed partial class ModEntry : MelonMod
         if (string.IsNullOrEmpty(buildKey))
             return "";
         string[] parts = buildKey.Split('|');
-        return parts.Length >= 3 ? parts[parts.Length - 2] : "";
+        return parts.Length >= 3 ? parts[2] : "";
     }
 
     public override void OnSceneWasInitialized(int buildIndex, string sceneName)
@@ -793,14 +798,50 @@ public sealed partial class ModEntry : MelonMod
             width = height * aspect;
         }
 
-        Vector2 size = new(width, height);
+        // Zooming the original map scales the parchment itself: its default/local view covers the
+        // display and crops the excess, while the overview scale fits the whole sheet in the middle.
+        // Keeping the texture at uv 0..1 also preserves its real aspect ratio; stretching a square
+        // capture across a widescreen rectangle was the tempting but visibly wrong alternative.
+        float zoom = Mathf.Max(1f, _fullMapZoom);
+        Vector2 size = new(width * zoom, height * zoom);
         Vector2 center = new(0.5f, 0.5f);
         _mapRect.anchorMin = center;
         _mapRect.anchorMax = center;
         _mapRect.pivot = center;
-        _mapRect.anchoredPosition = Vector2.zero;
+
+        float halfVisibleX = Mathf.Min(0.5f, Screen.width * 0.5f / Mathf.Max(1f, size.x));
+        float halfVisibleY = Mathf.Min(0.5f, Screen.height * 0.5f / Mathf.Max(1f, size.y));
+        Vector2 focus = _fullMapCenterValid ? _fullMapCenter : center;
+        focus = new Vector2(
+            Mathf.Clamp(focus.x, halfVisibleX, 1f - halfVisibleX),
+            Mathf.Clamp(focus.y, halfVisibleY, 1f - halfVisibleY));
+        _fullMapCenter = focus;
+        _mapRect.anchoredPosition = new Vector2(
+            (0.5f - focus.x) * size.x,
+            (0.5f - focus.y) * size.y);
         _mapRect.sizeDelta = size;
         return size;
+    }
+
+
+    // Scale at which an aspect-fitted sheet grows just enough to cover the whole screen. This is
+    // the game's useful first zoom stop; 1.0 remains the complete-map overview stop.
+    private float FullMapCoverZoom()
+    {
+        const float margin = 32f;
+        float availableWidth = Mathf.Max(100f, Screen.width - margin * 2f);
+        float availableHeight = Mathf.Max(100f, Screen.height - margin * 2f);
+        float aspect = GetTextureAspect();
+        float width = availableWidth;
+        float height = width / aspect;
+        if (height > availableHeight)
+        {
+            height = availableHeight;
+            width = height * aspect;
+        }
+        return Mathf.Max(1f,
+            Mathf.Max(Screen.width / Mathf.Max(1f, width),
+                      Screen.height / Mathf.Max(1f, height)));
     }
 
 

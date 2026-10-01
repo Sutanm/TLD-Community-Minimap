@@ -333,12 +333,17 @@ public sealed partial class ModEntry : MelonMod
         {
             // Invert the projection UpdateUnityUi used: anchored position measured from the map
             // centre, as a fraction of the visible window.
+            Vector2 mapScreenCenter = new(
+                Screen.width * 0.5f + _mapRect.anchoredPosition.x,
+                Screen.height * 0.5f + _mapRect.anchoredPosition.y);
             Vector2 local = new(
-                (Input.mousePosition.x - Screen.width * 0.5f) / Mathf.Max(1f, mapSize.x),
-                (Input.mousePosition.y - Screen.height * 0.5f) / Mathf.Max(1f, mapSize.y));
-            hoverUv = new Vector2(
-                local.x * visibleUv.width + visibleUv.x + visibleUv.width * 0.5f,
-                local.y * visibleUv.height + visibleUv.y + visibleUv.height * 0.5f);
+                (Input.mousePosition.x - mapScreenCenter.x) / Mathf.Max(1f, mapSize.x),
+                (Input.mousePosition.y - mapScreenCenter.y) / Mathf.Max(1f, mapSize.y));
+            hoverUv = FullMapVisible
+                ? new Vector2(local.x + 0.5f, local.y + 0.5f)
+                : new Vector2(
+                    local.x * visibleUv.width + visibleUv.x + visibleUv.width * 0.5f,
+                    local.y * visibleUv.height + visibleUv.y + visibleUv.height * 0.5f);
             haveHover = hoverUv.x >= visibleUv.xMin && hoverUv.x <= visibleUv.xMax &&
                         hoverUv.y >= visibleUv.yMin && hoverUv.y <= visibleUv.yMax;
         }
@@ -388,9 +393,7 @@ public sealed partial class ModEntry : MelonMod
 
             // Assigned only when it moved: a RectTransform write marks the layout dirty even when the
             // value is unchanged, and that happens on every frame the map is up.
-            var position = new Vector2(
-                ((label.MapUv.x - visibleUv.x) / visibleUv.width - 0.5f) * mapSize.x,
-                ((label.MapUv.y - visibleUv.y) / visibleUv.height - 0.5f) * mapSize.y);
+            Vector2 position = MapUvToLocal(label.MapUv, visibleUv, mapSize);
             if (label.Rect.anchoredPosition != position)
                 label.Rect.anchoredPosition = position;
         }
@@ -479,9 +482,8 @@ public sealed partial class ModEntry : MelonMod
         // Sits just above the thing it names, the way the game's own hover label does. Written only
         // when it moved, for the same reason as everywhere else: a RectTransform write dirties the
         // layout even when the value is identical.
-        var tooltipPosition = new Vector2(
-            ((mapUv.x - visibleUv.x) / visibleUv.width - 0.5f) * mapSize.x,
-            ((mapUv.y - visibleUv.y) / visibleUv.height - 0.5f) * mapSize.y + _settings.LabelFontSize + 6f);
+        Vector2 tooltipPosition = MapUvToLocal(mapUv, visibleUv, mapSize);
+        tooltipPosition.y += _settings.LabelFontSize + 6f;
         if (_hoverLabelRect.anchoredPosition != tooltipPosition)
             _hoverLabelRect.anchoredPosition = tooltipPosition;
         if (!_hoverLabelRoot.activeSelf)

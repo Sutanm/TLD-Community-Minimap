@@ -254,9 +254,20 @@ public sealed partial class ModEntry : MelonMod
             _settings.FullMapBackgroundOpacity);
         _mapImage.color = new Color(1f, 1f, 1f, fullMap ? 1f : _settings.Opacity);
 
+        bool hasPosition = TryPlayerToMapUv(player.position, out Vector2 uv);
+        if (fullMap && !_fullMapCenterValid)
+        {
+            bool followPlayer = hasPosition && _settings.ShowFullMapPlayerPointer;
+            _fullMapCenter = followPlayer ? uv : new Vector2(0.5f, 0.5f);
+            // Use one predictable screen-filling scale. Near a map edge ApplyFullMapLayout clamps
+            // the focus instead of magnifying until the player can sit exactly at screen centre;
+            // that keeps enough surrounding geography visible to make the full map useful.
+            _fullMapZoom = FullMapCoverZoom();
+            _fullMapCenterValid = true;
+        }
+
         Vector2 mapSize = fullMap ? ApplyFullMapLayout() : ApplyMiniMapLayout();
 
-        bool hasPosition = TryPlayerToMapUv(player.position, out Vector2 uv);
         if (!hasPosition && !fullMap)
         {
             // The corner map centres on the player, so until there is a projection it has nothing
@@ -283,21 +294,18 @@ public sealed partial class ModEntry : MelonMod
         Rect visibleUv;
         if (fullMap)
         {
-            // The full map starts centred on the player and can be zoomed and dragged, so it
-            // shares the visible-window maths with the corner map instead of always showing
-            // the whole image.
-            float span = Mathf.Clamp(1f / Mathf.Max(1f, _fullMapZoom), 0.05f, 1f);
-            float half = span * 0.5f;
-            if (!_fullMapCenterValid)
-            {
-                _fullMapCenter = hasPosition ? uv : new Vector2(0.5f, 0.5f);
-                _fullMapCenterValid = true;
-            }
-            _fullMapCenter = new Vector2(
-                Mathf.Clamp(_fullMapCenter.x, half, 1f - half),
-                Mathf.Clamp(_fullMapCenter.y, half, 1f - half));
-            visibleUv = new Rect(_fullMapCenter.x - half, _fullMapCenter.y - half, span, span);
-            _mapImage.uvRect = visibleUv;
+            // The full texture stays intact and the parchment RectTransform itself grows. This is
+            // what lets a square original map fill a widescreen display without distorting it.
+            _mapImage.uvRect = new Rect(0f, 0f, 1f, 1f);
+            float halfVisibleX = Mathf.Min(0.5f,
+                Screen.width * 0.5f / Mathf.Max(1f, mapSize.x));
+            float halfVisibleY = Mathf.Min(0.5f,
+                Screen.height * 0.5f / Mathf.Max(1f, mapSize.y));
+            visibleUv = new Rect(
+                _fullMapCenter.x - halfVisibleX,
+                _fullMapCenter.y - halfVisibleY,
+                halfVisibleX * 2f,
+                halfVisibleY * 2f);
         }
         else
         {
@@ -314,7 +322,7 @@ public sealed partial class ModEntry : MelonMod
 
         // The markers live in the texture's own uv space, so they are still worth drawing on an
         // uncalibrated map. Only the player pointer needs a projection.
-        if (!hasPosition)
+        if (!hasPosition || (fullMap && !_settings.ShowFullMapPlayerPointer))
         {
             _markerRoot.SetActive(false);
             return;
@@ -328,9 +336,7 @@ public sealed partial class ModEntry : MelonMod
             return;
         }
 
-        _markerRect.anchoredPosition = new Vector2(
-            ((uv.x - visibleUv.x) / visibleUv.width - 0.5f) * mapSize.x,
-            ((uv.y - visibleUv.y) / visibleUv.height - 0.5f) * mapSize.y);
+        _markerRect.anchoredPosition = MapUvToLocal(uv, visibleUv, mapSize);
         float markerSize = Mathf.Max(44f, _settings.MarkerSize) * (fullMap ? 1.15f : 1f);
         _markerRect.sizeDelta = new Vector2(markerSize, markerSize);
         ApplyPointerPalette();
@@ -339,6 +345,16 @@ public sealed partial class ModEntry : MelonMod
         float angle = Mathf.Atan2(aheadUv.x - uv.x, aheadUv.y - uv.y) * Mathf.Rad2Deg;
         _markerRect.localEulerAngles = new Vector3(0f, 0f, -angle);
         _markerRoot.SetActive(true);
+    }
+
+
+    private Vector2 MapUvToLocal(Vector2 uv, Rect visibleUv, Vector2 mapSize)
+    {
+        if (FullMapVisible)
+            return new Vector2((uv.x - 0.5f) * mapSize.x, (uv.y - 0.5f) * mapSize.y);
+        return new Vector2(
+            ((uv.x - visibleUv.x) / visibleUv.width - 0.5f) * mapSize.x,
+            ((uv.y - visibleUv.y) / visibleUv.height - 0.5f) * mapSize.y);
     }
 
 

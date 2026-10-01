@@ -25,6 +25,9 @@ public sealed partial class ModEntry : MelonMod
     {
         try
         {
+            if (MapCatalog.Find(sceneName) == null)
+                return false;
+
             Transform regionMap = FindActiveRegionMap(panel.transform);
             if (regionMap == null)
                 return false;
@@ -107,14 +110,12 @@ public sealed partial class ModEntry : MelonMod
     private void UseCapturedVanillaMap(Texture2D texture, string sceneName, MapLayer layer)
     {
         EnsureUnityUi();
-        Texture2D previous = layer.Texture;
+        RetireTexture(layer);
         layer.Texture = texture;
         layer.LoadedMapId = "__vanilla__" + sceneName;
         layer.VanillaProjectionScene = sceneName;
         layer.UsingVanilla = true;
         layer.TextureReady = true;
-        if (!ReferenceEquals(previous, null))
-            UnityEngine.Object.Destroy(previous);
         LoggerInstance.Msg(
             $"Captured vanilla map is now active in the HUD: {texture.width}x{texture.height}.");
     }
@@ -144,6 +145,12 @@ public sealed partial class ModEntry : MelonMod
     // shortly after the game removes them, instead of only refreshing when M is pressed.
     private void TryRefreshVanillaIcons()
     {
+        // MapDetail markers carry their resolved hover text. The panel-scrape path only has sprites;
+        // allowing it to refresh this mode replaces every named marker with an anonymous copy and
+        // makes hover labels disappear after the original map has been opened once.
+        if (_settings.MarkerSource == MinimapSettings.MarkerSourceMapDetails)
+            return;
+
         if (!ActiveLayer.UsingVanilla || DateTime.UtcNow < _nextVanillaIconRefreshUtc)
             return;
 
@@ -253,6 +260,7 @@ public sealed partial class ModEntry : MelonMod
             ProbeRegionTextures(region, sceneName);
             ProbeRegionAssetReferences(region, sceneName);
             layer.BaseMapHandle = region.GetMiniMapTextureAsync();
+            layer.BaseMapHandleValid = true;
             layer.BaseMapPending = true;
             layer.BaseMapRequestUtc = DateTime.UtcNow;
             LoggerInstance.Msg($"Requested region base map for {sceneName}.");
@@ -273,7 +281,7 @@ public sealed partial class ModEntry : MelonMod
         // Never leave the HUD permanently blank if the load silently stalls.
         if ((DateTime.UtcNow - layer.BaseMapRequestUtc).TotalSeconds > 15.0)
         {
-            layer.BaseMapPending = false;
+            ReleaseBaseMapHandle(layer);
             LoggerInstance.Warning($"Region base map for {sceneName} timed out.");
             return;
         }
@@ -285,7 +293,7 @@ public sealed partial class ModEntry : MelonMod
         }
         catch (Exception ex)
         {
-            layer.BaseMapPending = false;
+            ReleaseBaseMapHandle(layer);
             LoggerInstance.Warning($"Region base map handle failed: {ex.Message}");
             return;
         }
@@ -366,6 +374,32 @@ public sealed partial class ModEntry : MelonMod
         catch (Exception ex)
         {
             LoggerInstance.Warning($"Region base map load failed for {sceneName}: {ex.Message}");
+        }
+        finally
+        {
+            // The HUD owns a CPU copy. Keeping the Addressables handle after that copy is made
+            // pins the game's source texture across every scene transition.
+            ReleaseBaseMapHandle(layer);
+        }
+    }
+
+
+    private void ReleaseBaseMapHandle(MapLayer layer)
+    {
+        layer.BaseMapPending = false;
+        if (!layer.BaseMapHandleValid)
+            return;
+        try
+        {
+            UnityEngine.AddressableAssets.Addressables.Release(layer.BaseMapHandle);
+        }
+        catch (Exception ex)
+        {
+            LoggerInstance.Warning($"Releasing region base map handle failed: {ex.Message}");
+        }
+        finally
+        {
+            layer.BaseMapHandleValid = false;
         }
     }
 
@@ -567,28 +601,44 @@ public sealed partial class ModEntry : MelonMod
 
 
     private void UseVanillaBaseMap(Texture2D texture, string sceneName, MapLayer layer,
-        Rect textureUv)
+        Rect textureUv, Rect? mapLocalBounds = null)
     {
         EnsureUnityUi();
-        Texture2D previous = layer.Texture;
+        RetireTexture(layer);
         layer.Texture = texture;
         layer.LoadedMapId = "__basemap__" + sceneName;
         layer.UsingVanilla = true;
         layer.TextureReady = true;
-        // The world bounds are the surveyed map's framing, confirmed by the framing probe: the panel
-        // path reported (-325,-325,650x650) and both paths produced the same final uv for the player
-        // and 600 world units away. The TEXTURE uv is a different matter - this capture is
-        // letterboxed, so it is the measured content box rather than the whole frame. Recording the
-        // frame's identity rect here is what put the vanilla pointer in the wrong place.
-        for (int i = 0; i < _layers.Length; i++)
+        // Captured maps carry the panel's exact framing in their sidecar. For the built-in base-map
+        // fallback, use the measured family defaults: legacy regions are 650 square, Far Territory
+        // regions are 600 square, and Ravine is 650x325. The texture uv is independent of those
+        // local bounds because the 1024 asset can be letterboxed.
+        layer.VanillaProjectionScene = sceneName;
+        layer.VanillaMapLocalBounds = mapLocalBounds ?? DefaultVanillaMapBounds(sceneName);
+        layer.VanillaTextureUv = textureUv;
+    }
+
+
+    private static Rect DefaultVanillaMapBounds(string sceneName)
+    {
+        if (string.Equals(sceneName, "RavineTransitionZone", StringComparison.Ordinal))
+            return new Rect(-325f, -162.5f, 650f, 325f);
+
+        switch (sceneName)
         {
-            MapLayer target = _layers[i];
-            target.VanillaProjectionScene = sceneName;
-            target.VanillaMapLocalBounds = new Rect(-325f, -325f, 650f, 650f);
-            target.VanillaTextureUv = textureUv;
+            case "AirfieldRegion":
+            case "HubRegion":
+            case "TransferPass":
+            case "TransferPassRegion":
+            case "LongRailTransitionZone":
+            case "MiningRegion":
+            case "ZoneOfContaminationRegion":
+            case "MountainPassRegion":
+            case "SunderedPassRegion":
+                return new Rect(-300f, -300f, 600f, 600f);
+            default:
+                return new Rect(-325f, -325f, 650f, 650f);
         }
-        if (!ReferenceEquals(previous, null) && !ReferenceEquals(previous, texture))
-            UnityEngine.Object.Destroy(previous);
     }
 }
 // — sutanm · 社区HUD地图

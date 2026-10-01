@@ -20,6 +20,8 @@ $targets = @(
     'docs\PITFALLS.md',
     'docs\PERFORMANCE.md',
     'docs\SETTINGS.md',
+    'docs\SCENE-TEST-CHECKLIST.md',
+    'tools\map-status.ps1',
     'tools\split-modeentry.py',
     'tools\verify-split-equivalence.py',
     'tools\to-crlf-explicit.ps1'

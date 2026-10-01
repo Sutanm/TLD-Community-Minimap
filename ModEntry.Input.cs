@@ -168,6 +168,9 @@ public sealed partial class ModEntry : MelonMod
         float wheel = Input.mouseScrollDelta.y;
         if (Mathf.Abs(wheel) > 0.01f)
         {
+            // No snapping between overview and local view. The player-centred opening scale can be
+            // several times larger near a map edge, and jumping between it and 1x in one notch was
+            // visually jarring. Exponential steps keep both directions continuous.
             _fullMapZoom = Mathf.Clamp(_fullMapZoom * Mathf.Exp(wheel * 0.18f), 1f, 24f);
             _fullMapCenterValid = true;
         }
@@ -191,13 +194,12 @@ public sealed partial class ModEntry : MelonMod
         if (delta.sqrMagnitude < 0.01f)
             return;
 
-        // one widget pixel is span/size of the visible window in uv, and the window follows the
-        // pointer, so dragging right reveals what is to the left
+        // The parchment itself is scaled, so one widget pixel is exactly 1/size in map uv. The
+        // focus follows the pointer: dragging right reveals what is to the left.
         Vector2 widget = _mapRect.rect.size;
         if (widget.x < 1f || widget.y < 1f)
             return;
-        float span = Mathf.Clamp(1f / Mathf.Max(1f, _fullMapZoom), 0.05f, 1f);
-        _fullMapCenter += new Vector2(-delta.x / widget.x * span, -delta.y / widget.y * span);
+        _fullMapCenter += new Vector2(-delta.x / widget.x, -delta.y / widget.y);
         _fullMapCenterValid = true;
     }
 

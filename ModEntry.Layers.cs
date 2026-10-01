@@ -78,6 +78,10 @@ public sealed partial class ModEntry : MelonMod
         for (int i = 0; i < _layers.Length; i++)
         {
             MapLayer layer = _layers[i];
+            ReleaseBaseMapHandle(layer);
+            RetireTexture(layer);
+            layer.Texture = null;
+            layer.LoadedMapId = "";
             layer.UsingVanilla = false;
             layer.TextureReady = false;
             layer.BaseMapRequestedScene = "";
@@ -172,6 +176,7 @@ public sealed partial class ModEntry : MelonMod
         // vanilla source is active, and LoadMapElementsForScene appends rather than replaces, so
         // keeping ElementsLoadedForScene also avoids duplicating every marker.
         layer.BaseMapRequestedScene = "";
+        ReleaseBaseMapHandle(layer);
         layer.BaseMapPending = false;
 
         if (preferCommunity)
@@ -293,8 +298,19 @@ public sealed partial class ModEntry : MelonMod
         // disorienting, and the player is the one thing on it that moved.
         if (full && !_fullMapOn)
         {
-            _fullMapZoom = 1f;
+            // Match the original map: open on the useful screen-filling/local stop. Scrolling out
+            // once returns to 1.0, where the complete sheet is visible in the centre.
+            _fullMapZoom = FullMapCoverZoom();
             _fullMapCenterValid = false;
+        }
+        if (!full && _fullMapOn)
+        {
+            // A tooltip is parented to the shared map object. Without explicit cleanup it survives
+            // the same-frame switch back to the corner layer until the pointer leaves its old icon.
+            if (!ReferenceEquals(_hoverLabelRoot, null))
+                _hoverLabelRoot.SetActive(false);
+            if (!ReferenceEquals(_hoverPlateRoot, null))
+                _hoverPlateRoot.SetActive(false);
         }
         _miniMapOn = mini;
         _fullMapOn = full;
