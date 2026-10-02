@@ -596,7 +596,10 @@ public sealed partial class ModEntry : MelonMod
                         if (ReferenceEquals(h, null)) { flags += "[null]"; continue; }
                         GameObject hgo = h.gameObject;
                         bool gone = ReferenceEquals(hgo, null);
-                        flags += $"[h={h.IsHarvested()} gone={gone} act={(!gone && hgo.activeInHierarchy)}]";
+                        flags += gone
+                            ? $"[h={h.m_Harvested} chance={h.m_SpawnChance:F1} started={h.m_StartHasBeenCalled} gone]"
+                            : $"[h={h.m_Harvested} chance={h.m_SpawnChance:F1} started={h.m_StartHasBeenCalled} " +
+                              $"self={hgo.activeSelf} hier={hgo.activeInHierarchy}]";
                     }
                 }
 
@@ -723,9 +726,9 @@ public sealed partial class ModEntry : MelonMod
                     surveyedAndUnlocked++;
                 if (detail.m_IsSurveyed || detail.m_IsUnlocked)
                     surveyedOrUnlocked++;
-                if (AllHarvestablesCollected(detail))
+                if (AllLinkedHarvestablesUnavailable(detail))
                     fullyHarvested++;
-                if ((detail.m_IsSurveyed || detail.m_IsUnlocked) && !AllHarvestablesCollected(detail))
+                if ((detail.m_IsSurveyed || detail.m_IsUnlocked) && !AllLinkedHarvestablesUnavailable(detail))
                     wouldDraw++;
             }
 
@@ -830,7 +833,7 @@ public sealed partial class ModEntry : MelonMod
                 MapDetail detail = details[i];
                 if (ReferenceEquals(detail, null) || !detail.m_IsSurveyed)
                     continue;
-                if (!AllHarvestablesCollected(detail))
+                if (!AllLinkedHarvestablesUnavailable(detail))
                     continue;
                 stale ??= new List<MapDetail>();
                 stale.Add(detail);
@@ -862,19 +865,23 @@ public sealed partial class ModEntry : MelonMod
     }
 
 
-    // Only a harvested object that is also loaded counts as picked up. A harvestable that has
-    // simply not been streamed in yet reports harvested too, which is what made the first
-    // version wipe almost every marker at once.
-    private static bool IsCollected(Harvestable harvestable)
+    // True only when the save has definitively resolved this linked resource as unavailable. The
+    // harvestable itself stays activeSelf=true at every candidate; the parent random group controls
+    // activeInHierarchy. This predicate is only consumed after _resourceFilterAfterUtc, once the
+    // additive SANDBOX scene has finished selecting those parent groups.
+    private static bool IsKnownUnavailable(Harvestable harvestable)
     {
+        if (harvestable.m_Harvested)
+            return true;
+
         GameObject go = harvestable.gameObject;
-        if (ReferenceEquals(go, null) || !go.activeInHierarchy)
+        if (ReferenceEquals(go, null) || !harvestable.m_StartHasBeenCalled)
             return false;
-        return harvestable.IsHarvested();
+        return !go.activeInHierarchy;
     }
 
 
-    private static bool AllHarvestablesCollected(MapDetail detail)
+    private static bool AllLinkedHarvestablesUnavailable(MapDetail detail)
     {
         bool any = false;
         var array = detail.m_HarvestablesForMapVisibility;
@@ -886,7 +893,7 @@ public sealed partial class ModEntry : MelonMod
                 if (ReferenceEquals(harvestable, null))
                     continue;
                 any = true;
-                if (!IsCollected(harvestable))
+                if (!IsKnownUnavailable(harvestable))
                     return false;
             }
         }
@@ -900,12 +907,22 @@ public sealed partial class ModEntry : MelonMod
                 if (ReferenceEquals(harvestable, null))
                     continue;
                 any = true;
-                if (!IsCollected(harvestable))
+                if (!IsKnownUnavailable(harvestable))
                     return false;
             }
         }
 
         return any;
+    }
+
+
+    private static bool HasLinkedHarvestables(MapDetail detail)
+    {
+        var array = detail.m_HarvestablesForMapVisibility;
+        if (array != null && array.Length > 0)
+            return true;
+        var shared = detail.m_HarvestablesSharingIcon;
+        return shared != null && shared.Count > 0;
     }
 
 
@@ -1237,6 +1254,71 @@ public sealed partial class ModEntry : MelonMod
                 catch { }
             }
         }
+    }
+
+
+    // RandomSpawnObject owns the game's fixed resource-pattern groups. A controller does not set
+    // m_Inited until it has restored (or rolled) its chosen children, which makes that field a much
+    // better boundary than elapsed wall-clock time. SceneManager.IsLoading closes the small window
+    // where all currently visible controllers are ready but the _SANDBOX additive scene containing
+    // more controllers has not arrived yet.
+    private void ProbeRandomResourceReadiness(string activeSceneName)
+    {
+        if (!_resourceFilterPending || DateTime.UtcNow < _nextResourceFilterProbeUtc)
+            return;
+
+        _nextResourceFilterProbeUtc = DateTime.UtcNow.AddMilliseconds(50);
+
+        int loadedControllers = 0;
+        int initializedControllers = 0;
+        bool sceneLoading = true;
+
+        try
+        {
+            sceneLoading = SceneManager.IsLoading();
+            var controllers = Resources.FindObjectsOfTypeAll<RandomSpawnObject>();
+            for (int i = 0; i < controllers.Length; i++)
+            {
+                RandomSpawnObject controller = controllers[i];
+                if (ReferenceEquals(controller, null))
+                    continue;
+
+                GameObject go = controller.gameObject;
+                if (ReferenceEquals(go, null))
+                    continue;
+
+                var ownerScene = go.scene;
+                if (!ownerScene.IsValid() || !ownerScene.isLoaded)
+                    continue;
+
+                loadedControllers++;
+                if (controller.m_Inited)
+                    initializedControllers++;
+            }
+        }
+        catch (Exception ex)
+        {
+            // A transient IL2CPP object disappearing during an additive-scene handoff is not a
+            // reason to trust activeInHierarchy. Retry until the fallback boundary instead.
+            if (DateTime.UtcNow < _resourceFilterFallbackUtc)
+                return;
+            LoggerInstance.Warning($"Random resource readiness probe failed: {ex.Message}");
+        }
+
+        bool officialStateReady = !sceneLoading && loadedControllers > 0 &&
+                                  initializedControllers == loadedControllers;
+        bool fallback = DateTime.UtcNow >= _resourceFilterFallbackUtc;
+        if (!officialStateReady && !fallback)
+            return;
+
+        _resourceFilterPending = false;
+        _resourceFilterAfterUtc = DateTime.UtcNow;
+        double elapsedMs = (DateTime.UtcNow - _resourceFilterProbeStartedUtc).TotalMilliseconds;
+        LoggerInstance.Msg(
+            $"Random resource groups ready [{activeSceneName}] after {elapsedMs:F0} ms: " +
+            $"{initializedControllers}/{loadedControllers} initialized, " +
+            $"sceneLoading={sceneLoading}, sceneRestored={GameManager.m_SceneWasRestored}, " +
+            $"source={(officialStateReady ? "game state" : "3 s fallback")}.");
     }
 
 

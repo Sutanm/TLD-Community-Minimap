@@ -73,6 +73,12 @@ public sealed partial class ModEntry : MelonMod
         _layersDirty = true;
         _warmUpDone = false;
         _warmUpAfterUtc = DateTime.UtcNow.AddSeconds(4);
+        _resourceFilterAfterUtc = DateTime.MaxValue;
+        _resourceFilterProbeStartedUtc = DateTime.MaxValue;
+        _resourceFilterFallbackUtc = DateTime.MaxValue;
+        _nextResourceFilterProbeUtc = DateTime.MinValue;
+        _resourceFilterPending = false;
+        _nextResourceMarkerRefreshUtc = DateTime.MinValue;
 
         MapDefinition definition = MapCatalog.Find(sceneName);
         for (int i = 0; i < _layers.Length; i++)
@@ -111,6 +117,14 @@ public sealed partial class ModEntry : MelonMod
         _vanillaIconSignature = 0;
         _nextVanillaIconRefreshUtc = DateTime.MinValue;
         _loadAfterUtc = DateTime.MaxValue;
+        // The main region becomes active before its _SANDBOX additive scene has finished selecting
+        // random parent groups. Probe the game's own RandomSpawnObject.m_Inited flags instead of
+        // guessing that this always takes three seconds. The old delay survives only as a fallback
+        // for unusual scenes that contain no discoverable controller.
+        _resourceFilterProbeStartedUtc = DateTime.UtcNow;
+        _resourceFilterFallbackUtc = DateTime.UtcNow.AddSeconds(3);
+        _nextResourceFilterProbeUtc = DateTime.MinValue;
+        _resourceFilterPending = true;
 
         LoggerInstance.Msg(
             $"Active scene mapped: {sceneName} -> {definition.DisplayName} " +

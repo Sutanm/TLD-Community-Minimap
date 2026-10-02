@@ -2,6 +2,83 @@
   "formatVersion": 1,
   "maps": [
     {
+      "mapId": "hushed_river_valley",
+      "imageWidth": 4489,
+      "imageHeight": 4251,
+      "points": [
+        {
+          "worldX": 463.792,
+          "worldZ": 229.629,
+          "mapX": 1089.5,
+          "mapY": 3939.0,
+          "label": "前往山间小镇的洞穴入口"
+        },
+        {
+          "worldX": 407.299,
+          "worldZ": 430.896,
+          "mapX": 962.1,
+          "mapY": 3460.7,
+          "label": "孤独洞穴入口"
+        },
+        {
+          "worldX": 462.146,
+          "worldZ": 1007.804,
+          "mapX": 1103.0,
+          "mapY": 2094.3,
+          "label": "寒冰洞窟（北）西侧入口"
+        },
+        {
+          "worldX": 1489.111,
+          "worldZ": 1745.039,
+          "mapX": 3516.2,
+          "mapY": 369.1,
+          "label": "湖畔洞穴入口"
+        },
+        {
+          "worldX": 1438.942,
+          "worldZ": 1316.37,
+          "mapX": 3389.6,
+          "mapY": 1384.2,
+          "label": "顶峰洞穴入口"
+        }
+      ]
+    },
+    {
+      "mapId": "ash_canyon",
+      "imageWidth": 4177,
+      "imageHeight": 4212,
+      "points": [
+        {
+          "worldX": -632.965,
+          "worldZ": 775.272,
+          "mapX": 758.7,
+          "mapY": 509.0,
+          "label": ""
+        },
+        {
+          "worldX": 348.99,
+          "worldZ": 574.855,
+          "mapX": 2821.7,
+          "mapY": 919.5,
+          "label": ""
+        },
+        {
+          "worldX": 57.773,
+          "worldZ": 179.211,
+          "mapX": 2214.6,
+          "mapY": 1752.8,
+          "label": ""
+        },
+        {
+          "worldX": 732.951,
+          "worldZ": -312.617,
+          "mapX": 3636.7,
+          "mapY": 2778.1,
+          "label": ""
+        }
+      ]
+    },
+    {
       "mapId": "broken_railroad",
       "imageWidth": 4044,
       "imageHeight": 3013,

@@ -247,12 +247,35 @@ public sealed partial class ModEntry : MelonMod
 
     private int _mapDetailUnresolved;
 
+    // Resource markers whose linked random spawn is absent or fully harvested. Kept
+    // separate from malformed/off-map skips so a log immediately exposes this filter's effect.
+    private int _mapDetailInactiveResources;
+
     // scene|source of the last marker build, so a rebuild happens when either changes and not
     // otherwise.
     private string _markersBuiltForScene = "";
 
     // Rate limit for rebuilding the marker set while the region's entry count is still growing.
     private DateTime _nextMarkerRebuildUtc = DateTime.MinValue;
+
+    // Random resource parents are activated by RandomSpawnObject after the additive SANDBOX scene
+    // arrives. Until every loaded controller reports m_Inited, activeInHierarchy is a loading
+    // signal rather than a spawn result. _resourceFilterAfterUtc remains the single flag consumed
+    // by the marker builder; the other fields drive the readiness probe and its defensive fallback.
+    private DateTime _resourceFilterAfterUtc = DateTime.MaxValue;
+
+    private DateTime _resourceFilterProbeStartedUtc = DateTime.MaxValue;
+
+    private DateTime _resourceFilterFallbackUtc = DateTime.MaxValue;
+
+    private DateTime _nextResourceFilterProbeUtc = DateTime.MinValue;
+
+    private bool _resourceFilterPending;
+
+    // Live resource visibility is cheap compared with rebuilding a thousand marker GameObjects.
+    // Poll only the MapDetail entries that actually link to harvestables, and only while a HUD map
+    // is visible. This makes a picked plant disappear from both views within a fraction of a second.
+    private DateTime _nextResourceMarkerRefreshUtc = DateTime.MinValue;
 
     // Place names, which the marker build skips because they carry no sprite name.
     private readonly List<MapLabel> _mapLabels = new();
@@ -325,6 +348,11 @@ public sealed partial class ModEntry : MelonMod
         // The name shown on hover, resolved once at build time. Markers with no name simply never
         // win the hover pick.
         public string Text;
+        // Filled only for MapDetail markers whose visibility is tied to one or more harvestables.
+        // The same marker objects serve the mini and full views, so changing this one flag updates
+        // both without rebuilding either map.
+        public MapDetail ResourceDetail;
+        public bool ResourceAvailable = true;
     }
 
 
@@ -424,10 +452,10 @@ public sealed partial class ModEntry : MelonMod
         // session where the player revealed the map, instead of a file that only refreshes on the
         // first panel open of a session and then has to be carried back to the workspace by hand.
         if (_settings.DeveloperMode && _settings.CaptureMapKey != KeyCode.None &&
-            Input.GetKeyDown(_settings.CaptureMapKey))
+            NoShortcutModifierHeld() && Input.GetKeyDown(_settings.CaptureMapKey))
             CaptureGameMapImage();
 
-        if (Input.GetKeyDown(_settings.ToggleKey))
+        if (NoShortcutModifierHeld() && Input.GetKeyDown(_settings.ToggleKey))
         {
             // Only the corner map: the full map is a modal overlay and must keep working while
             // the corner map is hidden, which is the whole point of the two being separate.
@@ -445,13 +473,14 @@ public sealed partial class ModEntry : MelonMod
             LoggerInstance.Msg("社区HUD地图 · sutanm · 2026 — 有些东西是留给翻代码的人的。");
         }
         else if (_settings.EnableCycleKey && _settings.CycleViewKey != KeyCode.None &&
-                 Input.GetKeyDown(_settings.CycleViewKey))
+                 NoShortcutModifierHeld() && Input.GetKeyDown(_settings.CycleViewKey))
         {
             CycleView();
         }
         if (FullMapVisible && Input.GetKeyDown(KeyCode.Escape))
             LeaveFullMap();
-        if (_settings.DeveloperMode && Input.GetKeyDown(_settings.RecordPointKey))
+        if (_settings.DeveloperMode && NoShortcutModifierHeld() &&
+            Input.GetKeyDown(_settings.RecordPointKey))
         {
             RecordCalibrationPoint();
             DumpMapDetails();
@@ -500,6 +529,9 @@ public sealed partial class ModEntry : MelonMod
         var scene = UnitySceneManager.GetActiveScene();
         if (scene.handle != _observedSceneHandle)
             ObserveScene(scene.handle, scene.name);
+
+        ProbeRandomResourceReadiness(scene.name);
+        RefreshResourceMarkerAvailability();
 
         // Resolve both layers' sources from the settings, then let each one notice on its own that
         // its answer changed. Per-layer rather than one global check, because a layer that is not
@@ -606,7 +638,9 @@ public sealed partial class ModEntry : MelonMod
             // whichever layer is active then. Without the layer in the key, the markers built while
             // the vanilla source was up stay in vanilla uv and land in the wrong place the moment
             // the community map is on screen, even though both are "the same scene".
-            string projection = active.UsingVanilla ? "vanilla" : "community";
+            bool resourceStateSettled = DateTime.UtcNow >= _resourceFilterAfterUtc;
+            string projection = (active.UsingVanilla ? "vanilla" : "community") +
+                                (resourceStateSettled ? "+settled" : "+loading");
             // The entry count is part of the key because s_MapDetails keeps growing after a scene
             // starts: the same region was logged at 769 entries right after load and at 816 once it
             // had settled, and an earlier session climbed 709, 711, 712, 717, 723. A build that ran
@@ -699,6 +733,18 @@ public sealed partial class ModEntry : MelonMod
             return;
 
         UpdateUnityUi(GameManager.GetPlayerTransform());
+    }
+
+    // A configurable single-key shortcut must not steal the character from an operating-system or
+    // game chord. Unity reports GetKeyDown(V) for Ctrl+V too, which made pasting text unexpectedly
+    // cycle the map. The deliberate Ctrl+Shift+view-key signature above is checked first and is the
+    // sole modified chord owned by this mod.
+    private static bool NoShortcutModifierHeld()
+    {
+        return !Input.GetKey(KeyCode.LeftControl) && !Input.GetKey(KeyCode.RightControl) &&
+               !Input.GetKey(KeyCode.LeftAlt) && !Input.GetKey(KeyCode.RightAlt) &&
+               !Input.GetKey(KeyCode.LeftShift) && !Input.GetKey(KeyCode.RightShift) &&
+               !Input.GetKey(KeyCode.LeftCommand) && !Input.GetKey(KeyCode.RightCommand);
     }
 
     // Reads the projection part out of a marker build key of the form

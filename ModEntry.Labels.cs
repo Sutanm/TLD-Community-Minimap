@@ -366,7 +366,8 @@ public sealed partial class ModEntry : MelonMod
             for (int i = 0; i < _vanillaIcons.Count; i++)
             {
                 VanillaIcon icon = _vanillaIcons[i];
-                if (!icon.CategoryEnabled || string.IsNullOrEmpty(icon.Text))
+                if (!icon.CategoryEnabled || !icon.ResourceAvailable ||
+                    string.IsNullOrEmpty(icon.Text))
                     continue;
                 float distance = Vector2.Distance(icon.MapUv, hoverUv);
                 if (distance < best && distance <= radius)

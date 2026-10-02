@@ -106,7 +106,7 @@ public sealed partial class ModEntry : MelonMod
         for (int i = 0; i < _vanillaIcons.Count; i++)
         {
             VanillaIcon icon = _vanillaIcons[i];
-            bool visible = show && icon.CategoryEnabled &&
+            bool visible = show && icon.CategoryEnabled && icon.ResourceAvailable &&
                            icon.MapUv.x + icon.MapUvSize.x * 0.5f >= visibleUv.xMin &&
                            icon.MapUv.x - icon.MapUvSize.x * 0.5f <= visibleUv.xMax &&
                            icon.MapUv.y + icon.MapUvSize.y * 0.5f >= visibleUv.yMin &&
@@ -407,6 +407,7 @@ public sealed partial class ModEntry : MelonMod
         _pendingVanillaIcons.Clear();
         _mapDetailSkipped = 0;
         _mapDetailUnresolved = 0;
+        _mapDetailInactiveResources = 0;
 
         try
         {
@@ -428,6 +429,17 @@ public sealed partial class ModEntry : MelonMod
                 if (string.IsNullOrEmpty(spriteName))
                 {
                     _mapDetailSkipped++;
+                    continue;
+                }
+
+                // MapDetail registers every possible randomized resource point, including candidates
+                // that this save rolled out. This is independent of map survey/fog: the HUD is a
+                // naturally full map. The predicate only hides a marker when every linked object is
+                // KNOWN absent or harvested; unresolved/unstreamed objects remain visible.
+                if (DateTime.UtcNow >= _resourceFilterAfterUtc &&
+                    AllLinkedHarvestablesUnavailable(detail))
+                {
+                    _mapDetailInactiveResources++;
                     continue;
                 }
 
@@ -464,6 +476,7 @@ public sealed partial class ModEntry : MelonMod
                 var uvSize = new Vector2(iconUv, iconUv);
 
                 MarkerCategory category = CategorizeSprite(spriteName);
+                bool linkedResource = HasLinkedHarvestables(detail);
                 Color markerColour = MarkerColourForActiveLayer();
                 // The dark backing is created FIRST so it sits behind the icon in the draw order,
                 // which is hierarchy order in uGUI - the same trap that once had the hover tooltip
@@ -475,6 +488,12 @@ public sealed partial class ModEntry : MelonMod
                 built.Backing = backing;
                 built.Category = category;
                 built.CategoryEnabled = CategoryEnabled(category);
+                built.ResourceDetail = linkedResource ? detail : null;
+                // Before RandomSpawnObject has restored the save's resource pattern, every
+                // candidate can look valid. Suppress only resource markers during this short phase;
+                // structures and transitions remain useful while the region finishes loading.
+                built.ResourceAvailable = !_resourceFilterPending ||
+                                          category != MarkerCategory.Resources;
                 built.DrawPriority = MarkerDrawPriority(spriteName, category);
                 // The name the game shows when the pointer rests on this icon. Resolved once here
                 // rather than on hover, because hover runs every frame and this walks a localization
@@ -509,7 +528,8 @@ public sealed partial class ModEntry : MelonMod
 
             LoggerInstance.Msg(
                 $"Markers rebuilt from MapDetail: {_vanillaIcons.Count} drawn, " +
-                $"{_mapDetailSkipped} skipped (hidden, labels, off-map), " +
+                $"{_mapDetailSkipped} skipped (labels, off-map), " +
+                $"{_mapDetailInactiveResources} inactive/harvested resource markers hidden, " +
                 $"{_mapDetailUnresolved} unresolved.");
         }
         catch (Exception ex)
@@ -657,6 +677,47 @@ public sealed partial class ModEntry : MelonMod
         }
         if (!ReferenceEquals(_markerRoot, null))
             _markerRoot.transform.SetAsLastSibling();
+    }
+
+
+    private void RefreshResourceMarkerAvailability()
+    {
+        if (_resourceFilterPending || DateTime.UtcNow < _resourceFilterAfterUtc ||
+            DateTime.UtcNow < _nextResourceMarkerRefreshUtc ||
+            (!MiniMapVisible && !FullMapVisible))
+            return;
+
+        _nextResourceMarkerRefreshUtc = DateTime.UtcNow.AddMilliseconds(250);
+        int changed = 0;
+        int hidden = 0;
+
+        try
+        {
+            for (int i = 0; i < _vanillaIcons.Count; i++)
+            {
+                VanillaIcon icon = _vanillaIcons[i];
+                if (ReferenceEquals(icon.ResourceDetail, null))
+                    continue;
+
+                bool available = !AllLinkedHarvestablesUnavailable(icon.ResourceDetail);
+                if (icon.ResourceAvailable != available)
+                {
+                    icon.ResourceAvailable = available;
+                    changed++;
+                }
+                if (!available)
+                    hidden++;
+            }
+        }
+        catch (Exception ex)
+        {
+            LoggerInstance.Warning($"Live resource marker refresh failed: {ex.Message}");
+            return;
+        }
+
+        if (changed > 0)
+            LoggerInstance.Msg(
+                $"Live resource markers updated: {changed} changed, {hidden} now hidden.");
     }
 
     private void ClearVanillaIcons()

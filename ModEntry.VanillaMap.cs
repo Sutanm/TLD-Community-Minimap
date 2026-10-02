@@ -431,7 +431,9 @@ public sealed partial class ModEntry : MelonMod
         // An empty list is the one case where the containers may also be empty, so the scan runs
         // first and the appending call is only made when the scan finds nothing.
         bool alreadyLoaded = string.Equals(_elementsLoadedForScene, sceneName, StringComparison.Ordinal);
-        if (alreadyLoaded && _vanillaIcons.Count > 0)
+        if (alreadyLoaded && (_vanillaIcons.Count > 0 ||
+            (_settings.MarkerSource == MinimapSettings.MarkerSourceMapDetails &&
+             !ReferenceEquals(_mapIconAtlas, null))))
             return;
         if (DateTime.UtcNow < _elementLoadAfterUtc)
             return;
@@ -439,6 +441,20 @@ public sealed partial class ModEntry : MelonMod
 
         try
         {
+            // A completely fresh save can have hundreds of MapDetail entries while the panel has
+            // instantiated no marker objects at all. In that state LoadMapElementsForScene has
+            // nothing to clone, so scraping the empty MapElements container can never discover the
+            // icon atlas. Find the already-loaded NGUI atlas by asking each candidate how many of
+            // the registered MapDetail sprite names it owns. This is read-only and runs once per
+            // scene; it removes the accidental requirement that the player survey one location
+            // before HUD markers can be drawn.
+            if (TryDiscoverMapIconAtlas(sceneName) &&
+                _settings.MarkerSource == MinimapSettings.MarkerSourceMapDetails)
+            {
+                _elementsLoadedForScene = sceneName;
+                return;
+            }
+
             Panel_Map panel = InterfaceManager.GetPanel<Panel_Map>();
             if (panel == null)
                 return;
@@ -639,6 +655,83 @@ public sealed partial class ModEntry : MelonMod
                 return new Rect(-300f, -300f, 600f, 600f);
             default:
                 return new Rect(-325f, -325f, 650f, 650f);
+        }
+    }
+
+
+    private bool TryDiscoverMapIconAtlas(string sceneName)
+    {
+        if (!ReferenceEquals(_mapIconAtlas, null))
+            return true;
+
+        try
+        {
+            var details = MapDetailManager.s_MapDetails;
+            if (details == null || details.Count == 0)
+                return false;
+
+            var spriteNames = new HashSet<string>(StringComparer.Ordinal);
+            for (int i = 0; i < details.Count; i++)
+            {
+                MapDetail detail = details[i];
+                if (detail == null || string.IsNullOrEmpty(detail.m_SpriteName))
+                    continue;
+                spriteNames.Add(detail.m_SpriteName);
+            }
+            if (spriteNames.Count == 0)
+                return false;
+
+            var atlases = Resources.FindObjectsOfTypeAll<UIAtlas>();
+            UIAtlas best = null;
+            int bestScore = 0;
+            foreach (UIAtlas atlas in atlases)
+            {
+                if (ReferenceEquals(atlas, null))
+                    continue;
+
+                int score = 0;
+                try
+                {
+                    if (ReferenceEquals(atlas.texture, null))
+                        continue;
+                    foreach (string spriteName in spriteNames)
+                    {
+                        if (!ReferenceEquals(atlas.GetSprite(spriteName), null))
+                            score++;
+                    }
+                }
+                catch
+                {
+                    continue;
+                }
+
+                if (score > bestScore)
+                {
+                    best = atlas;
+                    bestScore = score;
+                }
+            }
+
+            // A single generic name is not enough evidence to select a shared UI atlas. The real
+            // map atlas resolves many independently registered marker sprites.
+            if (ReferenceEquals(best, null) || bestScore < 3)
+            {
+                LoggerInstance.Msg(
+                    $"Icon atlas discovery [{sceneName}]: no match among {atlases.Length} loaded atlases " +
+                    $"for {spriteNames.Count} registered sprite names (best {bestScore}).");
+                return false;
+            }
+
+            _mapIconAtlas = best;
+            LoggerInstance.Msg(
+                $"Icon atlas discovery [{sceneName}]: selected '{best.name}' with " +
+                $"{bestScore}/{spriteNames.Count} registered sprite names.");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            LoggerInstance.Warning($"Icon atlas discovery [{sceneName}] failed: {ex.Message}");
+            return false;
         }
     }
 }
