@@ -1,7 +1,10 @@
 // 社区HUD地图 · sutanm — 拦游戏自己的地图动作，不按键名
 using System;
+using System.Collections.Generic;
+using System.Reflection;
 using HarmonyLib;
 using Il2Cpp;
+using UnityEngine;
 
 namespace CommunityMinimap;
 
@@ -81,6 +84,79 @@ internal static class InputPatches
     private static bool RedirectOpenMapFromObjective()
     {
         return !ModEntry.HandleSurveyMapPopup("ExecuteOpenMapActionFromObjective");
+    }
+}
+
+
+// Keep ordinary game interface shortcuts working while the replacement map is open. A generic
+// InputManager context suppressed all of them, so the full map now blocks only player-world input.
+[HarmonyPatch]
+internal static class FullMapBooleanGameplayInputPatches
+{
+    private static IEnumerable<MethodBase> TargetMethods()
+    {
+        yield return AccessTools.Method(typeof(InputManager), nameof(InputManager.GetInteractPressed));
+        yield return AccessTools.Method(typeof(InputManager), nameof(InputManager.GetInteractReleased));
+        yield return AccessTools.Method(typeof(InputManager), nameof(InputManager.GetFirePressed));
+        yield return AccessTools.Method(typeof(InputManager), nameof(InputManager.GetFireReleased));
+        yield return AccessTools.Method(typeof(InputManager), nameof(InputManager.GetAltFire));
+        yield return AccessTools.Method(typeof(InputManager), nameof(InputManager.GetAltFirePressed));
+        yield return AccessTools.Method(typeof(InputManager), nameof(InputManager.GetAltFireReleased));
+        yield return AccessTools.Method(typeof(InputManager), nameof(InputManager.GetStartFirePressed));
+        yield return AccessTools.Method(typeof(InputManager), nameof(InputManager.GetFeedFireTakeTorchePressed));
+        yield return AccessTools.Method(typeof(InputManager), nameof(InputManager.GetReloadPressed));
+        yield return AccessTools.Method(typeof(InputManager), nameof(InputManager.GetCrouchPressed));
+        yield return AccessTools.Method(typeof(InputManager), nameof(InputManager.GetSprintDown));
+        yield return AccessTools.Method(typeof(InputManager), nameof(InputManager.GetRadialButton));
+        yield return AccessTools.Method(typeof(InputManager), nameof(InputManager.GetRadialButtonHeldDown));
+        yield return AccessTools.Method(typeof(InputManager), nameof(InputManager.GetEquipLightSourcePressed));
+    }
+
+    private static bool Prefix(ref bool __result)
+    {
+        if (!ModEntry.ShouldBlockFullMapGameplayInput())
+            return true;
+        __result = false;
+        return false;
+    }
+}
+
+
+[HarmonyPatch]
+internal static class FullMapVectorGameplayInputPatches
+{
+    private static IEnumerable<MethodBase> TargetMethods()
+    {
+        yield return AccessTools.Method(typeof(InputManager), nameof(InputManager.GetPlayerMovement));
+        yield return AccessTools.Method(typeof(InputManager), nameof(InputManager.GetCameraMovementMouse));
+        yield return AccessTools.Method(typeof(InputManager), nameof(InputManager.GetCameraMovementGamepad));
+    }
+
+    private static bool Prefix(ref Vector2 __result)
+    {
+        if (!ModEntry.ShouldBlockFullMapGameplayInput())
+            return true;
+        __result = Vector2.zero;
+        return false;
+    }
+}
+
+
+[HarmonyPatch]
+internal static class FullMapGamePanelShortcutPatches
+{
+    private static IEnumerable<MethodBase> TargetMethods()
+    {
+        yield return AccessTools.Method(typeof(InputManager), nameof(InputManager.ExecuteInventoryAction));
+        yield return AccessTools.Method(typeof(InputManager), nameof(InputManager.ExecuteClothingAction));
+        yield return AccessTools.Method(typeof(InputManager), nameof(InputManager.ExecuteFirstAidAction));
+        yield return AccessTools.Method(typeof(InputManager), nameof(InputManager.ExecuteCraftingAction));
+        yield return AccessTools.Method(typeof(InputManager), nameof(InputManager.ExecuteJournalAction), Type.EmptyTypes);
+    }
+
+    private static void Prefix()
+    {
+        ModEntry.CloseFullMapForGamePanel();
     }
 }
 // — sutanm · 社区HUD地图

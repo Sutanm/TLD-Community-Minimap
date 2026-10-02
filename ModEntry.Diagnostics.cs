@@ -32,11 +32,15 @@ public sealed partial class ModEntry : MelonMod
         if (writeUtc == _calibrationLastWriteUtc)
             return;
 
-        CalibrationStore.Load(_calibrationPath,
+        bool loaded = CalibrationStore.Load(_calibrationPath,
             message => LoggerInstance.Msg(message),
             message => LoggerInstance.Warning(message));
         _calibrationLastWriteUtc = writeUtc;
-        LoggerInstance.Msg("Reloaded calibrations.json after file change.");
+        if (loaded)
+            LoggerInstance.Msg("Reloaded calibrations.json after file change.");
+        else
+            LoggerInstance.Warning(
+                "Calibration reload failed; keeping the last valid projections until the file changes again.");
     }
 
 
@@ -812,7 +816,7 @@ public sealed partial class ModEntry : MelonMod
     // throws.
     private void CleanHarvestedMapMarkers()
     {
-        if (!_settings.CleanHarvestedMarkers)
+        if (!_settings.DeveloperMode || !_settings.ReportHarvestedMarkers)
             return;
 
         List<MapDetail> stale = null;
@@ -1233,6 +1237,32 @@ public sealed partial class ModEntry : MelonMod
                 catch { }
             }
         }
+    }
+
+
+    private void ReleasePendingDiagnosticHandles()
+    {
+        for (int i = 0; i < _pendingPrefabProbes.Count; i++)
+        {
+            try
+            {
+                UnityEngine.AddressableAssets.Addressables.Release(
+                    _pendingPrefabProbes[i].Handle);
+            }
+            catch { }
+        }
+        _pendingPrefabProbes.Clear();
+
+        for (int i = 0; i < _pendingAssetProbes.Count; i++)
+        {
+            try
+            {
+                UnityEngine.AddressableAssets.Addressables.Release(
+                    _pendingAssetProbes[i].Handle);
+            }
+            catch { }
+        }
+        _pendingAssetProbes.Clear();
     }
 
 

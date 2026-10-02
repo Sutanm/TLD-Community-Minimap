@@ -28,7 +28,22 @@ public sealed partial class ModEntry : MelonMod
     {
         if (ReferenceEquals(layer.Texture, null))
             return;
+
+        // Both HUD layers may deliberately share one decoded map. The layer that switches source
+        // first must not retire a texture the other layer is still drawing.
+        for (int i = 0; i < _layers.Length; i++)
+        {
+            MapLayer other = _layers[i];
+            if (!ReferenceEquals(other, layer) && ReferenceEquals(other.Texture, layer.Texture))
+                return;
+        }
+
         _retiredTextures ??= new List<Texture2D>();
+        for (int i = 0; i < _retiredTextures.Count; i++)
+        {
+            if (ReferenceEquals(_retiredTextures[i], layer.Texture))
+                return;
+        }
         _retiredTextures.Add(layer.Texture);
     }
 
@@ -47,21 +62,144 @@ public sealed partial class ModEntry : MelonMod
     }
 
 
+    private static void AddUniqueTexture(List<Texture2D> textures, Texture2D texture)
+    {
+        if (ReferenceEquals(texture, null))
+            return;
+        for (int i = 0; i < textures.Count; i++)
+        {
+            if (ReferenceEquals(textures[i], texture))
+                return;
+        }
+        textures.Add(texture);
+    }
+
+
+    private void ReleasePersistentResources()
+    {
+        var ownedTextures = new List<Texture2D>();
+
+        // Break UI references before queuing any shared texture for destruction. This is the same
+        // ordering RetireTexture preserves between frames, made explicit for a hot unload.
+        try
+        {
+            if (!ReferenceEquals(_mapImage, null))
+                _mapImage.texture = null;
+            if (!ReferenceEquals(_markerImage, null))
+                _markerImage.texture = null;
+        }
+        catch { }
+
+        for (int i = 0; i < _layers.Length; i++)
+        {
+            MapLayer layer = _layers[i];
+            ReleaseBaseMapHandle(layer);
+            AddUniqueTexture(ownedTextures, layer.Texture);
+            layer.Texture = null;
+            layer.TextureReady = false;
+            layer.LoadedMapId = "";
+        }
+
+        if (_retiredTextures != null)
+        {
+            for (int i = 0; i < _retiredTextures.Count; i++)
+                AddUniqueTexture(ownedTextures, _retiredTextures[i]);
+            _retiredTextures.Clear();
+        }
+
+        for (int i = 0; i < _markerTextures.Length; i++)
+        {
+            AddUniqueTexture(ownedTextures, _markerTextures[i]);
+            _markerTextures[i] = null;
+        }
+
+        if (!ReferenceEquals(_uiRoot, null))
+            UnityEngine.Object.Destroy(_uiRoot);
+        if (!ReferenceEquals(_statusToastRoot, null))
+            UnityEngine.Object.Destroy(_statusToastRoot);
+        _uiRoot = null;
+        _mapCanvas = null;
+        _mapCanvasCamera = null;
+        _mapCanvasBehindHud = false;
+        _statusToastRoot = null;
+        _statusToastPlate = null;
+        _statusToastLabel = null;
+        _statusToastFadeAt = 0f;
+        _statusToastHideAt = 0f;
+        _backgroundObject = null;
+        _backgroundImage = null;
+        _mapRect = null;
+        _mapImage = null;
+        _markerRoot = null;
+        _markerRect = null;
+        _markerImage = null;
+        _hintLabel = null;
+
+        if (_hintFontOwned && !ReferenceEquals(_hintFont, null))
+            UnityEngine.Object.Destroy(_hintFont);
+        _hintFont = null;
+        _hintFontOwned = false;
+
+        for (int i = 0; i < ownedTextures.Count; i++)
+            UnityEngine.Object.Destroy(ownedTextures[i]);
+
+        _vanillaIcons.Clear();
+        _pendingVanillaIcons.Clear();
+        _mapLabels.Clear();
+        _iconBySpriteName.Clear();
+        _localizedCache.Clear();
+        _uiVisible = false;
+    }
+
+
     private bool LoadCurrentMapIntoUnityUi(MapLayer layer)
     {
+        // The corner and full map usually select the same source. Reuse the already decoded JPEG
+        // instead of paying its 70-140 MiB GPU allocation twice. Texture retirement above is aware
+        // of this shared ownership and releases it only after the final layer lets go.
+        for (int i = 0; i < _layers.Length; i++)
+        {
+            MapLayer donor = _layers[i];
+            if (ReferenceEquals(donor, layer) || donor.Definition == null ||
+                layer.Definition == null || donor.UsingVanilla || !donor.TextureReady ||
+                ReferenceEquals(donor.Texture, null) ||
+                !string.Equals(donor.Definition.Id, layer.Definition.Id,
+                    StringComparison.OrdinalIgnoreCase) ||
+                !string.Equals(donor.LoadedMapId, layer.Definition.Id,
+                    StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            RetireTexture(layer);
+            layer.Texture = donor.Texture;
+            layer.LoadedMapId = donor.LoadedMapId;
+            layer.UsingVanilla = false;
+            layer.TextureReady = true;
+            layer.LastCommunityLoadError = "";
+            LoggerInstance.Msg(
+                $"Shared the decoded {layer.Definition.DisplayName} texture with layer " +
+                $"'{LayerName(layer == _layers[LayerMini] ? LayerMini : LayerFull)}'.");
+            return true;
+        }
+
         string mapPath = Path.Combine(_mapsDirectory, layer.Definition.FileName);
         if (!File.Exists(mapPath))
         {
-            LoggerInstance.Warning($"Map image not found: {mapPath}");
+            string errorKey = "missing|" + mapPath;
+            if (!string.Equals(layer.LastCommunityLoadError, errorKey, StringComparison.Ordinal))
+            {
+                layer.LastCommunityLoadError = errorKey;
+                LoggerInstance.Warning($"Map image not found: {mapPath}");
+            }
             return false;
         }
 
+        Texture2D texture = null;
         try
         {
             EnsureUnityUi();
             byte[] bytes = File.ReadAllBytes(mapPath);
             var il2CppBytes = new Il2CppStructArray<byte>(bytes);
-            var texture = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+            texture = new Texture2D(2, 2, TextureFormat.RGBA32, false);
             if (!ImageConversion.LoadImage(texture, il2CppBytes, true))
                 throw new InvalidOperationException("Unity ImageConversion.LoadImage returned false.");
 
@@ -77,21 +215,31 @@ public sealed partial class ModEntry : MelonMod
             // two-second white full map, and it only shows up on a RELOAD of the visible layer.
             RetireTexture(layer);
             layer.Texture = texture;
+            Texture2D loadedTexture = texture;
+            texture = null; // ownership transferred to the layer
             layer.LoadedMapId = layer.Definition.Id;
             layer.TextureReady = true;
+            layer.LastCommunityLoadError = "";
 
             // Do not bind this texture to the shared UI here: it belongs to the layer, and that
             // layer may not be the one on screen. UpdateUnityUi binds whichever layer is active.
             LoggerInstance.Msg(
                 $"Loaded {layer.Definition.DisplayName} for layer " +
                 $"'{LayerName(layer == _layers[LayerMini] ? LayerMini : LayerFull)}': " +
-                $"{texture.width}x{texture.height}.");
-            GC.KeepAlive(texture);
+                $"{loadedTexture.width}x{loadedTexture.height}.");
+            GC.KeepAlive(loadedTexture);
             return true;
         }
         catch (Exception ex)
         {
-            LoggerInstance.Error($"Failed loading map into Unity UI: {ex}");
+            if (!ReferenceEquals(texture, null))
+                UnityEngine.Object.Destroy(texture);
+            string errorKey = "load|" + mapPath + "|" + ex.GetType().FullName + "|" + ex.Message;
+            if (!string.Equals(layer.LastCommunityLoadError, errorKey, StringComparison.Ordinal))
+            {
+                layer.LastCommunityLoadError = errorKey;
+                LoggerInstance.Error($"Failed loading map into Unity UI: {ex}");
+            }
             return false;
         }
     }
@@ -105,9 +253,9 @@ public sealed partial class ModEntry : MelonMod
         _uiRoot = CreateUiObject("CommunityMinimapCanvas",
             typeof(RectTransform), typeof(Canvas), typeof(CanvasScaler));
         UnityEngine.Object.DontDestroyOnLoad(_uiRoot);
-        Canvas canvas = _uiRoot.GetComponent<Canvas>();
-        canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-        canvas.sortingOrder = 2000;
+        _mapCanvas = _uiRoot.GetComponent<Canvas>();
+        _mapCanvas.renderMode = RenderMode.ScreenSpaceOverlay;
+        _mapCanvas.sortingOrder = 2000;
         CanvasScaler scaler = _uiRoot.GetComponent<CanvasScaler>();
         scaler.uiScaleMode = CanvasScaler.ScaleMode.ConstantPixelSize;
 
@@ -243,16 +391,24 @@ public sealed partial class ModEntry : MelonMod
     private void UpdateUnityUi(Transform player)
     {
         bool fullMap = FullMapVisible;
+        UpdateMapCanvasLayer(fullMap);
         // The single UI object carries whichever layer is on screen, so the binding happens here
         // rather than at load time: loading a layer must not steal the object from the other one.
-        _mapImage.texture = ActiveLayer.Texture;
+        if (!ReferenceEquals(_mapImage.texture, ActiveLayer.Texture))
+            _mapImage.texture = ActiveLayer.Texture;
         // Re-enabled every frame; the corner map switches it off below while it has no projection.
-        _mapImage.enabled = true;
+        if (!_mapImage.enabled)
+            _mapImage.enabled = true;
         UpdateFullMapHints(fullMap);
-        _backgroundObject.SetActive(fullMap);
-        _backgroundImage.color = new Color(0.015f, 0.025f, 0.035f,
+        if (_backgroundObject.activeSelf != fullMap)
+            _backgroundObject.SetActive(fullMap);
+        var backgroundColor = new Color(0.015f, 0.025f, 0.035f,
             _settings.FullMapBackgroundOpacity);
-        _mapImage.color = new Color(1f, 1f, 1f, fullMap ? 1f : _settings.Opacity);
+        if (_backgroundImage.color != backgroundColor)
+            _backgroundImage.color = backgroundColor;
+        var mapColor = new Color(1f, 1f, 1f, fullMap ? 1f : _settings.Opacity);
+        if (_mapImage.color != mapColor)
+            _mapImage.color = mapColor;
 
         bool hasPosition = TryPlayerToMapUv(player.position, out Vector2 uv);
         if (fullMap && !_fullMapCenterValid)
@@ -296,7 +452,9 @@ public sealed partial class ModEntry : MelonMod
         {
             // The full texture stays intact and the parchment RectTransform itself grows. This is
             // what lets a square original map fill a widescreen display without distorting it.
-            _mapImage.uvRect = new Rect(0f, 0f, 1f, 1f);
+            var fullUv = new Rect(0f, 0f, 1f, 1f);
+            if (_mapImage.uvRect != fullUv)
+                _mapImage.uvRect = fullUv;
             float halfVisibleX = Mathf.Min(0.5f,
                 Screen.width * 0.5f / Mathf.Max(1f, mapSize.x));
             float halfVisibleY = Mathf.Min(0.5f,
@@ -314,7 +472,8 @@ public sealed partial class ModEntry : MelonMod
             float centerU = Mathf.Clamp(uv.x, half, 1f - half);
             float centerV = Mathf.Clamp(uv.y, half, 1f - half);
             visibleUv = new Rect(centerU - half, centerV - half, span, span);
-            _mapImage.uvRect = visibleUv;
+            if (_mapImage.uvRect != visibleUv)
+                _mapImage.uvRect = visibleUv;
         }
 
         UpdateVanillaIcons(visibleUv, mapSize);
@@ -336,15 +495,104 @@ public sealed partial class ModEntry : MelonMod
             return;
         }
 
-        _markerRect.anchoredPosition = MapUvToLocal(uv, visibleUv, mapSize);
+        Vector2 markerPosition = MapUvToLocal(uv, visibleUv, mapSize);
+        if (_markerRect.anchoredPosition != markerPosition)
+            _markerRect.anchoredPosition = markerPosition;
         float markerSize = Mathf.Max(44f, _settings.MarkerSize) * (fullMap ? 1.15f : 1f);
-        _markerRect.sizeDelta = new Vector2(markerSize, markerSize);
+        var markerDimensions = new Vector2(markerSize, markerSize);
+        if (_markerRect.sizeDelta != markerDimensions)
+            _markerRect.sizeDelta = markerDimensions;
         ApplyPointerPalette();
 
-        TryPlayerToMapUv(player.position + player.forward * 2f, out Vector2 aheadUv);
-        float angle = Mathf.Atan2(aheadUv.x - uv.x, aheadUv.y - uv.y) * Mathf.Rad2Deg;
-        _markerRect.localEulerAngles = new Vector3(0f, 0f, -angle);
-        _markerRoot.SetActive(true);
+        if (TryPlayerToMapUv(player.position + player.forward * 2f, out Vector2 aheadUv))
+        {
+            float angle = Mathf.Atan2(aheadUv.x - uv.x, aheadUv.y - uv.y) * Mathf.Rad2Deg;
+            var rotation = new Vector3(0f, 0f, -angle);
+            if (_markerRect.localEulerAngles != rotation)
+                _markerRect.localEulerAngles = rotation;
+        }
+        if (!_markerRoot.activeSelf)
+            _markerRoot.SetActive(true);
+    }
+
+
+    // ScreenSpaceOverlay is composed after every camera, which guarantees that it covers the
+    // game's NGUI HUD no matter how low its sortingOrder is. The render-stack probe showed the
+    // actual HUD path: Panel_HUD -> Anchor -> Camera, on layer UI, camera depth 3, while the
+    // first-person camera returned by GameManager is not a normally enabled Unity camera. Put the
+    // corner canvas on that measured NGUI camera and give it a negative sorting order so the game's
+    // UIPanels (sorting order 0) draw afterwards. Full-screen mode deliberately returns to Overlay.
+    private void UpdateMapCanvasLayer(bool fullMap)
+    {
+        if (ReferenceEquals(_mapCanvas, null))
+            return;
+
+        bool requestBehindHud = !fullMap && !_settings.MiniMapAlwaysOnTop;
+        Camera hudCamera = requestBehindHud ? FindHudCamera() : null;
+        bool canRenderBehindHud = requestBehindHud && !ReferenceEquals(hudCamera, null) &&
+                                  hudCamera.gameObject.activeInHierarchy;
+
+        if (canRenderBehindHud)
+        {
+            bool changed = !_mapCanvasBehindHud ||
+                           !ReferenceEquals(_mapCanvasCamera, hudCamera) ||
+                           _mapCanvas.renderMode != RenderMode.ScreenSpaceCamera;
+            SetLayerRecursively(_uiRoot.transform, hudCamera.gameObject.layer);
+            _mapCanvas.renderMode = RenderMode.ScreenSpaceCamera;
+            _mapCanvas.worldCamera = hudCamera;
+            // The measured NGUI camera spans near=-2 to far=2. Zero is its UI plane and avoids the
+            // old default distance of 100, which would put the Canvas outside that camera entirely.
+            _mapCanvas.planeDistance = 0f;
+            _mapCanvas.sortingOrder = -1000;
+            _mapCanvasCamera = hudCamera;
+            _mapCanvasBehindHud = true;
+            if (changed)
+                LoggerInstance.Msg(
+                    $"Corner map attached below NGUI HUD through camera '{hudCamera.name}' " +
+                    $"(depth {hudCamera.depth:F1}, layer {hudCamera.gameObject.layer}).");
+            return;
+        }
+
+        bool overlayChanged = _mapCanvasBehindHud ||
+                              _mapCanvas.renderMode != RenderMode.ScreenSpaceOverlay;
+        _mapCanvas.worldCamera = null;
+        _mapCanvas.renderMode = RenderMode.ScreenSpaceOverlay;
+        _mapCanvas.sortingOrder = 2000;
+        _mapCanvasCamera = null;
+        _mapCanvasBehindHud = false;
+        if (overlayChanged)
+            LoggerInstance.Msg(fullMap
+                ? "Full map restored to the top Overlay layer."
+                : "No gameplay camera available; corner map is using the Overlay fallback.");
+    }
+
+
+    private static Camera FindHudCamera()
+    {
+        Panel_HUD hud = InterfaceManager.GetPanel<Panel_HUD>();
+        if (hud == null)
+            return null;
+
+        Transform current = hud.transform;
+        while (current != null)
+        {
+            Camera camera = current.gameObject.GetComponent<Camera>();
+            UICamera uiCamera = current.gameObject.GetComponent<UICamera>();
+            if (camera != null && uiCamera != null)
+                return camera;
+            current = current.parent;
+        }
+        return null;
+    }
+
+
+    private static void SetLayerRecursively(Transform root, int layer)
+    {
+        if (root == null)
+            return;
+        root.gameObject.layer = layer;
+        for (int i = 0; i < root.childCount; i++)
+            SetLayerRecursively(root.GetChild(i), layer);
     }
 
 
@@ -409,7 +657,8 @@ public sealed partial class ModEntry : MelonMod
     private void ApplyPointerPalette()
     {
         int index = Mathf.Clamp(_settings.PointerPalette, 0, _markerTextures.Length - 1);
-        _markerImage.texture = _markerTextures[index];
+        if (!ReferenceEquals(_markerImage.texture, _markerTextures[index]))
+            _markerImage.texture = _markerTextures[index];
     }
 
 

@@ -84,9 +84,11 @@ public sealed partial class ModEntry : MelonMod
             layer.LoadedMapId = "";
             layer.UsingVanilla = false;
             layer.TextureReady = false;
+            layer.VanillaUnavailable = false;
             layer.BaseMapRequestedScene = "";
             layer.BaseMapPending = false;
             layer.ElementsLoadedForScene = "";
+            layer.LastCommunityLoadError = "";
             layer.RequestedSource = -1;
             // Both layers follow the same region: there is one map per scene, and which source to
             // draw it from is the per-layer part, not which map it is.
@@ -95,6 +97,11 @@ public sealed partial class ModEntry : MelonMod
 
         if (definition == null)
         {
+            // Never carry a modal full-map state into an indoor/cave scene. There is no texture to
+            // explain why the cursor was released, and reopening outdoors should start from the
+            // normal corner-map state rather than resurrecting an invisible old modal state.
+            if (_fullMapOn)
+                ApplyViewState(_miniMapOn, false);
             _loadAfterUtc = DateTime.MaxValue;
             LoggerInstance.Msg($"Active scene has no map definition: {sceneName} (handle {handle}).");
             return;
@@ -111,15 +118,26 @@ public sealed partial class ModEntry : MelonMod
     }
 
 
-    // Automatic mode prefers the community map but only when the image is actually on disk, so the
-    // answer depends on which definition the layer is holding rather than on a global one.
+    private bool CommunityMapExists(MapLayer layer) =>
+        layer.Definition != null &&
+        File.Exists(Path.Combine(_mapsDirectory, layer.Definition.FileName));
+
+
+    // This returns the EFFECTIVE source rather than rewriting the requested setting. Automatic
+    // mode prefers an installed community image. An explicitly requested source also falls back
+    // when it cannot exist here: a missing community file falls back to vanilla immediately, and
+    // a vanilla-less region falls back after the game reports that fact.
     private bool LayerWantsCommunity(MapLayer layer)
     {
+        bool communityAvailable = CommunityMapExists(layer);
         if (layer.Source == 1)
-            return true;
-        if (layer.Source == 2 || layer.Definition == null)
+            return _settings.DisableSourceFallback || communityAvailable;
+        if (layer.Source == 2)
+            return !_settings.DisableSourceFallback && layer.VanillaUnavailable &&
+                   communityAvailable;
+        if (layer.Definition == null)
             return false;
-        return File.Exists(Path.Combine(_mapsDirectory, layer.Definition.FileName));
+        return communityAvailable;
     }
 
 
@@ -132,6 +150,17 @@ public sealed partial class ModEntry : MelonMod
     // untouched install behaving exactly as it did before the pair existed.
     private void ReadLayerSettings()
     {
+        int fallbackPolicy = _settings.DisableSourceFallback ? 1 : 0;
+        if (_sourceFallbackPolicy != fallbackPolicy)
+        {
+            _sourceFallbackPolicy = fallbackPolicy;
+            for (int i = 0; i < _layers.Length; i++)
+                _layers[i].RequestedSource = -1;
+            LoggerInstance.Msg(_settings.DisableSourceFallback
+                ? "Explicit map sources will not fall back."
+                : "Explicit map sources may temporarily fall back when unavailable.");
+        }
+
         for (int i = 0; i < _layers.Length; i++)
         {
             int source = i == LayerMini ? _settings.MiniMapSource : _settings.FullMapSource;
@@ -139,6 +168,7 @@ public sealed partial class ModEntry : MelonMod
             if (layer.Source == source)
                 continue;
             layer.Source = source;
+            layer.VanillaUnavailable = false;
             LoggerInstance.Msg($"Layer '{LayerName(i)}' source set to {DescribeSource(source)}.");
         }
     }
@@ -189,7 +219,11 @@ public sealed partial class ModEntry : MelonMod
             RequestMapLoad(alreadyLoaded
                 ? DateTime.MaxValue
                 : DateTime.UtcNow);
-            LoggerInstance.Msg($"Map source selected [{LayerName(layerId)}]: community map.");
+            bool vanillaFallback = layer.Source == 2 && layer.VanillaUnavailable;
+            LoggerInstance.Msg(vanillaFallback
+                ? $"Map source selected [{LayerName(layerId)}]: community map " +
+                  "(temporary fallback; vanilla is unavailable in this scene)."
+                : $"Map source selected [{LayerName(layerId)}]: community map.");
         }
         else
         {
@@ -199,11 +233,61 @@ public sealed partial class ModEntry : MelonMod
                                     !ReferenceEquals(layer.Texture, null);
             layer.TextureReady = capturedForScene;
             RequestMapLoad(DateTime.MaxValue);
-            LoggerInstance.Msg(capturedForScene
-                ? $"Map source selected [{LayerName(layerId)}]: vanilla surveyed map."
-                : $"Map source selected [{LayerName(layerId)}]: vanilla surveyed map; " +
-                  "open the game map once to refresh it.");
+            bool communityFallback = layer.Source == 1 && !CommunityMapExists(layer);
+            LoggerInstance.Msg(communityFallback
+                ? $"Map source selected [{LayerName(layerId)}]: vanilla map " +
+                  "(temporary fallback; community image is missing)."
+                : capturedForScene
+                    ? $"Map source selected [{LayerName(layerId)}]: vanilla surveyed map."
+                    : $"Map source selected [{LayerName(layerId)}]: vanilla surveyed map; " +
+                      "open the game map once to refresh it.");
         }
+    }
+
+
+    // Records a fact about this scene, not a preference. Re-applying source selection on the next
+    // frame moves an explicit vanilla request onto the community image when one is installed.
+    // The flag is cleared on scene changes and setting changes, so a later region gets a fresh
+    // vanilla request and the ModSettings value is never touched.
+    private void MarkVanillaUnavailable(string sceneName, MapLayer layer, string reason)
+    {
+        if (layer.VanillaUnavailable)
+            return;
+
+        layer.VanillaUnavailable = true;
+        layer.RequestedSource = -1;
+        LoggerInstance.Warning($"Vanilla map unavailable for {sceneName}: {reason}");
+
+        if (_settings.DisableSourceFallback || !CommunityMapExists(layer))
+            return;
+
+        RequestMapLoad(DateTime.UtcNow);
+        if (ReferenceEquals(layer, ActiveLayer))
+            ShowStatusToast("原版地图不可用，已临时切换至社区地图");
+    }
+
+
+    // Whether pressing a view key can currently produce a map for this layer. Unknown vanilla
+    // availability remains attemptable until the game's request definitively fails; after that we
+    // can distinguish "loading" from "there is nothing to show" instead of opening a blank modal.
+    private bool CanAttemptLayerSource(MapLayer layer)
+    {
+        bool communityAvailable = CommunityMapExists(layer);
+        if (!_settings.DisableSourceFallback || layer.Source == 0)
+            return communityAvailable || !layer.VanillaUnavailable;
+        if (layer.Source == 1)
+            return communityAvailable;
+        return !layer.VanillaUnavailable;
+    }
+
+
+    private string UnavailableLayerMessage(MapLayer layer)
+    {
+        if (_settings.DisableSourceFallback && layer.Source == 1)
+            return "所选社区地图不可用，图源回退已禁用";
+        if (_settings.DisableSourceFallback && layer.Source == 2)
+            return "所选原版地图不可用，图源回退已禁用";
+        return "当前场景没有可用的 HUD 地图";
     }
 
 
@@ -259,19 +343,6 @@ public sealed partial class ModEntry : MelonMod
     }
 
 
-    // The HUD is worth showing while either layer has something to draw. The visible layer is
-    // still the one that decides what is drawn; this only decides whether to unhide the canvas.
-    private bool AnyLayerReady()
-    {
-        for (int i = 0; i < _layers.Length; i++)
-        {
-            if (_layers[i].TextureReady)
-                return true;
-        }
-        return false;
-    }
-
-
     private static bool TryGetOpenVanillaMap(out Panel_Map panel)
     {
         panel = null;
@@ -298,6 +369,7 @@ public sealed partial class ModEntry : MelonMod
         // disorienting, and the player is the one thing on it that moved.
         if (full && !_fullMapOn)
         {
+            _miniMapBeforeFull = _miniMapOn;
             // Match the original map: open on the useful screen-filling/local stop. Scrolling out
             // once returns to 1.0, where the complete sheet is visible in the centre.
             _fullMapZoom = FullMapCoverZoom();
@@ -323,6 +395,18 @@ public sealed partial class ModEntry : MelonMod
     // what decides which step we are on.
     private void CycleView()
     {
+        var scene = UnitySceneManager.GetActiveScene();
+        if (MapCatalog.Find(scene.name) == null)
+        {
+            ShowStatusToast("当前场景没有可用的 HUD 地图");
+            return;
+        }
+        if (!CanAttemptLayerSource(ActiveLayer))
+        {
+            ShowStatusToast(UnavailableLayerMessage(ActiveLayer));
+            return;
+        }
+
         List<(bool Mini, bool Full)> steps = BuildCycle();
         if (steps.Count < 2)
             return;
@@ -358,7 +442,7 @@ public sealed partial class ModEntry : MelonMod
 
     private void CloseFullMap()
     {
-        ApplyViewState(_miniMapOn, false);
+        ApplyViewState(_miniMapBeforeFull, false);
     }
 }
 // — sutanm · 社区HUD地图

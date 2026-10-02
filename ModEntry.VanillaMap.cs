@@ -238,9 +238,8 @@ public sealed partial class ModEntry : MelonMod
                          (DateTime.UtcNow - _baseMapNullSinceUtc).TotalSeconds > 3.0)
                 {
                     _baseMapNullLogged = true;
-                    LoggerInstance.Warning(
-                        $"No region spec for {sceneName}: GameManager.TryGetCurrentRegion() " +
-                        "stayed null for 3s, so there is no vanilla base map here.");
+                    MarkVanillaUnavailable(sceneName, layer,
+                        "GameManager.TryGetCurrentRegion() stayed null for 3 seconds");
                 }
                 return;
             }
@@ -252,7 +251,8 @@ public sealed partial class ModEntry : MelonMod
                 // Genuinely unavailable for this region: stop asking, and let the surveyed
                 // texture fallback take over if the player opens the map panel.
                 layer.BaseMapRequestedScene = sceneName;
-                LoggerInstance.Warning($"Region {sceneName} reports no base map texture.");
+                MarkVanillaUnavailable(sceneName, layer,
+                    "the region reports no base map texture");
                 return;
             }
 
@@ -268,7 +268,8 @@ public sealed partial class ModEntry : MelonMod
         catch (Exception ex)
         {
             layer.BaseMapRequestedScene = sceneName;
-            LoggerInstance.Warning($"Region base map request failed for {sceneName}: {ex.Message}");
+            MarkVanillaUnavailable(sceneName, layer,
+                $"the base-map request failed ({ex.Message})");
         }
     }
 
@@ -282,7 +283,7 @@ public sealed partial class ModEntry : MelonMod
         if ((DateTime.UtcNow - layer.BaseMapRequestUtc).TotalSeconds > 15.0)
         {
             ReleaseBaseMapHandle(layer);
-            LoggerInstance.Warning($"Region base map for {sceneName} timed out.");
+            MarkVanillaUnavailable(sceneName, layer, "the base-map request timed out");
             return;
         }
 
@@ -294,7 +295,8 @@ public sealed partial class ModEntry : MelonMod
         catch (Exception ex)
         {
             ReleaseBaseMapHandle(layer);
-            LoggerInstance.Warning($"Region base map handle failed: {ex.Message}");
+            MarkVanillaUnavailable(sceneName, layer,
+                $"the base-map handle failed ({ex.Message})");
             return;
         }
 
@@ -304,7 +306,8 @@ public sealed partial class ModEntry : MelonMod
             Texture2D source = layer.BaseMapHandle.Result;
             if (source == null)
             {
-                LoggerInstance.Warning($"Region base map for {sceneName} resolved to NULL.");
+                MarkVanillaUnavailable(sceneName, layer,
+                    "the base-map request resolved to null");
                 return;
             }
 
@@ -373,7 +376,8 @@ public sealed partial class ModEntry : MelonMod
         }
         catch (Exception ex)
         {
-            LoggerInstance.Warning($"Region base map load failed for {sceneName}: {ex.Message}");
+            MarkVanillaUnavailable(sceneName, layer,
+                $"the base-map load failed ({ex.Message})");
         }
         finally
         {
@@ -516,9 +520,6 @@ public sealed partial class ModEntry : MelonMod
 
             try { panel.LoadMapElementsForScene(sceneName); requested = true; }
             catch (Exception ex) { LoggerInstance.Warning($"LoadMapElementsForScene failed: {ex.Message}"); }
-
-            try { panel.RefreshIconVisibility(); }
-            catch (Exception ex) { LoggerInstance.Warning($"RefreshIconVisibility failed: {ex.Message}"); }
 
             if (!requested)
                 return;

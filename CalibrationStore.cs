@@ -26,15 +26,15 @@ internal static class CalibrationStore
         return uv.x >= 0f && uv.x <= 1f && uv.y >= 0f && uv.y <= 1f;
     }
 
-    public static void Load(string path, Action<string> log, Action<string> warn)
+    public static bool Load(string path, Action<string> log, Action<string> warn)
     {
-        Projections.Clear();
         if (!File.Exists(path))
         {
             File.WriteAllText(path,
                 "{\r\n  \"formatVersion\": 1,\r\n  \"maps\": []\r\n}\r\n");
+            Projections.Clear();
             log($"Created calibration template: {path}");
-            return;
+            return true;
         }
 
         try
@@ -48,6 +48,7 @@ internal static class CalibrationStore
                 throw new InvalidDataException(
                     $"Unsupported calibration format {file.FormatVersion}; expected {SupportedFormatVersion}.");
 
+            var loaded = new Dictionary<string, AffineProjection>(StringComparer.OrdinalIgnoreCase);
             foreach (MapCalibration map in file.Maps ?? Array.Empty<MapCalibration>())
             {
                 if (string.IsNullOrWhiteSpace(map.MapId))
@@ -63,13 +64,22 @@ internal static class CalibrationStore
                     continue;
                 }
 
-                Projections[map.MapId] = projection;
+                loaded[map.MapId] = projection;
                 log($"Loaded affine calibration: {map.MapId} ({map.Points.Length} points). ");
             }
+
+            // Commit only after the whole file has been read and validated. Editors commonly save
+            // through a temporary empty/partial file; clearing first made every map lose calibration
+            // until another write happened.
+            Projections.Clear();
+            foreach (KeyValuePair<string, AffineProjection> pair in loaded)
+                Projections[pair.Key] = pair.Value;
+            return true;
         }
         catch (Exception ex)
         {
-            warn($"Failed loading calibrations.json; built-in calibrations remain available. {ex}");
+            warn($"Failed loading calibrations.json; keeping the last valid calibrations. {ex}");
+            return false;
         }
     }
 

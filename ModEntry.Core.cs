@@ -24,7 +24,12 @@ public sealed partial class ModEntry : MelonMod
 
     private static DateTime s_lastMapRedirectUtc = DateTime.MinValue;
 
-    private bool _mapContextPushed;
+    private bool _fullMapCursorOwned;
+
+    // Full-screen mode temporarily replaces the corner view. Keep the state that existed before
+    // it opened so closing with the map key, Escape, or a game-panel shortcut returns to the view
+    // the player recognises instead of unexpectedly landing on a completely blank HUD.
+    private bool _miniMapBeforeFull;
 
     private float _fullMapZoom = 1f;
 
@@ -127,6 +132,10 @@ public sealed partial class ModEntry : MelonMod
     // though their setting did not change.
     private bool _layersDirty;
 
+    // Cached separately from each layer because one setting changes the effective source policy
+    // of both layers at once. -1 guarantees that a saved non-default value is applied on startup.
+    private int _sourceFallbackPolicy = -1;
+
     // The marker category switches as of the last draw, so the marker loop can tell in one
     // comparison whether it needs to re-resolve every icon's category.
     private int _markerCategoryState = -1;
@@ -172,6 +181,12 @@ public sealed partial class ModEntry : MelonMod
 
     private GameObject _uiRoot;
 
+    private Canvas _mapCanvas;
+
+    private Camera _mapCanvasCamera;
+
+    private bool _mapCanvasBehindHud;
+
     private GameObject _backgroundObject;
 
     private Image _backgroundImage;
@@ -182,7 +197,19 @@ public sealed partial class ModEntry : MelonMod
 
     private Text _hintLabel;
 
+    private GameObject _statusToastRoot;
+
+    private Image _statusToastPlate;
+
+    private Text _statusToastLabel;
+
+    private float _statusToastFadeAt;
+
+    private float _statusToastHideAt;
+
     private Font _hintFont;
+
+    private bool _hintFontOwned;
 
     private GameObject _markerRoot;
 
@@ -318,12 +345,17 @@ public sealed partial class ModEntry : MelonMod
         public Texture2D Texture;
         public bool UsingVanilla;
         public bool TextureReady;
+        // A requested vanilla source can be genuinely absent in caves, transition scenes and
+        // community-only regions. This is runtime state for the current scene, not a setting:
+        // it lets the layer fall back without changing the player's preferred source.
+        public bool VanillaUnavailable;
         public AsyncOperationHandle<Texture2D> BaseMapHandle;
         public bool BaseMapHandleValid;
         public bool BaseMapPending;
         public string BaseMapRequestedScene = "";
         public DateTime BaseMapRequestUtc = DateTime.MinValue;
         public string ElementsLoadedForScene = "";
+        public string LastCommunityLoadError = "";
         // The vanilla projection this layer is holding. The values are region-wide and both layers
         // compute the same ones, but they are stored per layer on purpose: the panel path writes
         // bounds and uv, the base-map path writes different defaults, and switching ONE layer's
@@ -356,11 +388,29 @@ public sealed partial class ModEntry : MelonMod
     }
 
 
+    public override void OnDeinitializeMelon()
+    {
+        // The UI and decoded maps are DontDestroyOnLoad by design, so a hot unload must explicitly
+        // return every resource and input context. A normal process exit would reclaim them, but
+        // relying on that made development reloads stack canvases and textures.
+        s_fullMapActive = false;
+        try { ReleaseFullMapCursor(); }
+        catch (Exception ex) { LoggerInstance.Warning($"Input cleanup failed: {ex.Message}"); }
+        try { ReleasePendingDiagnosticHandles(); }
+        catch (Exception ex) { LoggerInstance.Warning($"Diagnostic handle cleanup failed: {ex.Message}"); }
+        try { ReleasePersistentResources(); }
+        catch (Exception ex) { LoggerInstance.Warning($"Persistent resource cleanup failed: {ex.Message}"); }
+        s_instance = null;
+        LoggerInstance.Msg("社区HUD地图 resources released.");
+    }
+
+
     public override void OnUpdate()
     {
         // First thing, so the previous frame has definitely finished drawing with them. There are
         // several early returns below and none of them may skip this.
         SweepRetiredTextures();
+        UpdateStatusToast();
         PollRegionAssetProbes();
         PollPrefabProbes();
         TryExportSceneCatalog();
@@ -373,7 +423,7 @@ public sealed partial class ModEntry : MelonMod
         // it to the HUD immediately, and keep a PNG for calibration. That is one key press in the
         // session where the player revealed the map, instead of a file that only refreshes on the
         // first panel open of a session and then has to be carried back to the workspace by hand.
-        if (_settings.CaptureMapKey != KeyCode.None &&
+        if (_settings.DeveloperMode && _settings.CaptureMapKey != KeyCode.None &&
             Input.GetKeyDown(_settings.CaptureMapKey))
             CaptureGameMapImage();
 
@@ -401,7 +451,7 @@ public sealed partial class ModEntry : MelonMod
         }
         if (FullMapVisible && Input.GetKeyDown(KeyCode.Escape))
             LeaveFullMap();
-        if (Input.GetKeyDown(_settings.RecordPointKey))
+        if (_settings.DeveloperMode && Input.GetKeyDown(_settings.RecordPointKey))
         {
             RecordCalibrationPoint();
             DumpMapDetails();
@@ -421,15 +471,26 @@ public sealed partial class ModEntry : MelonMod
         // The full map owns the cursor and the input context, but only while it is actually on
         // screen: turning a layer off in the settings has to hand the input back as well, and
         // there is nothing to push as a context until the UI exists.
-        bool showFullMap = FullMapVisible && !ReferenceEquals(_backgroundImage, null);
-        if (s_fullMapActive != showFullMap)
-        {
-            s_fullMapActive = showFullMap;
-            if (showFullMap)
-                ApplyMapInputContext();
-            else
-                ReleaseMapInputContext();
-        }
+        var inputScene = UnitySceneManager.GetActiveScene();
+        bool activeSceneObserved = inputScene.handle == _observedSceneHandle;
+        bool fullMapStateAvailable = FullMapVisible && activeSceneObserved &&
+                                     ActiveLayer.Definition != null;
+        bool showFullMap = fullMapStateAvailable && ActiveLayer.TextureReady &&
+                           !ReferenceEquals(ActiveLayer.Texture, null) &&
+                           !ReferenceEquals(_backgroundImage, null);
+        // Escape still belongs to our modal state while a valid map is finishing its first load,
+        // but mouse takeover waits until there is a visible texture to interact with.
+        s_fullMapActive = fullMapStateAvailable;
+
+        // The setting can be changed while the full map is already open. Tying the input context
+        // only to the visibility transition left the cursor behind when the option was turned off,
+        // and failed to claim it when the option was turned on. Reconcile the desired state every
+        // frame; the helpers themselves remain transition-only through _fullMapCursorOwned.
+        bool shouldOwnMapInput = showFullMap && _settings.ReleaseMouseOnFullMap;
+        if (shouldOwnMapInput && !_fullMapCursorOwned)
+            ApplyFullMapCursor();
+        else if (!shouldOwnMapInput && _fullMapCursorOwned)
+            ReleaseFullMapCursor();
         if (DateTime.UtcNow >= _nextMarkerCleanupUtc)
         {
             _nextMarkerCleanupUtc = DateTime.UtcNow.AddSeconds(2);
@@ -627,7 +688,11 @@ public sealed partial class ModEntry : MelonMod
 
         // The temporary hide key is already folded into MiniMapVisible; testing it again here
         // would also hide the full map, which is exactly what the two layers were split to avoid.
-        bool shouldShow = AnyLayerReady() && active.Definition != null && playerReady &&
+        // Readiness belongs to the layer being drawn. Letting the other layer satisfy this test
+        // exposes the shared Canvas with a null/stale texture during first load or a source switch,
+        // which is the "pointer only" frame reported in testing.
+        bool shouldShow = active.TextureReady && !ReferenceEquals(active.Texture, null) &&
+                          active.Definition != null && playerReady &&
                           (MiniMapVisible || FullMapVisible) && !vanillaMapOpen;
         SetUiVisible(shouldShow);
         if (!shouldShow)
@@ -682,6 +747,13 @@ public sealed partial class ModEntry : MelonMod
 
     private List<(bool Mini, bool Full)> BuildCycle()
     {
+        // Indoor and cave scenes intentionally have no map definition. Cycling an invisible full
+        // map there used to release the cursor with no visual explanation, which looked like an
+        // input bug. In a map-less scene the view key is simply unavailable.
+        var scene = UnitySceneManager.GetActiveScene();
+        if (MapCatalog.Find(scene.name) == null)
+            return new List<(bool Mini, bool Full)>();
+
         (bool Mini, bool Full)[] source = _settings.CyclePreset switch
         {
             0 => CycleMiniFull,
@@ -944,6 +1016,7 @@ public sealed partial class ModEntry : MelonMod
             RenderTextureFormat.ARGB32);
         var readback = new Texture2D(source.width, source.height,
             TextureFormat.RGBA32, false);
+        bool completed = false;
         RenderTexture previous = RenderTexture.active;
         try
         {
@@ -958,6 +1031,7 @@ public sealed partial class ModEntry : MelonMod
             readback.hideFlags = HideFlags.HideAndDontSave |
                                  HideFlags.DontUnloadUnusedAsset;
             UnityEngine.Object.DontDestroyOnLoad(readback);
+            completed = true;
             return readback;
         }
         finally
@@ -965,6 +1039,8 @@ public sealed partial class ModEntry : MelonMod
             RenderTexture.active = previous;
             target.Release();
             UnityEngine.Object.Destroy(target);
+            if (!completed && !ReferenceEquals(readback, null))
+                UnityEngine.Object.Destroy(readback);
         }
     }
 }

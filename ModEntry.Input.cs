@@ -30,8 +30,33 @@ public sealed partial class ModEntry : MelonMod
         ModEntry mod = s_instance;
         if (mod == null || !mod._settings.RedirectGameMap)
             return false;
-        if (mod.ActiveLayer.Definition == null)
-            return false;                 // no map for this scene; leave the game alone
+
+        // Ask the live Unity scene, not the layer cache. During a transition the layer can still
+        // hold the outdoor definition for one update; intercepting the map action in that window
+        // would open an invisible modal map inside the new indoor scene. If the current scene has
+        // no HUD map (or has not been observed yet), hand the action back to the original game.
+        var scene = UnitySceneManager.GetActiveScene();
+        MapDefinition currentDefinition = MapCatalog.Find(scene.name);
+        if (currentDefinition == null)
+        {
+            mod.ShowStatusToast("当前场景没有可用的 HUD 地图，已使用游戏原版地图");
+            return false;
+        }
+        if (mod._observedSceneHandle != scene.handle ||
+            mod.ActiveLayer.Definition == null ||
+            !string.Equals(mod.ActiveLayer.Definition.Id, currentDefinition.Id,
+                StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        // A strict explicit source may be known to be unavailable even though this scene has a
+        // map definition. Do not open an invisible modal; explain the choice and hand M back to
+        // the game. With fallback enabled this only trips once both sources are known unavailable.
+        MapLayer fullLayer = mod._layers[LayerFull];
+        if (!mod.CanAttemptLayerSource(fullLayer))
+        {
+            mod.ShowStatusToast(mod.UnavailableLayerMessage(fullLayer));
+            return false;
+        }
 
         // The game fires this action twice for a single press - the log showed FullMap and
         // MiniMap in the same millisecond - so a plain toggle opened and closed our map at once
@@ -49,7 +74,11 @@ public sealed partial class ModEntry : MelonMod
         if (mod._fullMapOn)
             mod.CloseFullMap();
         else
+        {
             mod.OpenFullMap();
+            if (!mod.ActiveLayer.TextureReady || ReferenceEquals(mod.ActiveLayer.Texture, null))
+                mod.ShowStatusToast("地图正在加载…", 1.5f);
+        }
         mod.LoggerInstance.Msg($"Map key: view is now {mod.DescribeView()}.");
         return true;
     }
@@ -110,17 +139,15 @@ public sealed partial class ModEntry : MelonMod
     }
 
 
-    // The game locks the mouse and keeps player input live during play, so a map drawn by the
-    // mod cannot be scrolled or dragged until both are handed over. The game's own panels do
-    // this through the input context list and the cursor helper, so we use the same two calls
-    // rather than inventing a mechanism.
+    // The game locks the mouse during play, so a map drawn by the mod cannot be scrolled or dragged
+    // until the cursor is handed over. Do NOT push a generic InputManager context here: the probe
+    // showed that it also swallows inventory, clothing, first-aid, crafting and journal shortcuts.
+    // InputPatches suppresses only character movement/actions while the full map is up, leaving the
+    // game's interface shortcuts alive.
     // Closing the full map goes through the game's own map action query rather than a key of ours.
     //
     // Opening is intercepted at ExecuteOpenMapAction, so it already follows whatever the player
-    // bound the map to, including a rebind. Closing could not use that path: the input context we
-    // push to stop the player walking around while reading the map also stops the game dispatching
-    // the action, which is why this used to need a separate hardcoded key - one that ignored
-    // rebinding and had to be kept in sync by hand.
+    // bound the map to, including a rebind.
     //
     // Measured 2026-09-28 with the map rebound to N: GetOpenMapPressed returned true on every
     // press of N while our map was open, and false for the old M. The query does work inside our
@@ -298,6 +325,7 @@ public sealed partial class ModEntry : MelonMod
                 if (!ReferenceEquals(font, null))
                 {
                     _hintFont = font;
+                    _hintFontOwned = true;
                     LoggerInstance.Msg($"Key hint font: OS font \"{name}\".");
                     return _hintFont;
                 }
@@ -319,6 +347,7 @@ public sealed partial class ModEntry : MelonMod
                 if (!ReferenceEquals(font, null))
                 {
                     _hintFont = font;
+                    _hintFontOwned = false;
                     LoggerInstance.Msg($"Key hint font: built-in \"{name}\".");
                     return _hintFont;
                 }
@@ -335,36 +364,50 @@ public sealed partial class ModEntry : MelonMod
     }
 
 
-    private void ApplyMapInputContext()
-    {        if (!_settings.ReleaseMouseOnFullMap)
+    private void ApplyFullMapCursor()
+    {
+        if (!_settings.ReleaseMouseOnFullMap || _fullMapCursorOwned)
             return;
+        _fullMapCursorOwned = true;
         try
         {
-            InputManager.PushContext(_backgroundImage);
             InputManager.ShowCursor(true);
-            _mapContextPushed = true;
         }
         catch (Exception ex)
         {
-            LoggerInstance.Warning($"Could not take over input for the full map: {ex.Message}");
+            // HandleFullMapInput also drives Unity's cursor state every frame, so the map remains
+            // usable even if the game's helper rejects this transition.
+            LoggerInstance.Warning($"Could not show the full-map cursor: {ex.Message}");
         }
     }
 
 
-    private void ReleaseMapInputContext()
+    private void ReleaseFullMapCursor()
     {
-        if (!_mapContextPushed)
+        if (!_fullMapCursorOwned)
             return;
-        _mapContextPushed = false;
+        _fullMapCursorOwned = false;
         try
         {
             InputManager.ShowCursor(false);
-            InputManager.PopContext(_backgroundImage);
         }
         catch (Exception ex)
         {
-            LoggerInstance.Warning($"Could not hand input back: {ex.Message}");
+            LoggerInstance.Warning($"Could not hide the full-map cursor: {ex.Message}");
         }
+    }
+
+
+    internal static bool ShouldBlockFullMapGameplayInput() => s_fullMapActive;
+
+
+    internal static void CloseFullMapForGamePanel()
+    {
+        ModEntry mod = s_instance;
+        if (mod == null || !mod._fullMapOn)
+            return;
+        mod.CloseFullMap();
+        mod.LoggerInstance.Msg("Full map closed for a game interface shortcut.");
     }
 
 

@@ -264,6 +264,7 @@ public sealed partial class ModEntry : MelonMod
     // corrected by hand if a capture ever needs adjusting.
     private bool TryLoadCapturedMap(string sceneName, MapLayer layer)
     {
+        Texture2D texture = null;
         try
         {
             string path = CapturedMapPath(sceneName);
@@ -293,11 +294,12 @@ public sealed partial class ModEntry : MelonMod
 
             byte[] bytes = File.ReadAllBytes(path);
             var il2CppBytes = new Il2CppStructArray<byte>(bytes);
-            var texture = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+            texture = new Texture2D(2, 2, TextureFormat.RGBA32, false);
             if (!ImageConversion.LoadImage(texture, il2CppBytes, true))
             {
                 LoggerInstance.Warning($"Captured map for {sceneName} failed to decode.");
                 UnityEngine.Object.Destroy(texture);
+                texture = null;
                 return false;
             }
             texture.wrapMode = TextureWrapMode.Clamp;
@@ -306,13 +308,17 @@ public sealed partial class ModEntry : MelonMod
             UnityEngine.Object.DontDestroyOnLoad(texture);
 
             UseVanillaBaseMap(texture, sceneName, layer, textureUv, bounds);
+            Texture2D loadedTexture = texture;
+            texture = null; // ownership transferred to the layer
             LoggerInstance.Msg(
-                $"Using the captured map for {sceneName}: {texture.width}x{texture.height}, " +
+                $"Using the captured map for {sceneName}: {loadedTexture.width}x{loadedTexture.height}, " +
                 $"bounds={bounds}, uv={textureUv}.");
             return true;
         }
         catch (Exception ex)
         {
+            if (!ReferenceEquals(texture, null))
+                UnityEngine.Object.Destroy(texture);
             LoggerInstance.Warning($"Loading the captured map for {sceneName} failed: {ex.Message}");
             return false;
         }
