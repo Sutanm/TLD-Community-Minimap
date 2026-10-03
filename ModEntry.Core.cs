@@ -348,10 +348,11 @@ public sealed partial class ModEntry : MelonMod
         // The name shown on hover, resolved once at build time. Markers with no name simply never
         // win the hover pick.
         public string Text;
-        // Filled only for MapDetail markers whose visibility is tied to one or more harvestables.
+        // Filled for MapDetail markers whose visibility is tied to harvestables or a live animal.
         // The same marker objects serve the mini and full views, so changing this one flag updates
         // both without rebuilding either map.
         public MapDetail ResourceDetail;
+        public string SpriteName;
         public bool ResourceAvailable = true;
     }
 

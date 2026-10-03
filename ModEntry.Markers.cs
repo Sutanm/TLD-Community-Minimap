@@ -38,9 +38,15 @@ public sealed partial class ModEntry : MelonMod
             case "icoMap_limb":          // a limb is a harvestable branch pile
             case "icoMap_ptarmiganNest":
             case "icoMap_rabbit":
-            case "icoMap_deerCarcass":
-            case "icoMap_corpse":
                 return MarkerCategory.Resources;
+
+            // Human bodies are static corpses. Animal MapDetails may already exist while their
+            // BaseAi is alive, so category and availability are separate decisions.
+            case "icoMap_corpse":
+            case "icoMap_deerCarcass":
+            case "icoMap_wolfCarcass":
+            case "icoMap_bearCarcass":
+                return MarkerCategory.Corpses;
 
             // Buildings and the man-made things on the map.
             case "icoMap_churchMilton":
@@ -477,6 +483,7 @@ public sealed partial class ModEntry : MelonMod
 
                 MarkerCategory category = CategorizeSprite(spriteName);
                 bool linkedResource = HasLinkedHarvestables(detail);
+                bool animalCarcass = IsAnimalCarcassSprite(spriteName);
                 Color markerColour = MarkerColourForActiveLayer();
                 // The dark backing is created FIRST so it sits behind the icon in the draw order,
                 // which is hierarchy order in uGUI - the same trap that once had the hover tooltip
@@ -488,12 +495,19 @@ public sealed partial class ModEntry : MelonMod
                 built.Backing = backing;
                 built.Category = category;
                 built.CategoryEnabled = CategoryEnabled(category);
-                built.ResourceDetail = linkedResource ? detail : null;
+                // Animal carcasses retain the MapDetail even without Harvestable links, allowing
+                // the live availability poll to observe the AI's live -> dead transition.
+                built.ResourceDetail = linkedResource || animalCarcass ||
+                                       category == MarkerCategory.Resources ? detail : null;
+                built.SpriteName = spriteName;
                 // Before RandomSpawnObject has restored the save's resource pattern, every
                 // candidate can look valid. Suppress only resource markers during this short phase;
                 // structures and transitions remain useful while the region finishes loading.
-                built.ResourceAvailable = !_resourceFilterPending ||
-                                          category != MarkerCategory.Resources;
+                built.ResourceAvailable = animalCarcass
+                    ? !IsLivingAnimalRecord(detail, spriteName)
+                    : category != MarkerCategory.Resources ||
+                      (!_resourceFilterPending &&
+                       IsMarkerDetailAvailable(detail, spriteName));
                 built.DrawPriority = MarkerDrawPriority(spriteName, category);
                 // The name the game shows when the pointer rests on this icon. Resolved once here
                 // rather than on hover, because hover runs every frame and this walks a localization
@@ -680,6 +694,51 @@ public sealed partial class ModEntry : MelonMod
     }
 
 
+    private static bool IsAnimalCarcassSprite(string spriteName) =>
+        spriteName == "icoMap_deerCarcass" ||
+        spriteName == "icoMap_wolfCarcass" ||
+        spriteName == "icoMap_bearCarcass";
+
+
+    // The game may register an animal's future carcass marker before the animal dies. Natural
+    // carcasses have no living BaseAi parent and pass through; hunted animals become visible as
+    // soon as the existing AI enters Dead mode.
+    private static bool IsLivingAnimalRecord(MapDetail detail, string spriteName)
+    {
+        if (!IsAnimalCarcassSprite(spriteName) || ReferenceEquals(detail, null))
+            return false;
+
+        try
+        {
+            BaseAi ai = detail.GetComponent<BaseAi>();
+            if (ReferenceEquals(ai, null))
+                ai = detail.GetComponentInParent<BaseAi>();
+            if (ReferenceEquals(ai, null))
+                ai = detail.GetComponentInChildren<BaseAi>();
+            if (ReferenceEquals(ai, null))
+                return false;
+
+            return ai.GetAiMode() != AiMode.Dead && ai.m_CurrentHP > 0f;
+        }
+        catch
+        {
+            // Concurrent streaming/destruction is not proof that a corpse is absent. Keep the
+            // marker until the registry or the next stable poll resolves it.
+            return false;
+        }
+    }
+
+
+    private static bool IsMarkerDetailAvailable(MapDetail detail, string spriteName)
+    {
+        if (IsLivingAnimalRecord(detail, spriteName))
+            return false;
+        if (spriteName == "icoMap_limb")
+            return IsRenewableLimbAvailable(detail);
+        return !HasLinkedHarvestables(detail) || !AllLinkedHarvestablesUnavailable(detail);
+    }
+
+
     private void RefreshResourceMarkerAvailability()
     {
         if (_resourceFilterPending || DateTime.UtcNow < _resourceFilterAfterUtc ||
@@ -690,6 +749,9 @@ public sealed partial class ModEntry : MelonMod
         _nextResourceMarkerRefreshUtc = DateTime.UtcNow.AddMilliseconds(250);
         int changed = 0;
         int hidden = 0;
+        int becameVisible = 0;
+        int becameHidden = 0;
+        string firstChange = "";
 
         try
         {
@@ -699,9 +761,29 @@ public sealed partial class ModEntry : MelonMod
                 if (ReferenceEquals(icon.ResourceDetail, null))
                     continue;
 
-                bool available = !AllLinkedHarvestablesUnavailable(icon.ResourceDetail);
+                bool available = IsMarkerDetailAvailable(icon.ResourceDetail, icon.SpriteName);
                 if (icon.ResourceAvailable != available)
                 {
+                    // A living animal's MapDetail moves with the AI. Its marker was built while
+                    // hidden, so the cached uv is stale by the time the animal dies. Re-project at
+                    // the live -> corpse transition to put the icon on the actual carcass.
+                    if (available && IsAnimalCarcassSprite(icon.SpriteName))
+                    {
+                        try
+                        {
+                            if (TryWorldToMarkerUv(icon.ResourceDetail.GetWorldPosition(),
+                                    out Vector2 corpseUv))
+                                icon.MapUv = corpseUv;
+                        }
+                        catch { }
+                    }
+
+                    if (available)
+                        becameVisible++;
+                    else
+                        becameHidden++;
+                    if (string.IsNullOrEmpty(firstChange))
+                        firstChange = $"{icon.SpriteName}:{(available ? "shown" : "hidden")}";
                     icon.ResourceAvailable = available;
                     changed++;
                 }
@@ -717,7 +799,9 @@ public sealed partial class ModEntry : MelonMod
 
         if (changed > 0)
             LoggerInstance.Msg(
-                $"Live resource markers updated: {changed} changed, {hidden} now hidden.");
+                $"Live resource/carcass markers updated: {changed} changed " +
+                $"({becameVisible} shown, {becameHidden} hidden), {hidden} now hidden; " +
+                $"first={firstChange}.");
     }
 
     private void ClearVanillaIcons()

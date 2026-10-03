@@ -615,6 +615,86 @@ public sealed partial class ModEntry : MelonMod
                     $"  H[{i}] sprite='{hd.m_SpriteName}' surveyed={hd.m_IsSurveyed} " +
                     $"drawn={drawn} n={total} {flags}");
             }
+
+            // A map icon can represent a whole plant cluster. Report partially depleted clusters
+            // separately: they correctly stay visible while at least one linked Harvestable
+            // remains, and this makes a genuinely stale rosehip/cattail link distinguishable from
+            // the player having picked only one member of the cluster.
+            int shownPartial = 0;
+            for (int i = 0; i < details.Count && shownPartial < 40; i++)
+            {
+                MapDetail detail = details[i];
+                if (ReferenceEquals(detail, null))
+                    continue;
+
+                int total = 0;
+                int unavailable = 0;
+                var visible = detail.m_HarvestablesForMapVisibility;
+                if (!ReferenceEquals(visible, null))
+                {
+                    for (int k = 0; k < visible.Length; k++)
+                    {
+                        Harvestable harvestable = visible[k];
+                        if (ReferenceEquals(harvestable, null))
+                            continue;
+                        total++;
+                        if (IsKnownUnavailable(harvestable))
+                            unavailable++;
+                    }
+                }
+
+                var sharing = detail.m_HarvestablesSharingIcon;
+                if (!ReferenceEquals(sharing, null))
+                {
+                    for (int k = 0; k < sharing.Count; k++)
+                    {
+                        Harvestable harvestable = sharing[k];
+                        if (ReferenceEquals(harvestable, null))
+                            continue;
+                        total++;
+                        if (IsKnownUnavailable(harvestable))
+                            unavailable++;
+                    }
+                }
+
+                if (unavailable <= 0 || unavailable >= total)
+                    continue;
+                shownPartial++;
+                LoggerInstance.Msg(
+                    $"  PARTIAL[{i}] sprite='{detail.m_SpriteName}' loc='{detail.m_LocID}' " +
+                    $"unavailable={unavailable}/{total} world={detail.GetWorldPosition()}");
+            }
+
+            int limbTotal = 0;
+            int limbResolved = 0;
+            int limbAvailable = 0;
+            int limbInactive = 0;
+            for (int i = 0; i < details.Count; i++)
+            {
+                MapDetail detail = details[i];
+                if (ReferenceEquals(detail, null) || detail.m_SpriteName != "icoMap_limb")
+                    continue;
+                limbTotal++;
+                BreakDown breakDown = FindAttachedBreakDown(detail);
+                if (ReferenceEquals(breakDown, null))
+                    continue;
+                limbResolved++;
+                try
+                {
+                    GameObject go = breakDown.gameObject;
+                    if (ReferenceEquals(go, null) || !go.activeInHierarchy ||
+                        !breakDown.IsEnabled)
+                        limbInactive++;
+                    else
+                        limbAvailable++;
+                }
+                catch { }
+            }
+            LoggerInstance.Msg(
+                $"Renewable limb details [F11]: total={limbTotal}, breakdown={limbResolved}, " +
+                $"available={limbAvailable}, inactive-or-broken={limbInactive}, " +
+                $"unresolved={limbTotal - limbResolved}.");
+
             int shown = 0;
             for (int i = 0; i < details.Count && shown < 40; i++)
             {
@@ -912,7 +992,84 @@ public sealed partial class ModEntry : MelonMod
             }
         }
 
+        // Cattails and rosehips leave both MapDetail link collections empty even though their
+        // MapDetail lives on (or immediately beside) the Harvestable object. Without this fallback
+        // every possible random candidate is drawn and a picked plant can never disappear.
+        if (!any)
+        {
+            Harvestable attached = FindAttachedHarvestable(detail);
+            if (!ReferenceEquals(attached, null))
+            {
+                any = true;
+                if (!IsKnownUnavailable(attached))
+                    return false;
+            }
+        }
+
         return any;
+    }
+
+
+    private static Harvestable FindAttachedHarvestable(MapDetail detail)
+    {
+        if (ReferenceEquals(detail, null))
+            return null;
+
+        try
+        {
+            Harvestable harvestable = detail.GetComponent<Harvestable>();
+            if (ReferenceEquals(harvestable, null))
+                harvestable = detail.GetComponentInParent<Harvestable>();
+            if (ReferenceEquals(harvestable, null))
+                harvestable = detail.GetComponentInChildren<Harvestable>(true);
+            return harvestable;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+
+    private static BreakDown FindAttachedBreakDown(MapDetail detail)
+    {
+        if (ReferenceEquals(detail, null))
+            return null;
+
+        try
+        {
+            BreakDown breakDown = detail.GetComponent<BreakDown>();
+            if (ReferenceEquals(breakDown, null))
+                breakDown = detail.GetComponentInParent<BreakDown>();
+            if (ReferenceEquals(breakDown, null))
+                breakDown = detail.GetComponentInChildren<BreakDown>(true);
+            return breakDown;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+
+    private static bool IsRenewableLimbAvailable(MapDetail detail)
+    {
+        BreakDown breakDown = FindAttachedBreakDown(detail);
+        if (ReferenceEquals(breakDown, null))
+            return false;
+
+        try
+        {
+            GameObject go = breakDown.gameObject;
+            if (ReferenceEquals(go, null) || !go.activeInHierarchy)
+                return false;
+
+            return breakDown.IsEnabled;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
 
@@ -922,7 +1079,8 @@ public sealed partial class ModEntry : MelonMod
         if (array != null && array.Length > 0)
             return true;
         var shared = detail.m_HarvestablesSharingIcon;
-        return shared != null && shared.Count > 0;
+        return shared != null && shared.Count > 0 ||
+               !ReferenceEquals(FindAttachedHarvestable(detail), null);
     }
 
 

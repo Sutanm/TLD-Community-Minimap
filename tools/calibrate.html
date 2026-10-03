@@ -38,8 +38,8 @@
 <body>
 <header>
   <h1>社区地图校准器</h1>
-  <span class="hint">原理：社区图 = S × 原版 NGUI 坐标 + 平移（无旋转、无镜像）。S 默认 8.61；
-    点选 ≥2 个锚点后自动最小二乘拟合 S。</span>
+  <span class="hint">黄色点是手动锚点；绿色圆圈使用与 MOD 相同的世界坐标→社区图仿射拟合。
+    点选 ≥3 个锚点后启用仿射预览。</span>
 </header>
 
 <main>
@@ -68,8 +68,8 @@
   </div>
 
   <div class="box">
-    <h2>3 · 缩放常数 S</h2>
-    <label>S（社区像素 / NGUI 单位）— 锚点少于 2 个时使用</label>
+    <h2>3 · 少于三个锚点时的预览</h2>
+    <label>S（社区像素 / NGUI 单位）— 仅供 1–2 个锚点时预览</label>
     <input type="number" id="sInput" value="8.61" step="0.01">
     <div id="sFit" class="hint" style="color:var(--dim);margin-top:4px"></div>
   </div>
@@ -81,6 +81,9 @@
 
   <div class="box">
     <h2>5 · calibrations.json 片段</h2>
+    <div class="hint" style="color:var(--dim);margin-bottom:6px">
+      只导出黄色手动锚点的原始像素坐标；绿色圆圈仅用于显示拟合预测，不会写入 JSON。
+    </div>
     <textarea id="json" readonly></textarea>
     <div style="margin-top:6px;display:flex;gap:6px">
       <button class="pri" id="copyBtn">复制 JSON</button>
@@ -195,6 +198,20 @@ function fitWorldToNgui(pts) {
   return { u: solve3(N, bu), v: solve3(N, bv) };
 }
 
+// Exact runtime model from CalibrationStore.cs:
+// mapX = a*worldX + b*worldZ + c; mapY = d*worldX + e*worldZ + f.
+function fitWorldToMap(anchors) {
+  const N = [[0,0,0],[0,0,0],[0,0,0]], bx = [0,0,0], by = [0,0,0];
+  for (const p of anchors) {
+    const r = [p.worldX, p.worldZ, 1];
+    for (let i = 0; i < 3; i++) {
+      bx[i] += r[i] * p.px; by[i] += r[i] * p.py;
+      for (let j = 0; j < 3; j++) N[i][j] += r[i] * r[j];
+    }
+  }
+  return { x: solve3(N, bx), y: solve3(N, by) };
+}
+
 // ---------------- core ----------------
 function compute() {
   const pts = state.points;
@@ -253,12 +270,27 @@ function compute() {
   }
   const S = Math.hypot(aRe, aIm);
 
-  const out = pts.map(p => {
+  let model = "similarity";
+  let out = pts.map(p => {
     const u = fit.u[0]*p.worldX + fit.u[1]*p.worldZ + fit.u[2];
     const v = fit.v[0]*p.worldX + fit.v[1]*p.worldZ + fit.v[2];
     const zx = u, zy = -v;
     return { ...p, u, v, mx: aRe*zx - aIm*zy + tx, my: aRe*zy + aIm*zx + ty };
   });
+
+  // With three or more manual anchors, preview the same affine projection used by the MOD.
+  // The NGUI similarity above remains only as a fallback for one or two anchors.
+  if (A.length >= 3) {
+    const affine = fitWorldToMap(A);
+    if (affine.x && affine.y) {
+      model = "affine";
+      out = pts.map(p => ({
+        ...p,
+        mx: affine.x[0]*p.worldX + affine.x[1]*p.worldZ + affine.x[2],
+        my: affine.y[0]*p.worldX + affine.y[1]*p.worldZ + affine.y[2]
+      }));
+    }
+  }
 
   const anchorErrors = A.map(a => {
     const p = out.find(o => o.id === a.id);
@@ -284,7 +316,7 @@ function compute() {
     scaleY = Math.sqrt(Math.max(1e-12, tr/2 - disc));
     aniso = scaleX / scaleY;
   }
-  return { fit, S, theta, tx, ty, fitted, maxRes, pts: out, anchorErrors, aniso, scaleX, scaleY };
+  return { fit, S, theta, tx, ty, fitted, model, maxRes, pts: out, anchorErrors, aniso, scaleX, scaleY };
 }
 
 // ---------------- render ----------------
@@ -323,18 +355,20 @@ function renderStats(r) {
   if (!r || !r.pts.length) { el.innerHTML = '<span style="color:var(--dim)">先点一个锚点</span>'; sf.textContent = ""; return; }
   const rows = [];
   rows.push(["F9 数据一致性（world→NGUI 残差）", r.maxRes.toExponential(2) + " NGUI"]);
-  rows.push(["S", r.S.toFixed(4) + (r.fitted ? "（已拟合）" : "（手动）")]);
-  const th = ((r.theta + 180) % 360 + 360) % 360 - 180;
-  const thCls = Math.abs(th) < 0.5 ? "ok" : (Math.abs(th) < 3 ? "" : "warn");
-  rows.push(["相对原版图的旋转",
-             `<span class="${thCls}">${th.toFixed(2)}°</span>` +
-             (Math.abs(th) < 0.5 ? "（无旋转）" : (Math.abs(th) > 5 ? "（这张图是转过的！）" : ""))]);
-  rows.push(["平移 tx, ty", r.tx.toFixed(1) + ", " + r.ty.toFixed(1)]);
+  rows.push(["绿色预览模型", r.model === "affine" ? "运行时仿射（与 MOD 一致）" : "NGUI 等比回退"]);
+  if (r.model !== "affine") {
+    rows.push(["S", r.S.toFixed(4) + (r.fitted ? "（已拟合）" : "（手动）")]);
+    const th = ((r.theta + 180) % 360 + 360) % 360 - 180;
+    const thCls = Math.abs(th) < 0.5 ? "ok" : (Math.abs(th) < 3 ? "" : "warn");
+    rows.push(["相对原版图的旋转", `<span class="${thCls}">${th.toFixed(2)}°</span>`]);
+    rows.push(["平移 tx, ty", r.tx.toFixed(1) + ", " + r.ty.toFixed(1)]);
+  }
   if (r.aniso) rows.push(["各向异性", r.aniso.toFixed(4) + " (" + ((r.aniso-1)*100).toFixed(2) + "%)"]);
   if (r.scaleX) rows.push(["px / 世界单位", r.scaleX.toFixed(3) + " / " + r.scaleY.toFixed(3)]);
   el.innerHTML = rows.map(([k,v]) => `<div class="stat"><span>${k}</span><b>${v}</b></div>`).join("");
   const worst = r.anchorErrors.length ? Math.max(...r.anchorErrors.map(e => e.err)) : null;
-  sf.innerHTML = (r.fitted ? "" : "锚点少于 2 个，S 用上面的手动值。<br>") +
+  sf.innerHTML = (r.model === "affine" ? "绿色圆圈现在与 MOD 使用同一套仿射算法。<br>" :
+      "锚点少于 3 个，绿色圆圈仅为等比预览。<br>") +
     (worst === null ? "" :
       `锚点最大误差 <b class="${worst < 20 ? 'ok' : (worst < 45 ? '' : 'warn')}">${worst.toFixed(1)} px</b>` +
       `（每行误差见上表；>45px 建议重新点）`);
@@ -343,11 +377,14 @@ function renderStats(r) {
 
 function renderJson(r) {
   const ta = document.getElementById("json");
-  if (!r || !r.pts.length) { ta.value = ""; return; }
-  const pts = r.pts.map(p => ({
+  if (!r || !state.anchors.size) { ta.value = ""; return; }
+  const pts = r.pts.filter(p => state.anchors.has(p.id)).map(p => {
+    const anchor = state.anchors.get(p.id);
+    return {
     worldX: +p.worldX.toFixed(3), worldZ: +p.worldZ.toFixed(3),
-    mapX: +p.mx.toFixed(1), mapY: +p.my.toFixed(1), label: ""
-  }));
+    mapX: +anchor.px.toFixed(1), mapY: +anchor.py.toFixed(1), label: ""
+    };
+  });
   ta.value = JSON.stringify({ imageWidth: state.img ? state.img.width : 0,
                               imageHeight: state.img ? state.img.height : 0,
                               points: pts }, null, 2);

@@ -163,6 +163,41 @@
       ]
     },
     {
+      "mapId": "desolation_point",
+      "imageWidth": 2779,
+      "imageHeight": 2249,
+      "points": [
+        {
+          "worldX": 122.113,
+          "worldZ": 1028.036,
+          "mapX": 231.5,
+          "mapY": 1254.0,
+          "label": "受阻的高速公路路障"
+        },
+        {
+          "worldX": 393.925,
+          "worldZ": 1052.118,
+          "mapX": 734.8,
+          "mapY": 1227.9,
+          "label": "石制教堂西南侧路口"
+        },
+        {
+          "worldX": 773.318,
+          "worldZ": 1025.38,
+          "mapX": 1435.6,
+          "mapY": 1278.5,
+          "label": "马特的卡车附近铁路交叉点"
+        },
+        {
+          "worldX": 1005.359,
+          "worldZ": 1584.465,
+          "mapX": 1846.0,
+          "mapY": 253.5,
+          "label": "断桥南端"
+        }
+      ]
+    },
+    {
       "mapId": "forlorn_muskeg",
       "imageWidth": 4530,
       "imageHeight": 4589,
@@ -238,25 +273,39 @@
       "imageHeight": 4539,
       "points": [
         {
-          "worldX": 1020.657,
-          "worldZ": 451.905,
-          "mapX": 2664.7,
-          "mapY": 2919.5,
-          "label": "营地办公室"
+          "worldX": 38.557,
+          "worldZ": 28.382,
+          "mapX": 557.4,
+          "mapY": 3874.9,
+          "label": "捕兽者之家正门"
         },
         {
-          "worldX": 1308.289,
-          "worldZ": 288.732,
-          "mapX": 3285.0,
-          "mapY": 3271.4,
-          "label": "湖上冰钓小屋"
+          "worldX": 765.217,
+          "worldZ": -144.203,
+          "mapX": 2140.9,
+          "mapY": 4182.3,
+          "label": "南侧铁路隧道"
         },
         {
-          "worldX": 38.373,
-          "worldZ": 28.564,
-          "mapX": 546.3,
-          "mapY": 3832.5,
-          "label": "捕兽者之家"
+          "worldX": 1676.326,
+          "worldZ": 1383.906,
+          "mapX": 4134.7,
+          "mapY": 921.7,
+          "label": "卡特水电大坝主入口"
+        },
+        {
+          "worldX": 789.3,
+          "worldZ": 964.594,
+          "mapX": 2203.7,
+          "mapY": 1822.9,
+          "label": "林地瞭望台塔基"
+        },
+        {
+          "worldX": 450.777,
+          "worldZ": 1004.548,
+          "mapX": 1389.8,
+          "mapY": 1701.3,
+          "label": "西北瞭望台塔基"
         }
       ]
     },
