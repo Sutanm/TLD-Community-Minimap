@@ -106,7 +106,7 @@
       "source": "08 山间小镇.jpg",
       "output": "mountain_town.jpg",
       "width": 4899,
-      "height": 4198,
+      "height": 5745,
       "sha256": "bda1e6731f738b6716e7332d8aa3cf9011835e3ee436a49a08dce3be2b8b96d7",
       "crop": [
         265,
@@ -228,6 +228,240 @@
       "sha256": "af92fd6e802ab700a9c607648588416dcc0442f5583b65d3cd38ac2fd4dbc5a7"
     },
     {
+      "kind": "interior",
+      "source": "02 沿海公路.jpg",
+      "output": "interior_coastal_mine_lower.jpg",
+      "width": 4944,
+      "height": 6028,
+      "sha256": "dfa15f2e1ba2637198ab6c7c7e6a5b49688b0f58b628cbeafadac96956acbd2a",
+      "crop": [720, 3140, 2040, 4610]
+    },
+    {
+      "kind": "interior",
+      "source": "03 怡人山谷.jpg",
+      "output": "interior_pleasant_valley_cave.jpg",
+      "width": 5301,
+      "height": 6069,
+      "sha256": "4bf263a93919a921ff96d1696c21de19f85d9b7e581293315cbaf4299094af5c",
+      "crop": [4400, 80, 5250, 1450]
+    },
+    {
+      "kind": "interior",
+      "source": "04 荒芜据点.jpg",
+      "output": "interior_desolation_mine.jpg",
+      "width": 3261,
+      "height": 3966,
+      "sha256": "6e07fc122c6801fb6c7663d4db334d4d284188c394d054fd40e72a2eb6d4c16c",
+      "crop": [90, 2586, 1606, 3262]
+    },
+    {
+      "kind": "interior",
+      "source": "04 荒芜据点.jpg",
+      "output": "interior_desolation_cave.jpg",
+      "width": 3261,
+      "height": 3966,
+      "sha256": "6e07fc122c6801fb6c7663d4db334d4d284188c394d054fd40e72a2eb6d4c16c",
+      "crop": [1680, 2490, 3090, 3150]
+    },
+    {
+      "kind": "interior",
+      "source": "05 林狼雪岭.jpg",
+      "output": "interior_timberwolf_cave_upper.jpg",
+      "width": 7090,
+      "height": 5690,
+      "sha256": "ab8d96f8a0edea1c9195f02e3a7268f3d31703ca4039be52c37a5c60596bd301",
+      "crop": [4660, 480, 6990, 1940]
+    },
+    {
+      "kind": "interior",
+      "source": "05 林狼雪岭.jpg",
+      "output": "interior_timberwolf_cave_lower.jpg",
+      "width": 7090,
+      "height": 5690,
+      "sha256": "ab8d96f8a0edea1c9195f02e3a7268f3d31703ca4039be52c37a5c60596bd301",
+      "crop": [4660, 2740, 6990, 4140]
+    },
+    {
+      "kind": "interior",
+      "source": "06 孤寂沼地.jpg",
+      "output": "interior_forlorn_cave.jpg",
+      "width": 6163,
+      "height": 6455,
+      "sha256": "82ee8e38e7c74a7f7b80692f972769db334353149940be46b07bc00031965991",
+      "crop": [4880, 5040, 6080, 6400]
+    },
+    {
+      "kind": "interior",
+      "source": "08 山间小镇.jpg",
+      "output": "interior_mountain_town_cave.jpg",
+      "width": 4899,
+      "height": 5745,
+      "sha256": "bda1e6731f738b6716e7332d8aa3cf9011835e3ee436a49a08dce3be2b8b96d7",
+      "crop": [3784, 207, 4625, 1738]
+    },
+    {
+      "kind": "interior",
+      "source": "09 寂静河谷.jpg",
+      "output": "interior_hrv_ice_cave_north.jpg",
+      "width": 7817,
+      "height": 6129,
+      "sha256": "51714cc7f582925e2f34abf5d9901b832c15d0b707378c2244d43b453d9bfae0",
+      "crop": [5630, 110, 7663, 3067]
+    },
+    {
+      "kind": "interior",
+      "source": "09 寂静河谷.jpg",
+      "output": "interior_hrv_ice_cave_south.jpg",
+      "width": 7817,
+      "height": 6129,
+      "sha256": "51714cc7f582925e2f34abf5d9901b832c15d0b707378c2244d43b453d9bfae0",
+      "crop": [5230, 2820, 7470, 6030]
+    },
+    {
+      "kind": "interior",
+      "source": "11 灰烬峡谷.jpg",
+      "output": "interior_ash_gold_mine.jpg",
+      "width": 7136,
+      "height": 5736,
+      "sha256": "32606b794223abc45e82c9d53001fb8379a5a6538c010ef8d5bb734bc7bd58e1",
+      "crop": [4720, 470, 6990, 1980]
+    },
+    {
+      "kind": "interior",
+      "source": "11 灰烬峡谷.jpg",
+      "output": "interior_ash_local_cave.jpg",
+      "width": 7136,
+      "height": 5736,
+      "sha256": "32606b794223abc45e82c9d53001fb8379a5a6538c010ef8d5bb734bc7bd58e1",
+      "crop": [5000, 2580, 7030, 4490]
+    },
+    {
+      "kind": "interior",
+      "source": "12 黑岩地区.jpg",
+      "output": "interior_blackrock_prison.jpg",
+      "width": 7588,
+      "height": 5876,
+      "sha256": "df48e6c49f13ae1b465d24f537da48c60bd9486f31e1ef1c819a217beda7f482",
+      "crop": [4950, 100, 7510, 1500]
+    },
+    {
+      "kind": "interior",
+      "source": "12 黑岩地区.jpg",
+      "output": "interior_blackrock_prison_grounds.jpg",
+      "width": 7588,
+      "height": 5876,
+      "sha256": "df48e6c49f13ae1b465d24f537da48c60bd9486f31e1ef1c819a217beda7f482",
+      "crop": [4950, 1540, 7510, 3210]
+    },
+    {
+      "kind": "interior",
+      "source": "12 黑岩地区.jpg",
+      "output": "interior_blackrock_steam_tunnels.jpg",
+      "width": 7588,
+      "height": 5876,
+      "sha256": "df48e6c49f13ae1b465d24f537da48c60bd9486f31e1ef1c819a217beda7f482",
+      "crop": [4160, 4560, 5940, 5820]
+    },
+    {
+      "kind": "interior",
+      "source": "12 黑岩地区.jpg",
+      "output": "interior_blackrock_mine.png",
+      "width": 7588,
+      "height": 5876,
+      "sha256": "df48e6c49f13ae1b465d24f537da48c60bd9486f31e1ef1c819a217beda7f482",
+      "crop": [4985, 3414, 7505, 5781]
+    },
+    {
+      "kind": "interior",
+      "source": "DLC2 污染区.jpg",
+      "output": "interior_contamination_mine.jpg",
+      "width": 7749,
+      "height": 7575,
+      "sha256": "4e5c9dffa600da3904c78667f32bdf1085874a02ccee97a7e2ca894d3c09c08b",
+      "crop": [4860, 80, 7680, 4490]
+    },
+    {
+      "kind": "interior",
+      "source": "DLC2 污染区.jpg",
+      "output": "interior_concentrator_complex.jpg",
+      "width": 7749,
+      "height": 7575,
+      "sha256": "4e5c9dffa600da3904c78667f32bdf1085874a02ccee97a7e2ca894d3c09c08b",
+      "crop": [250, 4500, 4790, 6150]
+    },
+    {
+      "kind": "interior",
+      "source": "DLC3 破碎山道.jpg",
+      "output": "interior_sundered_mine.jpg",
+      "width": 7715,
+      "height": 5734,
+      "sha256": "0d25e35cbca7af30b542fe024e034ffd9c4bd8c7afaedbccbeddc8695447b32a",
+      "crop": [4700, 80, 7580, 1640]
+    },
+    {
+      "kind": "interior",
+      "source": "DLC3 破碎山道.jpg",
+      "output": "interior_sundered_cave.jpg",
+      "width": 7715,
+      "height": 5734,
+      "sha256": "0d25e35cbca7af30b542fe024e034ffd9c4bd8c7afaedbccbeddc8695447b32a",
+      "crop": [4680, 1700, 7580, 4580]
+    },
+    {
+      "kind": "interior",
+      "source": "连接图1-3 蜿蜒河流-卡特大坝及其周边.jpg",
+      "output": "interior_carter_dam_lower.jpg",
+      "width": 4884,
+      "height": 4544,
+      "sha256": "41961855b144380fe695d500fc6f9d869df56c7b42783460dd1fc044871c4516",
+      "crop": [40, 70, 2410, 1210]
+    },
+    {
+      "kind": "interior",
+      "source": "连接图1-3 蜿蜒河流-卡特大坝及其周边.jpg",
+      "output": "interior_carter_dam_upper.jpg",
+      "width": 4884,
+      "height": 4544,
+      "sha256": "41961855b144380fe695d500fc6f9d869df56c7b42783460dd1fc044871c4516",
+      "crop": [40, 1240, 2410, 3400]
+    },
+    {
+      "kind": "interior",
+      "source": "连接图1-3 蜿蜒河流-卡特大坝及其周边.jpg",
+      "output": "interior_carter_cave.jpg",
+      "width": 4884,
+      "height": 4544,
+      "sha256": "41961855b144380fe695d500fc6f9d869df56c7b42783460dd1fc044871c4516",
+      "crop": [2490, 70, 4760, 1210]
+    },
+    {
+      "kind": "interior",
+      "source": "连接图2-4 公路废墟-古老小岛连接处.jpg",
+      "output": "interior_coal_mine_no3.jpg",
+      "width": 4017,
+      "height": 3448,
+      "sha256": "bdbb6fd9f51f70c4e4d83ccaaebf5d5a3f30ca8c7f98b10b8720ac57d512bd4d",
+      "crop": [2120, 2380, 3893, 3355]
+    },
+    {
+      "kind": "interior",
+      "source": "连接图3-12 守山人山隘 南侧&北侧.jpg",
+      "output": "interior_keepers_pass_cave.jpg",
+      "width": 6306,
+      "height": 4226,
+      "sha256": "c573ed80b784f8f26888423b66aa97df9d637afebdc97314ee9243eede3e40c7",
+      "crop": [4250, 2870, 6200, 4140]
+    },
+    {
+      "kind": "interior",
+      "source": "连接图7-DLC0 远境支路.jpg",
+      "output": "interior_railway_worker_tunnel.jpg",
+      "width": 7738,
+      "height": 3847,
+      "sha256": "32a065131ca75e336f09a6069525ca3440b5df97633c15dd5e890ef775f12801",
+      "crop": [5320, 2330, 7660, 3720]
+    },
+    {
       "kind": "transition",
       "source": "连接图1-2 深谷-乌鸦瀑布铁路.jpg",
       "output": "ravine.jpg",
@@ -247,7 +481,13 @@
       "output": "winding_river_dam.jpg",
       "width": 4884,
       "height": 4544,
-      "sha256": "41961855b144380fe695d500fc6f9d869df56c7b42783460dd1fc044871c4516"
+      "sha256": "41961855b144380fe695d500fc6f9d869df56c7b42783460dd1fc044871c4516",
+      "crop": [
+        2745,
+        1548,
+        4608,
+        3411
+      ]
     },
     {
       "kind": "transition",
@@ -255,19 +495,39 @@
       "output": "crumbling_highway.jpg",
       "width": 4017,
       "height": 3448,
-      "sha256": "bdbb6fd9f51f70c4e4d83ccaaebf5d5a3f30ca8c7f98b10b8720ac57d512bd4d"
+      "sha256": "bdbb6fd9f51f70c4e4d83ccaaebf5d5a3f30ca8c7f98b10b8720ac57d512bd4d",
+      "crop": [
+        1406,
+        216,
+        3737,
+        2254
+      ]
     },
     {
       "kind": "transition",
       "source": "连接图3-12 守山人山隘 南侧&北侧.jpg",
-      "output": "keepers_pass.jpg",
+      "output": "keepers_pass_north.jpg",
       "width": 6306,
-      "height": 2090,
+      "height": 4226,
       "sha256": "c573ed80b784f8f26888423b66aa97df9d637afebdc97314ee9243eede3e40c7",
       "crop": [
-        522,
-        397,
-        5802,
+        528,
+        403,
+        3082,
+        2487
+      ]
+    },
+    {
+      "kind": "transition",
+      "source": "连接图3-12 守山人山隘 南侧&北侧.jpg",
+      "output": "keepers_pass_south.jpg",
+      "width": 6306,
+      "height": 4226,
+      "sha256": "c573ed80b784f8f26888423b66aa97df9d637afebdc97314ee9243eede3e40c7",
+      "crop": [
+        4406,
+        403,
+        5796,
         2487
       ]
     },

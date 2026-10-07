@@ -1,101 +1,76 @@
-# 社区HUD地图
+# 社区 HUD 地图
 
-A MelonLoader mod for The Long Dark that replaces the in-game map with community-made
-region maps, shown either as a corner minimap or as a full-screen map — and that draws
-the game's **complete** marker set on top of either one.
+一个面向《漫漫长夜》的 MelonLoader 模组：在角落小地图或可缩放的全屏地图中显示社区地图、
+原版制图底图、玩家位置以及游戏登记的地图标记。
 
-Targets **The Long Dark 2.55 / Unity 6**, MelonLoader 0.7.2, ModSettings 2.2.5.
+当前目标环境：**The Long Dark 2.55 / Unity 6**、MelonLoader 0.7.2、ModSettings 2.2.5。
 
-## What it does
+## 主要功能
 
-- **Two independent map layers.** The corner minimap and the full-screen map each choose
-  their own source: the community artwork, or the game's own map. So you can keep the
-  precise vanilla map in the corner and the community map on Tab, or any other pairing.
-- **All the markers, not a fraction of them.** Markers are read from the game's own
-  registry (`MapDetailManager.s_MapDetails`): **802** of them in Mountain Town, against
-  the **162** the game actually draws. They are drawn on the community map too, which the
-  game itself never does.
-- **The game's five marker categories**, filterable individually: resources, structures,
-  corpses, rock caches and spray-paint marks.
-- **Place names**, read from the game's own map data and localised through its own
-  localisation lookup.
-- **Hover names.** Rest the pointer on an icon to see what it is.
-- **Capture the real base map.** The game hands mods a 1024×1024 texture while its own
-  map panel draws at 2048×2048. Press `P` on the map to capture the full-resolution
-  image; it is saved and loaded automatically from then on, per region.
-- **Zoom and pan** on the full-screen map, and a settable HUD position and size for the
-  corner map.
+- 小地图与全屏地图可分别选择“自动 / 社区地图 / 原版制图”图源。
+- 可接管游戏自己的地图键；没有可用地图时会给出明确提示，并可配置是否允许图源回退。
+- 全屏地图支持滚轮平滑缩放、左键拖动、悬停名称和独立的玩家指针开关。
+- 小地图可选屏幕四角或自定义位置，并可选择是否始终覆盖原版 HUD。
+- 地图标记直接读取游戏登记数据，按资源、结构、尸骸、岩石贮藏处和喷漆标记筛选。
+- 随机资源组、已采集资源、可再生枝干和大型动物尸骸会跟随当前场景状态更新。
+- 可捕获游戏面板的 2048 原版底图；已完成 22 个有效室外场景的捕获。
+- 已完成 22 张室外社区地图的粗校准；洞穴、矿井和大型室内图已经完成场景配对，等待粗校准。
 
-## Requirements
+## 安装
 
-- The Long Dark
-- [MelonLoader](https://github.com/LavaGang/MelonLoader) 0.7.2
-- [ModSettings](https://github.com/DigitalzombieTLD/ModSettings) 2.2.5
+1. 安装 MelonLoader 与 ModSettings。
+2. 将 `CommunityMinimap.dll` 放入游戏的 `Mods` 目录。
+3. 创建 `Mods/CommunityMinimap/maps`。
+4. 按 [MAPS.md](MAPS.md) 中的内部文件名放入地图图片。
 
-## Installation
+地图图片不随源码仓库分发。重新发布地图素材前请取得原制图者许可并保留署名。
 
-1. Install MelonLoader and ModSettings.
-2. Copy `CommunityMinimap.dll` into the game's `Mods` directory.
-3. Create `Mods/CommunityMinimap/maps`.
-4. Place region maps in that directory using the English internal filenames listed in
-   [MAPS.md](MAPS.md).
+## 默认操作
 
-The map images are deliberately not included in this repository. Obtain permission from
-the original cartographers before redistributing map artwork.
+所有独立按键都可在 ModSettings 中修改；游戏地图键跟随游戏自己的绑定。
 
-## Controls
-
-Every key is rebindable in ModSettings; these are the defaults.
-
-| Key | Action |
+| 操作 | 默认 |
 |---|---|
-| `M` | Open the full-screen map (while "take over the map key" is on) |
-| `Esc` | Close the full-screen map |
-| `X` | Show or hide the minimap |
-| `Tab` | Cycle the view (off by default — enable "cycle view key" first) |
-| `P` | **Capture the game's map** at full resolution |
-| `F11` | Record a calibration point |
+| 打开/关闭全屏地图 | 游戏地图键（通常为 `M`） |
+| 临时隐藏小地图 | `X` |
+| 轮换小地图 / 大地图 / 不显示 | `V` |
+| 关闭全屏地图 | `Esc` |
+| 缩放 / 平移 | 鼠标滚轮 / 左键拖动 |
+| 捕获原版地图（开发者模式） | `P` |
+| 记录校准点（开发者模式） | `F11` |
 
-Mouse wheel zooms the full-screen map and the left button pans it, while "release mouse"
-is on.
+组合键不会误触发单键视图轮换；例如 `Ctrl+V` 不会被当作按下 `V`。
 
-## A note on map sources
+## 精度说明
 
-The community maps are hand-drawn and **not** drawn to a 1:1 scale with the game's own —
-measured across five calibration points, the two axes differ by 16%. They are fitted *to*
-the vanilla map, not the other way round, so the vanilla source stays exact and the
-community source is as close as its calibration allows. If positions matter more than
-appearance, use the vanilla source.
+原版图源使用游戏自身的世界坐标换算，位置精确。社区地图是手工绘制图，不同区域可能存在
+非均匀拉伸；模组使用多点仿射拟合，只能保证地标附近达到可用精度，无法把局部绘图形变彻底消除。
+需要精确定位时请选择原版图源。
 
-## Credits
+## 文档
 
-- Community map artwork belongs to its original cartographers and is not part of this
-  repository.
-- The persistent Unity UI approach was informed by
-  [MotionTracker](https://github.com/okclm/MotionTracker), particularly its Unity 6
-  scene-lifetime handling.
-- ModSettings is maintained by DigitalzombieTLD and contributors.
+当前文档入口是 [docs/INDEX.md](docs/INDEX.md)。地图文件、场景和校准状态见：
 
-## For contributors
+- [MAPS.md](MAPS.md)：运行时地图目录
+- [docs/STATUS.md](docs/STATUS.md)：项目状态与剩余工作
+- [docs/COARSE-CALIBRATION-CHECKLIST.md](docs/COARSE-CALIBRATION-CHECKLIST.md)：下一阶段粗校准清单
+- [docs/SETTINGS.md](docs/SETTINGS.md)：设置项参考
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)：实现结构
+- [docs/PITFALLS.md](docs/PITFALLS.md)：实测陷阱与硬性纪律
 
-Internal documentation lives in [`docs/`](docs/INDEX.md):
+## 构建
 
-- [Status and remaining work](docs/STATUS.md)
-- [Architecture](docs/ARCHITECTURE.md)
-- [Pitfalls and hard rules](docs/PITFALLS.md) — read before changing anything
-- [Performance notes](docs/PERFORMANCE.md)
-- [Settings reference](docs/SETTINGS.md)
-
-## Building
-
-Install a .NET SDK capable of targeting .NET 6, launch the game once through MelonLoader
-so that its IL2CPP assemblies are generated, and install ModSettings. Then run:
+先启动一次游戏以生成 IL2CPP 程序集，并安装 ModSettings，然后执行：
 
 ```powershell
 ./build.ps1 -GameDirectory 'D:\SteamLibrary\steamapps\common\TheLongDark'
 ```
 
-When `GameDirectory` is omitted the script checks Steam's standard location under
-`Program Files (x86)`. A successful build copies the DLL into the game's `Mods`
-directory. The script refuses to install while the game is running — the process is named
-`tld`.
+构建脚本会在游戏进程 `tld` 运行时拒绝安装。成功构建后会备份旧 DLL，并把新 DLL 和运行时
+JSON 数据安装到游戏的 `Mods` 目录。
+
+## 致谢
+
+- 社区地图素材属于各自的原制图者，不属于本仓库。
+- 持久 Unity UI 的实现参考了 MotionTracker 的 Unity 6 场景生命周期处理。
+- ModSettings 由 DigitalzombieTLD 及其贡献者维护。

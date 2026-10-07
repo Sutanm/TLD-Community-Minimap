@@ -31,6 +31,7 @@ public sealed partial class ModEntry : MelonMod
     // the player recognises instead of unexpectedly landing on a completely blank HUD.
     private bool _miniMapBeforeFull;
 
+    private const float FullMapMinZoom = 0.35f;
     private float _fullMapZoom = 1f;
 
     private Vector2 _fullMapCenter = new(0.5f, 0.5f);
@@ -104,9 +105,15 @@ public sealed partial class ModEntry : MelonMod
 
     private string _calibrationPath = "";
 
+    private string _probeMapsPath = "";
+
     private DateTime _calibrationLastWriteUtc = DateTime.MinValue;
 
     private DateTime _nextCalibrationCheckUtc = DateTime.MinValue;
+
+    private DateTime _probeMapsLastWriteUtc = DateTime.MinValue;
+
+    private DateTime _nextProbeMapsCheckUtc = DateTime.MinValue;
 
     private bool _temporarilyHidden;
 
@@ -406,11 +413,16 @@ public sealed partial class ModEntry : MelonMod
         _modDirectory = Path.Combine(MelonEnvironment.ModsDirectory, "CommunityMinimap");
         _mapsDirectory = Path.Combine(_modDirectory, "maps");
         _calibrationPath = Path.Combine(_modDirectory, "calibrations.json");
+        _probeMapsPath = Path.Combine(_modDirectory, "probe-maps.json");
         Directory.CreateDirectory(_mapsDirectory);
         CalibrationStore.Load(_calibrationPath,
             message => LoggerInstance.Msg(message),
             message => LoggerInstance.Warning(message));
         _calibrationLastWriteUtc = File.GetLastWriteTimeUtc(_calibrationPath);
+        ProbeMapStore.Load(_probeMapsPath,
+            message => LoggerInstance.Msg(message),
+            message => LoggerInstance.Warning(message));
+        _probeMapsLastWriteUtc = File.GetLastWriteTimeUtc(_probeMapsPath);
         _sceneCatalogAfterUtc = DateTime.UtcNow.AddSeconds(5);
         LoggerInstance.Msg("社区HUD地图 0.7.0 initialized.");
         LoggerInstance.Msg($"Map directory: {_mapsDirectory}");
@@ -444,6 +456,7 @@ public sealed partial class ModEntry : MelonMod
         PollPrefabProbes();
         TryExportSceneCatalog();
         TryReloadCalibrations();
+        TryReloadProbeMaps();
 
         // Capture the game's own map image on demand, while it is on screen.
         //
@@ -524,12 +537,13 @@ public sealed partial class ModEntry : MelonMod
         if (DateTime.UtcNow >= _nextMarkerCleanupUtc)
         {
             _nextMarkerCleanupUtc = DateTime.UtcNow.AddSeconds(2);
-            CleanHarvestedMapMarkers();
+            ReportHarvestedMapMarkers();
         }
 
         var scene = UnitySceneManager.GetActiveScene();
         if (scene.handle != _observedSceneHandle)
             ObserveScene(scene.handle, scene.name);
+        RefreshSpatialMapVariant(scene.handle, scene.name);
 
         ProbeRandomResourceReadiness(scene.name);
         RefreshResourceMarkerAvailability();
@@ -794,11 +808,10 @@ public sealed partial class ModEntry : MelonMod
 
     private List<(bool Mini, bool Full)> BuildCycle()
     {
-        // Indoor and cave scenes intentionally have no map definition. Cycling an invisible full
-        // map there used to release the cursor with no visual explanation, which looked like an
-        // input bug. In a map-less scene the view key is simply unavailable.
+        // A genuinely map-less scene cannot enter an invisible full-map state. Developer-only
+        // indoor probes count as maps here so their independent image can be exercised normally.
         var scene = UnitySceneManager.GetActiveScene();
-        if (MapCatalog.Find(scene.name) == null)
+        if (FindRuntimeMap(scene.name) == null)
             return new List<(bool Mini, bool Full)>();
 
         (bool Mini, bool Full)[] source = _settings.CyclePreset switch
@@ -861,10 +874,12 @@ public sealed partial class ModEntry : MelonMod
     {
         float maxDimension = Mathf.Max(180f,
             Mathf.Min(Screen.width, Screen.height) * _settings.MiniMapSizePercent / 100f);
-        float aspect = GetTextureAspect();
-        Vector2 size = aspect >= 1f
-            ? new Vector2(maxDimension, maxDimension / aspect)
-            : new Vector2(maxDimension * aspect, maxDimension);
+        // This is a local navigation viewport, not a whole-sheet preview. Inheriting the source
+        // image's aspect ratio made long transition maps almost unusable: Ravine is roughly 3:1,
+        // so a nominal 24% HUD map collapsed into a very short strip. Keep the viewport square and
+        // compensate in the UV window below; that preserves the artwork's geometry without making
+        // the HUD's usable height depend on how the cartographer cropped the source sheet.
+        Vector2 size = new(maxDimension, maxDimension);
 
         Vector2 anchor;
         Vector2 offset;
@@ -921,7 +936,10 @@ public sealed partial class ModEntry : MelonMod
         // display and crops the excess, while the overview scale fits the whole sheet in the middle.
         // Keeping the texture at uv 0..1 also preserves its real aspect ratio; stretching a square
         // capture across a widescreen rectangle was the tempting but visibly wrong alternative.
-        float zoom = Mathf.Max(1f, _fullMapZoom);
+        // Let players pull back beyond the complete-sheet stop. This is especially useful for
+        // narrow cave diagrams where even a perfectly fitted sheet can feel pressed against the
+        // screen edges. Keep a non-zero floor so an accidental wheel spin cannot lose the map.
+        float zoom = Mathf.Max(FullMapMinZoom, _fullMapZoom);
         Vector2 size = new(width * zoom, height * zoom);
         Vector2 center = new(0.5f, 0.5f);
         _mapRect.anchorMin = center;

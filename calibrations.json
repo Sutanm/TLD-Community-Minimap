@@ -79,6 +79,90 @@
       ]
     },
     {
+      "mapId": "bleak_inlet",
+      "imageWidth": 4202,
+      "imageHeight": 4381,
+      "points": [
+        {
+          "worldX": -245.626,
+          "worldZ": 887.226,
+          "mapX": 1904.2,
+          "mapY": 770.1,
+          "label": "前往孤寂沼地的连接洞穴入口"
+        },
+        {
+          "worldX": 223.398,
+          "worldZ": 967.139,
+          "mapX": 2791.2,
+          "mapY": 599.4,
+          "label": "前往深谷的过图口（乌鸦瀑布铁路）"
+        },
+        {
+          "worldX": 458.006,
+          "worldZ": -96.872,
+          "mapX": 3208.8,
+          "mapY": 2554.2,
+          "label": "滨海公路桥"
+        },
+        {
+          "worldX": -430.485,
+          "worldZ": -409.883,
+          "mapX": 1590.7,
+          "mapY": 3134.0,
+          "label": "罐头厂入口岗哨"
+        },
+        {
+          "worldX": 73.53,
+          "worldZ": -917.46,
+          "mapX": 2486.0,
+          "mapY": 4033.6,
+          "label": "倒塌灯塔"
+        }
+      ]
+    },
+    {
+      "mapId": "blackrock",
+      "imageWidth": 4508,
+      "imageHeight": 4269,
+      "points": [
+        {
+          "worldX": 464.948,
+          "worldZ": 948.517,
+          "mapX": 3220.8,
+          "mapY": 184.2,
+          "label": "废弃矿井入口"
+        },
+        {
+          "worldX": 902.7,
+          "worldZ": -98.98,
+          "mapX": 4100.1,
+          "mapY": 2347.6,
+          "label": "泥瓦匠隐居处"
+        },
+        {
+          "worldX": -340.99,
+          "worldZ": -967.433,
+          "mapX": 1547.9,
+          "mapY": 4076.5,
+          "label": "前往守山人山隘北侧的过图口"
+        },
+        {
+          "worldX": -551.636,
+          "worldZ": -469.936,
+          "mapX": 1129.3,
+          "mapY": 3106.1,
+          "label": "旧变电站"
+        },
+        {
+          "worldX": -184.658,
+          "worldZ": 6.6,
+          "mapX": 1882.1,
+          "mapY": 2113.0,
+          "label": "黑岩监狱主建筑入口区域"
+        }
+      ]
+    },
+    {
       "mapId": "broken_railroad",
       "imageWidth": 4044,
       "imageHeight": 3013,
@@ -163,6 +247,48 @@
       ]
     },
     {
+      "mapId": "crumbling_highway",
+      "imageWidth": 2331,
+      "imageHeight": 2038,
+      "points": [
+        {
+          "worldX": 69.282,
+          "worldZ": 464.111,
+          "mapX": 187.6,
+          "mapY": 691.5,
+          "label": "前往沿海公路的过图口"
+        },
+        {
+          "worldX": 379.622,
+          "worldZ": 443.394,
+          "mapX": 1119.9,
+          "mapY": 749.9,
+          "label": "哈里斯废弃房屋群"
+        },
+        {
+          "worldX": 459.027,
+          "worldZ": 235.195,
+          "mapX": 1330.2,
+          "mapY": 1310.7,
+          "label": "石拱"
+        },
+        {
+          "worldX": 595.983,
+          "worldZ": 401.011,
+          "mapX": 1755.5,
+          "mapY": 915.8,
+          "label": "道路坍塌处"
+        },
+        {
+          "worldX": 653.899,
+          "worldZ": 514.309,
+          "mapX": 1905.0,
+          "mapY": 546.6,
+          "label": "三号煤矿入口"
+        }
+      ]
+    },
+    {
       "mapId": "desolation_point",
       "imageWidth": 2779,
       "imageHeight": 2249,
@@ -222,6 +348,90 @@
           "mapX": 1380.0,
           "mapY": 3833.0,
           "label": "老斯彭斯之家锻炉棚"
+        }
+      ]
+    },
+    {
+      "mapId": "keepers_pass_north",
+      "imageWidth": 2554,
+      "imageHeight": 2084,
+      "points": [
+        {
+          "worldX": 757.357,
+          "worldZ": -164.399,
+          "mapX": 786.0,
+          "mapY": 542.2,
+          "label": "护林人的隐居处"
+        },
+        {
+          "worldX": 443.831,
+          "worldZ": -148.932,
+          "mapX": 1531.0,
+          "mapY": 593.5,
+          "label": "建筑师之桥附近洞穴"
+        },
+        {
+          "worldX": 102.401,
+          "worldZ": -76.584,
+          "mapX": 2332.0,
+          "mapY": 747.8,
+          "label": "前往黑岩地区的过图口"
+        },
+        {
+          "worldX": 410.256,
+          "worldZ": -20.835,
+          "mapX": 1608.4,
+          "mapY": 856.9,
+          "label": "中部攀爬绳"
+        },
+        {
+          "worldX": 751.089,
+          "worldZ": 412.185,
+          "mapX": 797.4,
+          "mapY": 1902.6,
+          "label": "前往南侧的连接洞穴"
+        }
+      ]
+    },
+    {
+      "mapId": "keepers_pass_south",
+      "imageWidth": 1390,
+      "imageHeight": 2084,
+      "points": [
+        {
+          "worldX": 441.952,
+          "worldZ": 169.851,
+          "mapX": 359.5,
+          "mapY": 380.0,
+          "label": "前往北侧的连接洞穴"
+        },
+        {
+          "worldX": 186.47,
+          "worldZ": 205.79,
+          "mapX": 937.6,
+          "mapY": 429.9,
+          "label": "西北侧道路汽车"
+        },
+        {
+          "worldX": 231.956,
+          "worldZ": 422.067,
+          "mapX": 852.7,
+          "mapY": 971.9,
+          "label": "西侧冰钓小屋"
+        },
+        {
+          "worldX": 386.74,
+          "worldZ": 436.72,
+          "mapX": 474.1,
+          "mapY": 1030.0,
+          "label": "中部活动房"
+        },
+        {
+          "worldX": 469.275,
+          "worldZ": 751.247,
+          "mapX": 290.3,
+          "mapY": 1707.1,
+          "label": "前往怡人山谷的过图口"
         }
       ]
     },
@@ -352,6 +562,48 @@
       ]
     },
     {
+      "mapId": "ravine",
+      "imageWidth": 3207,
+      "imageHeight": 1054,
+      "points": [
+        {
+          "worldX": -1162.612,
+          "worldZ": -115.731,
+          "mapX": 168.8,
+          "mapY": 483.8,
+          "label": "前往神秘湖的过图口"
+        },
+        {
+          "worldX": -1060.37,
+          "worldZ": -267.965,
+          "mapX": 356.9,
+          "mapY": 850.4,
+          "label": "西侧高地洞穴"
+        },
+        {
+          "worldX": -472.723,
+          "worldZ": -178.531,
+          "mapX": 1701.9,
+          "mapY": 613.5,
+          "label": "深谷底部洞穴"
+        },
+        {
+          "worldX": 169.524,
+          "worldZ": -101.796,
+          "mapX": 3106.6,
+          "mapY": 414.7,
+          "label": "前往沿海公路的过图口"
+        },
+        {
+          "worldX": -635.836,
+          "worldZ": 28.991,
+          "mapX": 1330.9,
+          "mapY": 181.2,
+          "label": "铁路北侧洞穴"
+        }
+      ]
+    },
+    {
       "mapId": "timberwolf_mountain",
       "imageWidth": 4380,
       "imageHeight": 4302,
@@ -390,6 +642,384 @@
           "mapX": 908.3,
           "mapY": 385.5,
           "label": "瀑布山洞"
+        }
+      ]
+    },
+    {
+      "mapId": "far_range_branch_line",
+      "imageWidth": 7395,
+      "imageHeight": 1995,
+      "points": [
+        {
+          "worldX": 82.667,
+          "worldZ": -575.555,
+          "mapX": 7249.3,
+          "mapY": 841.1,
+          "label": "前往断开的铁路的场景入口"
+        },
+        {
+          "worldX": -171.907,
+          "worldZ": 1229.026,
+          "mapX": 343.3,
+          "mapY": 1784.2,
+          "label": "前往中转通道的场景入口"
+        },
+        {
+          "worldX": 69.342,
+          "worldZ": 861.864,
+          "mapX": 1725.6,
+          "mapY": 807.3,
+          "label": "运货车落石"
+        },
+        {
+          "worldX": 183.916,
+          "worldZ": 606.854,
+          "mapX": 2811.2,
+          "mapY": 454.1,
+          "label": "残存洞穴入口"
+        },
+        {
+          "worldX": 79.357,
+          "worldZ": 501.204,
+          "mapX": 3155.8,
+          "mapY": 777.2,
+          "label": "金属桥"
+        },
+        {
+          "worldX": -33.061,
+          "worldZ": 49.801,
+          "mapX": 4870.3,
+          "mapY": 1207.9,
+          "label": "倒塌轨道旁车厢"
+        },
+        {
+          "worldX": -139.396,
+          "worldZ": 61.914,
+          "mapX": 4881.5,
+          "mapY": 1627.3,
+          "label": "碎流瀑布"
+        }
+      ]
+    },
+    {
+      "mapId": "forsaken_airfield",
+      "imageWidth": 4294,
+      "imageHeight": 4170,
+      "points": [
+        {
+          "worldX": -737.518,
+          "worldZ": 1135.864,
+          "mapX": 1043.9,
+          "mapY": 485.5,
+          "label": "正念木屋正门"
+        },
+        {
+          "worldX": 327.6,
+          "worldZ": 1015.13,
+          "mapX": 2544.2,
+          "mapY": 650.5,
+          "label": "岛上小屋正门"
+        },
+        {
+          "worldX": 1424.191,
+          "worldZ": 157.82,
+          "mapX": 4075.2,
+          "mapY": 1850.2,
+          "label": "前往污染区和破碎山道的洞穴入口"
+        },
+        {
+          "worldX": 158.204,
+          "worldZ": -611.917,
+          "mapX": 2304.7,
+          "mapY": 2933.8,
+          "label": "机场主机库正门"
+        },
+        {
+          "worldX": 125.974,
+          "worldZ": -494.774,
+          "mapX": 2263.2,
+          "mapY": 2776.2,
+          "label": "机场航站楼正门"
+        },
+        {
+          "worldX": -1082.716,
+          "worldZ": -1061.432,
+          "mapX": 555.1,
+          "mapY": 3582.1,
+          "label": "云雾的小厨房正门"
+        },
+        {
+          "worldX": 1010.342,
+          "worldZ": -949.772,
+          "mapX": 3511.7,
+          "mapY": 3417.0,
+          "label": "杰斯蒂的棚舍入口"
+        },
+        {
+          "worldX": 518.577,
+          "worldZ": -1262.908,
+          "mapX": 2813.1,
+          "mapY": 3850.5,
+          "label": "前往中转通道的场景入口"
+        }
+      ]
+    },
+    {
+      "mapId": "transfer_pass",
+      "imageWidth": 6230,
+      "imageHeight": 5739,
+      "points": [
+        {
+          "worldX": 175.234,
+          "worldZ": -393.041,
+          "mapX": 3737.2,
+          "mapY": 5395.6,
+          "label": "前往远境支路的南侧场景入口"
+        },
+        {
+          "worldX": -430.767,
+          "worldZ": 712.955,
+          "mapX": 806.4,
+          "mapY": 204.0,
+          "label": "前往破碎山道的场景入口"
+        },
+        {
+          "worldX": 229.092,
+          "worldZ": 705.118,
+          "mapX": 4119.1,
+          "mapY": 262.2,
+          "label": "前往污染区的铁路场景入口"
+        },
+        {
+          "worldX": 134.319,
+          "worldZ": 402.314,
+          "mapX": 3536.4,
+          "mapY": 1727.2,
+          "label": "中央火车站小屋正门"
+        },
+        {
+          "worldX": -238.102,
+          "worldZ": 143.589,
+          "mapX": 1656.8,
+          "mapY": 3002.0,
+          "label": "前往废弃机场的场景入口"
+        },
+        {
+          "worldX": 309.913,
+          "worldZ": 308.849,
+          "mapX": 4429.3,
+          "mapY": 2169.3,
+          "label": "调度员的休息所入口"
+        },
+        {
+          "worldX": -104.995,
+          "worldZ": -23.911,
+          "mapX": 2524.2,
+          "mapY": 3799.3,
+          "label": "进水洞穴入口"
+        },
+        {
+          "worldX": 139.585,
+          "worldZ": -150.491,
+          "mapX": 3567.8,
+          "mapY": 4365.3,
+          "label": "失序平板车中央"
+        }
+      ]
+    },
+    {
+      "mapId": "sundered_pass",
+      "imageWidth": 4328,
+      "imageHeight": 4327,
+      "points": [
+        {
+          "worldX": 156.264,
+          "worldZ": -1136.745,
+          "mapX": 1914.7,
+          "mapY": 405.6,
+          "label": "偶像捷径"
+        },
+        {
+          "worldX": 568.521,
+          "worldZ": -570.956,
+          "mapX": 1257.5,
+          "mapY": 1219.3,
+          "label": "气象站正门"
+        },
+        {
+          "worldX": -338.474,
+          "worldZ": -1001.015,
+          "mapX": 2604.6,
+          "mapY": 586.8,
+          "label": "最后的避难所入口"
+        },
+        {
+          "worldX": 28.665,
+          "worldZ": -697.084,
+          "mapX": 2042.0,
+          "mapY": 987.3,
+          "label": "拆钉者庇护所入口"
+        },
+        {
+          "worldX": -188.156,
+          "worldZ": -348.799,
+          "mapX": 2383.3,
+          "mapY": 1542.1,
+          "label": "地下室入口"
+        },
+        {
+          "worldX": -1282.416,
+          "worldZ": -455.512,
+          "mapX": 3974.6,
+          "mapY": 1370.4,
+          "label": "流浪者洞穴入口"
+        },
+        {
+          "worldX": -816.064,
+          "worldZ": 528.399,
+          "mapX": 3306.9,
+          "mapY": 2839.1,
+          "label": "东南远端棚屋入口"
+        },
+        {
+          "worldX": 976.851,
+          "worldZ": 493.149,
+          "mapX": 645.4,
+          "mapY": 2740.3,
+          "label": "前往废弃机场和污染区的洞穴系统入口"
+        },
+        {
+          "worldX": 497.742,
+          "worldZ": 651.756,
+          "mapX": 1365.9,
+          "mapY": 3032.4,
+          "label": "最后的孤屋正门"
+        },
+        {
+          "worldX": 401.792,
+          "worldZ": 1423.192,
+          "mapX": 1499.9,
+          "mapY": 4141.5,
+          "label": "前往中转通道的场景入口"
+        }
+      ]
+    },
+    {
+      "mapId": "zone_of_contamination",
+      "imageWidth": 4410,
+      "imageHeight": 4200,
+      "points": [
+        {
+          "worldX": -678.601,
+          "worldZ": 649.091,
+          "mapX": 786.9,
+          "mapY": 301.9,
+          "label": "旧雷格建筑入口"
+        },
+        {
+          "worldX": 577.584,
+          "worldZ": 488.688,
+          "mapX": 3482.1,
+          "mapY": 622.7,
+          "label": "遗忘勘探地"
+        },
+        {
+          "worldX": 663.915,
+          "worldZ": 530.127,
+          "mapX": 3668.6,
+          "mapY": 534.2,
+          "label": "忧伤居住区建筑入口"
+        },
+        {
+          "worldX": -202.788,
+          "worldZ": 346.847,
+          "mapX": 1811.8,
+          "mapY": 897.0,
+          "label": "集中器主入口"
+        },
+        {
+          "worldX": -402.211,
+          "worldZ": 90.318,
+          "mapX": 1409.4,
+          "mapY": 1450.5,
+          "label": "朗斯顿矿场一层入口A"
+        },
+        {
+          "worldX": 445.461,
+          "worldZ": 170.099,
+          "mapX": 3213.9,
+          "mapY": 1290.8,
+          "label": "空闲营地主要建筑入口"
+        },
+        {
+          "worldX": 750.112,
+          "worldZ": -52.365,
+          "mapX": 3853.4,
+          "mapY": 1794.5,
+          "label": "老板的住所正门"
+        },
+        {
+          "worldX": -341.702,
+          "worldZ": -454.358,
+          "mapX": 1529.6,
+          "mapY": 2611.2,
+          "label": "活动房入口"
+        },
+        {
+          "worldX": -928.508,
+          "worldZ": -569.611,
+          "mapX": 301.1,
+          "mapY": 2794.3,
+          "label": "烟鬼洞穴入口"
+        },
+        {
+          "worldX": -176.881,
+          "worldZ": -1035.654,
+          "mapX": 1867.3,
+          "mapY": 3783.1,
+          "label": "前往废弃机场和破碎山道的洞穴系统入口"
+        },
+        {
+          "worldX": 898.429,
+          "worldZ": -947.807,
+          "mapX": 4129.4,
+          "mapY": 3650.9,
+          "label": "前往中转通道的场景入口"
+        }
+      ]
+    },
+    {
+      "mapId": "winding_river",
+      "imageWidth": 1863,
+      "imageHeight": 1863,
+      "points": [
+        {
+          "worldX": 369.235,
+          "worldZ": 621.523,
+          "mapX": 212.7,
+          "mapY": 529.6,
+          "label": "西北侧加温山洞"
+        },
+        {
+          "worldX": 772.613,
+          "worldZ": 661.783,
+          "mapX": 1487.9,
+          "mapY": 392.9,
+          "label": "通往怡人山谷的洞穴"
+        },
+        {
+          "worldX": 507.643,
+          "worldZ": 236.8,
+          "mapX": 650.6,
+          "mapY": 1762.0,
+          "label": "前往大坝下层的西侧入口"
+        },
+        {
+          "worldX": 606.87,
+          "worldZ": 269.431,
+          "mapX": 960.3,
+          "mapY": 1672.3,
+          "label": "大坝下层东侧出口区域"
         }
       ]
     }

@@ -51,7 +51,7 @@ public sealed partial class ModEntry : MelonMod
     private MapLayer ActiveLayer => _layers[ActiveLayerId];
 
 
-    private void ObserveScene(int handle, string sceneName)
+    private void ObserveScene(int handle, string sceneName, bool forceReload = false)
     {
         bool sceneChanged = !string.Equals(_observedSceneName, sceneName, StringComparison.Ordinal);
         _observedSceneHandle = handle;
@@ -61,7 +61,7 @@ public sealed partial class ModEntry : MelonMod
         // Additive scene loads (TracksRegion_WILDLIFE, _SANDBOX, ...) re-fire scene
         // initialisation for the same region. Rebuilding the map there would drop the loaded
         // texture and markers, so only a genuine scene change resets state.
-        if (!sceneChanged && ActiveLayer.Definition != null)
+        if (!forceReload && !sceneChanged && ActiveLayer.Definition != null)
             return;
 
         ClearVanillaIcons();
@@ -80,7 +80,7 @@ public sealed partial class ModEntry : MelonMod
         _resourceFilterPending = false;
         _nextResourceMarkerRefreshUtc = DateTime.MinValue;
 
-        MapDefinition definition = MapCatalog.Find(sceneName);
+        MapDefinition definition = FindRuntimeMap(sceneName);
         for (int i = 0; i < _layers.Length; i++)
         {
             MapLayer layer = _layers[i];
@@ -129,6 +129,52 @@ public sealed partial class ModEntry : MelonMod
         LoggerInstance.Msg(
             $"Active scene mapped: {sceneName} -> {definition.DisplayName} " +
             $"({definition.FileName}, calibrated={definition.IsCalibrated}).");
+        if (definition.ProbeOnly)
+        {
+            LoggerInstance.Msg(
+                $"Interior map probe active: scene={sceneName}, player transform will be " +
+                "recorded with F11; the uncalibrated probe intentionally has no pointer.");
+            ShowStatusToast($"洞穴地图探针已识别：{sceneName}（按 F11 记录）", 4f);
+        }
+    }
+
+
+    private MapDefinition FindRuntimeMap(string sceneName)
+    {
+        MapDefinition definition = MapCatalog.Find(sceneName);
+        if (definition != null || _settings == null || !_settings.DeveloperMode)
+            return definition;
+
+        Transform player = GameManager.GetPlayerTransform();
+        if (!ReferenceEquals(player, null))
+        {
+            MapDefinition spatial = MapCatalog.FindSpatialVariant(sceneName, player.position.y);
+            if (spatial != null)
+                return spatial;
+        }
+        return ProbeMapStore.Find(sceneName) ?? MapCatalog.Find(sceneName, true);
+    }
+
+
+    private void RefreshSpatialMapVariant(int sceneHandle, string sceneName)
+    {
+        if (_settings == null || !_settings.DeveloperMode)
+            return;
+
+        Transform player = GameManager.GetPlayerTransform();
+        if (ReferenceEquals(player, null))
+            return;
+
+        MapDefinition desired = MapCatalog.FindSpatialVariant(sceneName, player.position.y);
+        MapDefinition current = _layers[LayerMini].Definition;
+        if (desired == null || current == null ||
+            string.Equals(desired.Id, current.Id, StringComparison.OrdinalIgnoreCase))
+            return;
+
+        LoggerInstance.Msg(
+            $"Spatial map variant changed: {sceneName} Y={player.position.y:F3} -> " +
+            $"{desired.DisplayName} ({desired.FileName}).");
+        ObserveScene(sceneHandle, sceneName, true);
     }
 
 
@@ -144,6 +190,8 @@ public sealed partial class ModEntry : MelonMod
     private bool LayerWantsCommunity(MapLayer layer)
     {
         bool communityAvailable = CommunityMapExists(layer);
+        if (layer.Definition?.ProbeOnly == true)
+            return communityAvailable;
         if (layer.Source == 1)
             return _settings.DisableSourceFallback || communityAvailable;
         if (layer.Source == 2)
@@ -376,6 +424,12 @@ public sealed partial class ModEntry : MelonMod
     private string DescribeView() => FullMapVisible ? "FullMap"
         : MiniMapVisible ? "MiniMap" : "None";
 
+    private bool FullMapPrefersOverview() =>
+        _layers[LayerFull].Definition?.PreferFullMapOverview == true;
+
+    private float InitialFullMapZoom() =>
+        FullMapPrefersOverview() ? 1f : FullMapCoverZoom();
+
 
     private void ApplyViewState(bool mini, bool full)
     {
@@ -386,7 +440,7 @@ public sealed partial class ModEntry : MelonMod
             _miniMapBeforeFull = _miniMapOn;
             // Match the original map: open on the useful screen-filling/local stop. Scrolling out
             // once returns to 1.0, where the complete sheet is visible in the centre.
-            _fullMapZoom = FullMapCoverZoom();
+            _fullMapZoom = InitialFullMapZoom();
             _fullMapCenterValid = false;
         }
         if (!full && _fullMapOn)
@@ -410,7 +464,7 @@ public sealed partial class ModEntry : MelonMod
     private void CycleView()
     {
         var scene = UnitySceneManager.GetActiveScene();
-        if (MapCatalog.Find(scene.name) == null)
+        if (FindRuntimeMap(scene.name) == null)
         {
             ShowStatusToast("当前场景没有可用的 HUD 地图");
             return;

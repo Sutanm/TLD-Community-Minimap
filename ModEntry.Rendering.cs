@@ -413,12 +413,14 @@ public sealed partial class ModEntry : MelonMod
         bool hasPosition = TryPlayerToMapUv(player.position, out Vector2 uv);
         if (fullMap && !_fullMapCenterValid)
         {
-            bool followPlayer = hasPosition && _settings.ShowFullMapPlayerPointer;
+            bool preferOverview = ActiveLayer.Definition?.PreferFullMapOverview == true;
+            bool followPlayer = !preferOverview && hasPosition &&
+                                _settings.ShowFullMapPlayerPointer;
             _fullMapCenter = followPlayer ? uv : new Vector2(0.5f, 0.5f);
             // Use one predictable screen-filling scale. Near a map edge ApplyFullMapLayout clamps
             // the focus instead of magnifying until the player can sit exactly at screen centre;
             // that keeps enough surrounding geography visible to make the full map useful.
-            _fullMapZoom = FullMapCoverZoom();
+            _fullMapZoom = preferOverview ? 1f : FullMapCoverZoom();
             _fullMapCenterValid = true;
         }
 
@@ -467,11 +469,20 @@ public sealed partial class ModEntry : MelonMod
         }
         else
         {
+            // The corner viewport is square, while a source sheet may be very wide or tall. Use a
+            // rectangular UV window whose pixel aspect matches that square. `Zoom` continues to
+            // describe the long axis exactly as before; the short axis reveals more of the sheet
+            // instead of shrinking the entire HUD into a strip. This keeps map pixels, marker UVs
+            // and player heading geometrically aligned without stretching the texture.
             float span = 1f / _settings.Zoom;
-            float half = span * 0.5f;
-            float centerU = Mathf.Clamp(uv.x, half, 1f - half);
-            float centerV = Mathf.Clamp(uv.y, half, 1f - half);
-            visibleUv = new Rect(centerU - half, centerV - half, span, span);
+            float aspect = GetTextureAspect();
+            float spanU = aspect >= 1f ? span : Mathf.Min(1f, span / aspect);
+            float spanV = aspect >= 1f ? Mathf.Min(1f, span * aspect) : span;
+            float halfU = spanU * 0.5f;
+            float halfV = spanV * 0.5f;
+            float centerU = Mathf.Clamp(uv.x, halfU, 1f - halfU);
+            float centerV = Mathf.Clamp(uv.y, halfV, 1f - halfV);
+            visibleUv = new Rect(centerU - halfU, centerV - halfV, spanU, spanV);
             if (_mapImage.uvRect != visibleUv)
                 _mapImage.uvRect = visibleUv;
         }

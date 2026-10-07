@@ -729,10 +729,35 @@ public sealed partial class ModEntry : MelonMod
     }
 
 
+    private static bool IsAnimalCarcassAvailable(MapDetail detail, string spriteName)
+    {
+        if (!IsAnimalCarcassSprite(spriteName) || ReferenceEquals(detail, null))
+            return false;
+
+        try
+        {
+            // Natural carcasses and hunted animals are removed by deactivating or destroying
+            // their scene object. MapDetail can remain in the game's registry after that, so a
+            // dead/nonexistent BaseAi alone is not enough to prove that the carcass still exists.
+            GameObject go = detail.gameObject;
+            if (ReferenceEquals(go, null) || !go.activeInHierarchy)
+                return false;
+
+            return !IsLivingAnimalRecord(detail, spriteName);
+        }
+        catch
+        {
+            // A destroyed native Unity object can still have a managed IL2CPP wrapper. Treat an
+            // access failure as reclaimed rather than leaving a permanent stale marker.
+            return false;
+        }
+    }
+
+
     private static bool IsMarkerDetailAvailable(MapDetail detail, string spriteName)
     {
-        if (IsLivingAnimalRecord(detail, spriteName))
-            return false;
+        if (IsAnimalCarcassSprite(spriteName))
+            return IsAnimalCarcassAvailable(detail, spriteName);
         if (spriteName == "icoMap_limb")
             return IsRenewableLimbAvailable(detail);
         return !HasLinkedHarvestables(detail) || !AllLinkedHarvestablesUnavailable(detail);

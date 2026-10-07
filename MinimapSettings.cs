@@ -225,12 +225,8 @@ internal sealed class MinimapSettings : JsonModSettings
     public KeyCode RecordPointKey = KeyCode.F11;
 
     [Name("清理已采集的标记（仅报告）")]
-    [Description("扫描已采集完的资源标记并写入日志，但不删除。用于确认判据是否正确。")]
+    [Description("扫描已采集完的资源标记并写入日志。仅用于诊断；HUD 会自动隐藏已采集资源，不会修改游戏地图数据。")]
     public bool ReportHarvestedMarkers = false;
-
-    [Name("真正删除已采集标记")]
-    [Description("确认上一项的报告正确后才打开。会从游戏数据中移除已采集标记；关闭并重载场景即可恢复。")]
-    public bool RemoveHarvestedMarkers = false;
 
 
     internal const int MarkerSourceMapDetails = 0;
@@ -281,7 +277,6 @@ internal sealed class MinimapSettings : JsonModSettings
             SetFieldVisible(nameof(ShowDiagnostics), developer);
             SetFieldVisible(nameof(RecordPointKey), developer);
             SetFieldVisible(nameof(ReportHarvestedMarkers), developer);
-            SetFieldVisible(nameof(RemoveHarvestedMarkers), developer);
 
             SetFieldVisible(nameof(MiniMapPositionX), customPosition);
             SetFieldVisible(nameof(MiniMapPositionY), customPosition);

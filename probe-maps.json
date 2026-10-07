@@ -1,0 +1,197 @@
+{
+  "formatVersion": 1,
+  "maps": [
+    {
+      "scene": "MountainTownCaveA",
+      "mapId": "probe_interior_mountain_town_cave",
+      "displayName": "山间小镇本地洞穴（探针）",
+      "fileName": "interior_mountain_town_cave.jpg"
+    },
+    {
+      "scene": "HighwayMineTransitionZone",
+      "mapId": "probe_interior_coal_mine_no3",
+      "displayName": "三号煤矿厂：公路废墟—荒芜据点（探针）",
+      "fileName": "interior_coal_mine_no3.jpg"
+    },
+    {
+      "scene": "AshCaveA",
+      "mapId": "probe_cave_ash_canyon_timberwolf",
+      "displayName": "连接洞穴：林狼雪岭—灰烬峡谷（探针）",
+      "fileName": "cave_ash_canyon_timberwolf.jpg"
+    },
+    {
+      "scene": "AshCaveB",
+      "mapId": "probe_interior_ash_local_cave",
+      "displayName": "灰烬峡谷内部洞穴 AB（B入口）（探针）",
+      "fileName": "interior_ash_local_cave.jpg"
+    },
+    {
+      "scene": "BlackrockCaveA",
+      "mapId": "probe_cave_timberwolf_blackrock",
+      "displayName": "连接洞穴：林狼雪岭—黑岩（探针）",
+      "fileName": "cave_timberwolf_blackrock.jpg"
+    },
+    {
+      "scene": "CanneryMarshTransitionCave",
+      "mapId": "probe_cave_forlorn_bleak_inlet",
+      "displayName": "连接洞穴：孤寂沼地—荒凉水湾（探针）",
+      "fileName": "cave_forlorn_bleak_inlet.jpg"
+    },
+    {
+      "scene": "RiverValleyTransitionCave",
+      "mapId": "probe_cave_hrv_mountain_town",
+      "displayName": "连接洞穴：山间小镇—寂静河谷（探针）",
+      "fileName": "cave_hrv_mountain_town.jpg"
+    },
+    {
+      "scene": "LongTransitionCave",
+      "mapId": "probe_interior_railway_worker_tunnel",
+      "displayName": "铁路工人小道（探针）",
+      "fileName": "interior_railway_worker_tunnel.jpg"
+    },
+    {
+      "scene": "WhalingMine",
+      "mapId": "probe_interior_desolation_mine",
+      "displayName": "五号废弃矿井（探针）",
+      "fileName": "interior_desolation_mine.jpg"
+    },
+    {
+      "scene": "MineTransitionZone",
+      "mapId": "probe_interior_coastal_mine_lower",
+      "displayName": "沿海公路废弃矿地／煤渣山煤矿下层（探针）",
+      "fileName": "interior_coastal_mine_lower.jpg"
+    },
+    {
+      "scene": "MountainTownCaveB",
+      "mapId": "probe_cave_mystery_lake_mountain_town",
+      "displayName": "连接洞穴：神秘湖—山间小镇（探针）",
+      "fileName": "cave_mystery_lake_mountain_town.jpg"
+    },
+    {
+      "scene": "IceCaveA",
+      "mapId": "probe_interior_hrv_ice_cave_south",
+      "displayName": "寂静河谷寒冰洞窟（南，A入口）（探针）",
+      "fileName": "interior_hrv_ice_cave_south.jpg"
+    },
+    {
+      "scene": "IceCaveB",
+      "mapId": "probe_interior_hrv_ice_cave_north",
+      "displayName": "寂静河谷寒冰洞窟（北，F入口）（探针）",
+      "fileName": "interior_hrv_ice_cave_north.jpg"
+    },
+    {
+      "scene": "AshMine",
+      "mapId": "probe_interior_ash_gold_mine",
+      "displayName": "灰烬峡谷金矿（探针）",
+      "fileName": "interior_ash_gold_mine.jpg"
+    },
+    {
+      "scene": "BlackrockInteriorASurvival",
+      "mapId": "probe_interior_blackrock_prison",
+      "displayName": "黑岩监狱室内 1/2/3 层（探针）",
+      "fileName": "interior_blackrock_prison.jpg"
+    },
+    {
+      "scene": "BlackrockSteamTunnelsASurvival",
+      "mapId": "probe_interior_blackrock_steam_tunnels",
+      "displayName": "黑岩蒸汽通道（探针）",
+      "fileName": "interior_blackrock_steam_tunnels.jpg"
+    },
+    {
+      "scene": "BlackrockMineA",
+      "mapId": "probe_interior_blackrock_mine",
+      "displayName": "黑岩废弃矿地 1/2/3 层（探针）",
+      "fileName": "interior_blackrock_mine.png"
+    },
+    {
+      "scene": "CanyonRoadCave",
+      "mapId": "probe_interior_keepers_pass_cave",
+      "displayName": "守山人山隘南北连接洞穴（探针）",
+      "fileName": "interior_keepers_pass_cave.jpg"
+    },
+    {
+      "scene": "HubCave",
+      "mapId": "probe_cave_airfield_contamination_sundered",
+      "displayName": "连接洞穴：废弃机场—污染区—破碎山道（探针）",
+      "fileName": "cave_airfield_contamination_sundered.jpg"
+    },
+    {
+      "scene": "MineConcentratorBuilding",
+      "mapId": "probe_interior_concentrator_complex",
+      "displayName": "污染区集中器建筑（探针）",
+      "fileName": "interior_concentrator_complex.jpg"
+    },
+    {
+      "scene": "MiningRegionMine",
+      "mapId": "probe_interior_contamination_mine",
+      "displayName": "污染区朗斯顿矿场 1/2/3 层（探针）",
+      "fileName": "interior_contamination_mine.jpg"
+    },
+    {
+      "scene": "MountainPassCaveA",
+      "mapId": "probe_interior_sundered_cave",
+      "displayName": "破碎山道洞穴 1/2/3/4（洞口1）（探针）",
+      "fileName": "interior_sundered_cave.jpg"
+    },
+    {
+      "scene": "MountainPassCaveB",
+      "mapId": "probe_interior_sundered_mine",
+      "displayName": "破碎山道废弃矿地（探针）",
+      "fileName": "interior_sundered_mine.jpg"
+    },
+    {
+      "scene": "MountainCaveA",
+      "mapId": "probe_interior_timberwolf_cave_lower",
+      "displayName": "林狼雪岭山内洞穴 CD（D入口）（探针）",
+      "fileName": "interior_timberwolf_cave_lower.jpg"
+    },
+    {
+      "scene": "MountainCaveB",
+      "mapId": "probe_interior_timberwolf_cave_upper",
+      "displayName": "林狼雪岭山内洞穴 AB（B入口）（探针）",
+      "fileName": "interior_timberwolf_cave_upper.jpg"
+    },
+    {
+      "scene": "CaveB",
+      "mapId": "probe_interior_pleasant_valley_cave",
+      "displayName": "怡人山谷迷雾瀑布附近洞穴（探针）",
+      "fileName": "interior_pleasant_valley_cave.jpg"
+    },
+    {
+      "scene": "CaveC",
+      "mapId": "probe_interior_desolation_cave",
+      "displayName": "荒芜据点瀑布旁普通洞穴（探针）",
+      "fileName": "interior_desolation_cave.jpg"
+    },
+    {
+      "scene": "CaveD",
+      "mapId": "probe_interior_forlorn_cave",
+      "displayName": "孤寂沼地洞穴 AB（A入口）（探针）",
+      "fileName": "interior_forlorn_cave.jpg"
+    },
+    {
+      "scene": "Dam",
+      "mapId": "probe_interior_carter_dam_upper",
+      "displayName": "卡特大坝上层（探针）",
+      "fileName": "interior_carter_dam_upper.jpg"
+    },
+    {
+      "scene": "DamTransitionZone",
+      "mapId": "probe_interior_carter_dam_lower",
+      "displayName": "卡特大坝下层（探针）",
+      "fileName": "interior_carter_dam_lower.jpg"
+    },
+    {
+      "scene": "DamCaveTransitionZone",
+      "mapId": "probe_interior_carter_cave",
+      "displayName": "怡人山谷—蜿蜒河流连接洞穴（探针）",
+      "fileName": "interior_carter_cave.jpg"
+    },
+    {
+      "scene": "BlackrockPrisonSurvivalZone",
+      "mapId": "probe_interior_blackrock_prison_grounds",
+      "displayName": "黑岩监狱场地（探针）",
+      "fileName": "interior_blackrock_prison_grounds.jpg"
+    }
+  ]
+}

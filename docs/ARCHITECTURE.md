@@ -1,6 +1,6 @@
 # 架构
 
-> 更新：2026-09-30 · 对应源码：9 个 `ModEntry.*.cs` 分部类 + 5 个独立文件
+> 更新：2026-10-07 · 对应源码：10 个 `ModEntry.*.cs` 分部类 + 地图、校准、探针与输入辅助文件。
 
 ## 1. 文件划分
 
@@ -9,19 +9,21 @@
 
 | 文件 | 行数 | 装什么 |
 |---|---|---|
-| `ModEntry.Core.cs` | 930 | **入口 + 全部共享状态 + 全部嵌套类型** |
-| `ModEntry.Diagnostics.cs` | 1312 | 普查、探针、导出、采集清理、校准记录 |
-| `ModEntry.Markers.cs` | 687 | 标记：构建、分类、颜色、绘制 |
-| `ModEntry.Labels.cs` | 600 | 地名、本地化、悬停提示 |
-| `ModEntry.VanillaMap.cs` | 594 | 原版底图请求、图标表、面板捕获 |
-| `ModEntry.Rendering.cs` | 519 | Canvas/RawImage、指针、投影换算、通用工具 |
-| `ModEntry.Input.cs` | 375 | 地图键接管、全屏地图输入、按键提示 |
-| `ModEntry.Layers.cs` | 348 | 图层与图源、视图循环 |
-| `ModEntry.CapturedMap.cs` | 287 | 抓取底图的保存与加载 |
-| `MinimapSettings.cs` | 300 | 设置定义（ModSettings） |
-| `CalibrationStore.cs` | 214 | 校准数据读写与仿射变换 |
-| `MapDefinition.cs` | 136 | 22 个区域的静态目录 |
-| `InputPatches.cs` | 86 | Harmony patch |
+| `ModEntry.Core.cs` | 1112 | **入口 + 全部共享状态 + 全部嵌套类型** |
+| `ModEntry.Diagnostics.cs` | 1610 | 普查、探针、导出、资源生命周期、校准记录 |
+| `ModEntry.Markers.cs` | 896 | 标记：构建、分类、状态过滤、颜色、绘制 |
+| `ModEntry.Labels.cs` | 603 | 地名、本地化、悬停提示 |
+| `ModEntry.VanillaMap.cs` | 738 | 原版底图请求、图标表、面板捕获 |
+| `ModEntry.Rendering.cs` | 795 | Canvas/RawImage、指针、投影、缩放和通用工具 |
+| `ModEntry.Input.cs` | 421 | 地图键接管、全屏地图输入、按键提示 |
+| `ModEntry.Layers.cs` | 516 | 图层、图源、回退与视图循环 |
+| `ModEntry.CapturedMap.cs` | 327 | 抓取底图的保存与加载 |
+| `ModEntry.StatusToast.cs` | 112 | 无地图、回退和视图状态提示 |
+| `MinimapSettings.cs` | 约 270 | 8 分节、44 项 ModSettings 设置 |
+| `CalibrationStore.cs` | 224 | 校准数据读写与最小二乘仿射变换 |
+| `MapDefinition.cs` | 254 | 22 个正式区域、少量内置探针和空间变体 |
+| `ProbeMapStore.cs` | 93 | `probe-maps.json` 的校验、热重载和原子替换 |
+| `InputPatches.cs` | 162 | Harmony 输入与游戏 UI 联动 patch |
 | `SceneCatalogExporter.cs` | 64 | 场景目录导出 |
 
 ### ⚠️ Core 为什么这么大
@@ -107,7 +109,7 @@ _vanillaIcons                          (绘制列表)
 
 - **`m_IconType` 只表示绘制尺寸**，分类完全按 **sprite 名**。不要把两者混用。
 - **可见性不在构建期决定**。全部 802 个都建对象，画不画在**每帧**由 5 个分类开关决定。
-  这是迷雾模式要用的地基。
+  资源与尸骸还会经过运行时对象状态过滤；未启用随机组、已采集资源、活体动物和已回收尸体不显示。
 - **构建 key** 决定何时重建：
 
   ```
@@ -148,7 +150,7 @@ _vanillaIcons                          (绘制列表)
 
 ### 社区路径（有天花板）
 
-用 `calibrations.json` 里的三点以上仿射校准。
+用 `calibrations.json` 里的三点以上最小二乘仿射校准。当前 22 个正式室外 `mapId` 均有记录。
 
 > **实测：社区图不是 1:1 画的** —— 两轴比例相差 16%（X 2.04 px/单位，Z 1.76 px/单位）。
 > 所以这条路径**精度有上限**，靠加校准点无法根治。
@@ -202,10 +204,28 @@ dotnet build .\CommunityMinimap.csproj -c Release -p:GameDirectory='<游戏目�
 
 ---
 
-## 8. 区域目录
+## 8. 正式地图、开发探针与空间变体
 
-`MapDefinition.cs` 是 **22 个区域**的静态表（mapId、中文名、图片文件名）。
+`MapDefinition.cs` 是 **22 个正式室外区域**的静态表（mapId、中文名、图片文件名）。
 `CalibrationStore.cs` 读 `calibrations.json`（含 `maps[]` 与 `sceneAliases[]`）。
 
 两者是**独立的**：`MapDefinition` 说"有这些区域"，`calibrations.json` 说"这几个校准过"。
 **未校准的区域照样能用**（全屏地图的缩放/平移是纯 uv 数学，不依赖校准）。
+
+洞穴和室内图在开发阶段走另一条目录：
+
+```text
+probe-maps.json
+    ↓ ProbeMapStore.Load（完整解析成功后才原子替换）
+场景名 → ProbeOnly MapDefinition
+    ↓ 仅 DeveloperMode
+加载独立社区图片；未校准时只画底图，不伪造玩家/标记位置
+```
+
+`probe-maps.json` 可以在游戏运行时重载，因此修改场景—图片配对通常不需要退出游戏。图片文件本身由
+纹理缓存管理；若替换同名图片仍显示旧内容，需触发图层重载或重新进入场景。
+
+`MineTransitionZone` 是特殊空间变体：同一场景的上下层相距约 82 个 Y 单位，
+`FindSpatialVariant(scene, worldY)` 以 `Y=-70` 为界选择不同 mapId 和图片。场景不变但跨越边界时，
+`RefreshSpatialMapVariant` 会主动刷新图层。以后多楼层图应优先复用这种“场景 + 空间范围”模型，
+不要把任意拼接楼层硬塞进一个 X/Z 仿射矩阵。

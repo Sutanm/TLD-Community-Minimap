@@ -7,6 +7,9 @@
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
     <AssemblyName>CommunityMinimap</AssemblyName>
     <RootNamespace>CommunityMinimap</RootNamespace>
+    <!-- Local document/spreadsheet tools may create a dependency junction in the workspace.
+         Never let SDK default globs treat third-party package sources as part of the mod. -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);node_modules\**</DefaultItemExcludes>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(GameDirectory)' == ''">

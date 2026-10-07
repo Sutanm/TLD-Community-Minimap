@@ -37,7 +37,16 @@ public sealed partial class ModEntry : MelonMod
             message => LoggerInstance.Warning(message));
         _calibrationLastWriteUtc = writeUtc;
         if (loaded)
+        {
+            // Marker UVs are calculated once when their objects are built.  A calibration can be
+            // added while the current scene is already open (the normal calibration workflow), so
+            // reloading the projection alone would update the player pointer but leave an empty or
+            // stale marker set until the next scene change.  Invalidating the build key makes the
+            // regular, rate-limited builder recreate markers and labels later in this same update.
+            _markersBuiltForScene = "";
+            _nextMarkerRebuildUtc = DateTime.MinValue;
             LoggerInstance.Msg("Reloaded calibrations.json after file change.");
+        }
         else
             LoggerInstance.Warning(
                 "Calibration reload failed; keeping the last valid projections until the file changes again.");
@@ -892,12 +901,9 @@ public sealed partial class ModEntry : MelonMod
         }
     }
 
-    // The game leaves a harvested resource in MapDetailManager.s_MapDetails and on the map, so
-    // collected markers never disappear by themselves. Unregister is the game's own counterpart
-    // to Register, which is cleaner than editing the list by hand the way other mods do.
-    // Entries are collected first and removed afterwards: mutating the list while iterating it
-    // throws.
-    private void CleanHarvestedMapMarkers()
+    // Diagnostic only. The live HUD path polls linked Harvestable state and hides unavailable
+    // markers without mutating MapDetailManager, so the original game map remains untouched.
+    private void ReportHarvestedMapMarkers()
     {
         if (!_settings.DeveloperMode || !_settings.ReportHarvestedMarkers)
             return;
@@ -925,18 +931,9 @@ public sealed partial class ModEntry : MelonMod
                 return;
             }
 
-            if (!_settings.RemoveHarvestedMarkers)
-            {
-                LoggerInstance.Msg(
-                    $"Harvested sweep (report only): {stale.Count} of {details.Count} entries look collected; " +
-                    $"first: sprite='{stale[0].m_SpriteName}' loc='{stale[0].m_LocID}'.");
-                return;
-            }
-
-            for (int i = 0; i < stale.Count; i++)
-                MapDetailManager.Unregister(stale[i]);
-
-            LoggerInstance.Msg($"Removed {stale.Count} of {details.Count} fully harvested map markers.");
+            LoggerInstance.Msg(
+                $"Harvested sweep (report only): {stale.Count} of {details.Count} entries look collected; " +
+                $"first: sprite='{stale[0].m_SpriteName}' loc='{stale[0].m_LocID}'.");
         }
         catch (Exception ex)
         {
@@ -958,6 +955,37 @@ public sealed partial class ModEntry : MelonMod
         if (ReferenceEquals(go, null) || !harvestable.m_StartHasBeenCalled)
             return false;
         return !go.activeInHierarchy;
+    }
+
+
+    private void TryReloadProbeMaps()
+    {
+        DateTime now = DateTime.UtcNow;
+        if (now < _nextProbeMapsCheckUtc)
+            return;
+
+        _nextProbeMapsCheckUtc = now.AddSeconds(1);
+        DateTime writeUtc = File.GetLastWriteTimeUtc(_probeMapsPath);
+        if (writeUtc == _probeMapsLastWriteUtc)
+            return;
+
+        bool loaded = ProbeMapStore.Load(_probeMapsPath,
+            message => LoggerInstance.Msg(message),
+            message => LoggerInstance.Warning(message));
+        _probeMapsLastWriteUtc = writeUtc;
+        if (!loaded)
+            return;
+
+        LoggerInstance.Msg("Reloaded probe-maps.json after file change.");
+        if (!_settings.DeveloperMode || string.IsNullOrWhiteSpace(_observedSceneName))
+            return;
+
+        // A probe-data sync also refreshes the current image. This makes crop iterations truly
+        // hot: replace the JPEG and touch the JSON, then the existing scene redraws without a
+        // scene transition or game restart.
+        if (ProbeMapStore.Find(_observedSceneName) != null ||
+            ActiveLayer.Definition?.ProbeOnly == true)
+            ObserveScene(_observedSceneHandle, _observedSceneName, true);
     }
 
 

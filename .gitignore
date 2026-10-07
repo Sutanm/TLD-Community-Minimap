@@ -1,5 +1,6 @@
 bin/
 obj/
+node_modules/
 .vs/
 .idea/
 *.user
@@ -7,6 +8,7 @@ obj/
 *.dll
 maps/
 prepared-maps/
+manual-crops/
 calibration_points.csv
 
 # Renders produced by the scripts in tools/. Regenerate them rather than storing megabytes of

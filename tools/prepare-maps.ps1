@@ -5,6 +5,8 @@ param(
 
     [string]$DestinationDirectory = (Join-Path (Split-Path $PSScriptRoot -Parent) "prepared-maps"),
 
+    [string]$ManualCropDirectory = (Join-Path (Split-Path $PSScriptRoot -Parent) "manual-crops"),
+
     [ValidateRange(70, 100)]
     [int]$JpegQuality = 95,
 
@@ -51,6 +53,12 @@ if (-not (Test-Path -LiteralPath $DestinationDirectory)) {
     New-Item -ItemType Directory -Path $DestinationDirectory | Out-Null
 }
 $destinationRoot = (Resolve-Path -LiteralPath $DestinationDirectory).Path
+$manualCropRoot = if (Test-Path -LiteralPath $ManualCropDirectory) {
+    (Resolve-Path -LiteralPath $ManualCropDirectory).Path
+}
+else {
+    ""
+}
 
 if ($sourceRoot.TrimEnd('\') -eq $destinationRoot.TrimEnd('\')) {
     throw "SourceDirectory and DestinationDirectory must be different."
@@ -96,6 +104,20 @@ foreach ($map in $manifest.maps) {
     }
 
     $outputPath = Join-Path $destinationRoot $map.output
+    $manualOverridePath = if ([string]::IsNullOrWhiteSpace($manualCropRoot)) {
+        $null
+    }
+    else {
+        Join-Path $manualCropRoot $map.output
+    }
+    if ($null -ne $manualOverridePath -and
+        -not (Test-Path -LiteralPath $manualOverridePath -PathType Leaf)) {
+        $manualOverridePath = $null
+    }
+    if ($null -ne $manualOverridePath) {
+        # Opening it here rejects interrupted copies before any prepared output is replaced.
+        Get-ImageSize -Path $manualOverridePath | Out-Null
+    }
     if ((Test-Path -LiteralPath $outputPath) -and -not $Force) {
         throw "Output already exists: $outputPath. Use -Force to replace prepared files."
     }
@@ -106,6 +128,7 @@ foreach ($map in $manifest.maps) {
         SourceSize = $sourceSize
         SourceHash = $sourceHash
         Crop = $crop
+        ManualOverridePath = $manualOverridePath
         OutputPath = $outputPath
     })
 }
@@ -130,12 +153,18 @@ try {
         $sourceSize = $validatedMap.SourceSize
         $sourceHash = $validatedMap.SourceHash
         $crop = $validatedMap.Crop
+        $manualOverridePath = $validatedMap.ManualOverridePath
         $outputPath = $validatedMap.OutputPath
         $temporaryPath = "$($validatedMap.OutputPath).$PID.tmp"
         Remove-Item -LiteralPath $temporaryPath -Force -ErrorAction SilentlyContinue
 
         try {
-            if ($null -ne $crop -and $crop.Count -eq 4) {
+            if ($null -ne $manualOverridePath) {
+                # Hand-trimmed interiors are authoritative. Copying instead of re-encoding keeps
+                # thin labels and border pixels exact and makes later full rebuilds reproducible.
+                Copy-Item -LiteralPath $manualOverridePath -Destination $temporaryPath -Force
+            }
+            elseif ($null -ne $crop -and $crop.Count -eq 4) {
                 $left = [int]$crop[0]
                 $top = [int]$crop[1]
                 $right = [int]$crop[2]
@@ -146,7 +175,12 @@ try {
                     $rectangle = [System.Drawing.Rectangle]::FromLTRB($left, $top, $right, $bottom)
                     $croppedBitmap = $sourceBitmap.Clone($rectangle, [System.Drawing.Imaging.PixelFormat]::Format24bppRgb)
                     try {
-                        $croppedBitmap.Save($temporaryPath, $jpegEncoder, $encoderParameters)
+                        if ([System.IO.Path]::GetExtension($outputPath) -ieq ".png") {
+                            $croppedBitmap.Save($temporaryPath, [System.Drawing.Imaging.ImageFormat]::Png)
+                        }
+                        else {
+                            $croppedBitmap.Save($temporaryPath, $jpegEncoder, $encoderParameters)
+                        }
                     }
                     finally {
                         $croppedBitmap.Dispose()
@@ -173,6 +207,7 @@ try {
             output = $map.output
             sourceSha256 = $sourceHash
             outputSha256 = (Get-FileHash -LiteralPath $outputPath -Algorithm SHA256).Hash.ToLowerInvariant()
+            manualOverride = ($null -ne $manualOverridePath)
             width = $outputSize.Width
             height = $outputSize.Height
             crop = $crop

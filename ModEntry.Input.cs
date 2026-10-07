@@ -36,7 +36,7 @@ public sealed partial class ModEntry : MelonMod
         // would open an invisible modal map inside the new indoor scene. If the current scene has
         // no HUD map (or has not been observed yet), hand the action back to the original game.
         var scene = UnitySceneManager.GetActiveScene();
-        MapDefinition currentDefinition = MapCatalog.Find(scene.name);
+        MapDefinition currentDefinition = mod.FindRuntimeMap(scene.name);
         if (currentDefinition == null)
         {
             mod.ShowStatusToast("当前场景没有可用的 HUD 地图，已使用游戏原版地图");
@@ -198,7 +198,8 @@ public sealed partial class ModEntry : MelonMod
             // No snapping between overview and local view. The player-centred opening scale can be
             // several times larger near a map edge, and jumping between it and 1x in one notch was
             // visually jarring. Exponential steps keep both directions continuous.
-            _fullMapZoom = Mathf.Clamp(_fullMapZoom * Mathf.Exp(wheel * 0.18f), 1f, 24f);
+            _fullMapZoom = Mathf.Clamp(
+                _fullMapZoom * Mathf.Exp(wheel * 0.18f), FullMapMinZoom, 24f);
             _fullMapCenterValid = true;
         }
 
