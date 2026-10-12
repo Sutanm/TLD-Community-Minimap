@@ -10,218 +10,228 @@ internal sealed class MinimapSettings : JsonModSettings
     // Public field names are persisted JSON keys. Keep them stable when reorganising the menu so
     // an update never resets a player's existing choices.
 
-    [Section("基本与图源")]
+    [Section("通用")]
 
-    [Name("显示小地图")]
-    [Description("角落小地图的总开关。关闭不会影响通过游戏地图键打开的全屏地图。")]
-    public bool Enabled = true;
+    [Name("社区地图显示游戏标记")]
+    [Description("在已校准的社区地图上显示游戏标记。")]
+    public bool MarkersOnCommunityMap = false;
 
-    [Name("接管游戏地图键")]
-    [Description("按游戏自己的「打开地图」动作时显示本模组全屏地图。它跟随游戏内的键位绑定；关闭即恢复游戏原行为。")]
-    public bool RedirectGameMap = true;
-
-    [Name("小地图图源")]
-    [Description("角落小地图使用哪套地图。自动模式优先使用已安装的民间高清地图，缺少图片时使用原版制图。")]
-    [Choice("自动", "民间高清", "原版制图")]
-    public int MiniMapSource = 0;
-
-    [Name("全屏地图图源")]
-    [Description("通过游戏地图键打开的全屏地图使用哪套地图。自动模式优先使用已安装的民间高清地图。")]
-    [Choice("自动", "民间高清", "原版制图")]
-    public int FullMapSource = 0;
+    [Name("启用洞穴与室内地图")]
+    [Description("在洞穴、矿井和室内场景启用本模组地图。")]
+    public bool EnableInteriorMaps = true;
 
     [Name("禁用图源回退")]
-    [Description("默认关闭。打开后，明确选择「民间高清」或「原版制图」时严格使用该图源，不可用时不再临时改用另一套图。选择「自动」时仍会自动选择可用图源。")]
+    [Description("所选图源不可用时不切换到另一图源。")]
     public bool DisableSourceFallback = false;
 
 
     [Section("小地图")]
 
-    [Name("HUD 位置")]
-    [Description("小地图贴在屏幕的哪个角；需要自由放置时选择「自定义」。")]
+    [Name("显示小地图")]
+    [Description("显示角落小地图，不影响大地图。")]
+    public bool Enabled = true;
+
+    [Name("小地图图源")]
+    [Description("选择小地图使用的地图。")]
+    [Choice("自动", "社区地图", "原版地图")]
+    public int MiniMapSource = 0;
+
+    [Name("小地图标记大小")]
+    [Description("调整小地图上的游戏标记大小。")]
+    [Slider(10, 120, 111)]
+    public int MiniMapMarkerIconSize = 44;
+
+    [Name("小地图始终置顶")]
+    [Description("让小地图显示在游戏 HUD 上方。")]
+    public bool MiniMapAlwaysOnTop = false;
+
+    [Name("小地图位置")]
+    [Description("选择小地图位置。")]
     [Choice("右上", "左上", "右下", "左下", "自定义")]
     public int HudPosition = 1;
 
     [Name("自定义位置 X")]
-    [Description("小地图中心所在的横向位置，占屏幕宽度的百分比。仅在 HUD 位置选「自定义」时生效。")]
+    [Description("小地图中心的横向位置。")]
     [Slider(0, 100, 101, NumberFormat = "{0}%")]
     public int MiniMapPositionX = 50;
 
     [Name("自定义位置 Y")]
-    [Description("小地图中心所在的纵向位置，占屏幕高度的百分比。仅在 HUD 位置选「自定义」时生效。")]
+    [Description("小地图中心的纵向位置。")]
     [Slider(0, 100, 101, NumberFormat = "{0}%")]
     public int MiniMapPositionY = 50;
 
     [Name("边距")]
-    [Description("小地图与屏幕边缘的距离。仅在 HUD 位置选四角时生效。")]
+    [Description("小地图与屏幕边缘的距离。")]
     [Slider(0, 100, 21)]
     public int Margin = 24;
 
-    [Name("小地图 UI 大小")]
-    [Description("小地图占屏幕短边的百分比，与地图局部缩放分开计算。")]
+    [Name("小地图大小")]
+    [Description("调整小地图占屏幕短边的比例。")]
     [Slider(15, 40, 26, NumberFormat = "{0}%")]
     public int MiniMapSizePercent = 24;
 
     [Name("小地图透明度")]
-    [Description("小地图图片的不透明度。全屏地图不受此项影响。")]
+    [Description("调整小地图的不透明度。")]
     [Slider(0.25f, 1f, 16, NumberFormat = "{0:P0}")]
     public float Opacity = 0.9f;
 
-    [Name("小地图始终置顶")]
-    [Description("开启后让小地图覆盖游戏原版 HUD，恢复旧版显示层级。默认关闭时，原版状态、地点与交互 HUD 会显示在小地图上方。全屏地图不受影响。")]
-    public bool MiniMapAlwaysOnTop = false;
-
-    [Name("局部缩放")]
-    [Description("玩家处于已校准范围内时，小地图的放大倍数。")]
+    [Name("小地图缩放")]
+    [Description("调整已校准地图的局部缩放。")]
     [Slider(1.5f, 30f, 58, NumberFormat = "{0:F1}x")]
     public float Zoom = 5f;
 
-    [Name("小地图标记尺寸")]
-    [Description("角落小地图中物资、建筑等游戏地图标记的屏幕像素大小。固定尺寸，不随地图缩放变大。")]
+    [Section("大地图")]
+
+    [Name("使用模组大地图")]
+    [Description("使用游戏地图键打开本模组大地图。")]
+    public bool RedirectGameMap = true;
+
+    [Name("大地图图源")]
+    [Description("选择大地图使用的地图。")]
+    [Choice("自动", "社区地图", "原版地图")]
+    public int FullMapSource = 0;
+
+    [Name("大地图标记大小")]
+    [Description("调整大地图上的游戏标记大小。")]
     [Slider(10, 120, 111)]
-    public int MiniMapMarkerIconSize = 44;
+    public int FullMapMarkerIconSize = 44;
 
+    [Name("大地图始终置顶")]
+    [Description("让大地图显示在游戏 HUD 上方。")]
+    public bool FullMapAlwaysOnTop = false;
 
-    [Section("全屏地图")]
+    [Name("显示玩家指针")]
+    [Description("在大地图上显示玩家位置和朝向。")]
+    public bool ShowFullMapPlayerPointer = true;
 
-    [Name("全屏背景不透明度")]
-    [Description("调整完整地图周围的深色背景。0% 完全透明，100% 完全不透明。")]
+    [Name("背景不透明度")]
+    [Description("调整大地图周围的背景不透明度。")]
     [Slider(0f, 1f, 21, NumberFormat = "{0:P0}")]
     public float FullMapBackgroundOpacity = 0.97f;
 
-    [Name("释放鼠标（缩放与拖动）")]
-    [Description("打开全屏地图时释放鼠标并接管输入，以便使用滚轮缩放和左键拖动。关闭后地图只能查看。")]
+    [Name("启用鼠标操作")]
+    [Description("允许使用滚轮缩放、左键拖动和标记悬停。")]
     public bool ReleaseMouseOnFullMap = true;
 
-    [Name("按键提示")]
-    [Description("在全屏地图底部显示缩放、拖动、切换和关闭操作提示。")]
-    public bool ShowKeyHints = true;
+    [Name("允许打开时移动")]
+    [Description("打开大地图时允许角色移动，仍会阻止转向和其他操作。")]
+    public bool AllowMovementOnFullMap = false;
 
-    [Name("全屏地图标记尺寸")]
-    [Description("全屏地图中物资、建筑等游戏地图标记的屏幕像素大小。固定尺寸，不随地图缩放变大。")]
-    [Slider(10, 120, 111)]
-    public int FullMapMarkerIconSize = 44;
+    [Name("显示操作提示")]
+    [Description("在大地图底部显示操作提示。")]
+    public bool ShowKeyHints = true;
 
 
     [Section("玩家指针")]
 
     [Name("玩家指针尺寸")]
-    [Description("圆环位置标记与方向短针的显示尺寸。")]
+    [Description("调整玩家指针大小。")]
     [Slider(40, 80, 21)]
     public int MarkerSize = 54;
 
     [Name("玩家指针配色")]
-    [Description("切换方向针和内环的强调色；深色外环与暖白中心点保持不变。")]
+    [Description("选择玩家指针的强调色。")]
     [Choice("珊瑚红", "酒红", "淡紫", "青绿色", "琥珀金", "鲜红")]
     public int PointerPalette = 0;
-
-    [Name("全屏地图显示玩家指针")]
-    [Description("在全屏地图上显示玩家当前位置与朝向。关闭后小地图仍显示指针，全屏地图从整张地图中央打开。")]
-    public bool ShowFullMapPlayerPointer = true;
-
 
     [Section("地图标记与文字")]
 
     [Name("标记来源")]
-    [Description("地图数据＝读取游戏登记的完整标记；游戏面板＝只读取游戏实际创建出的部分。若完整标记显示异常可切回游戏面板。")]
+    [Description("地图数据读取完整标记；游戏面板只读取已创建的标记。")]
     [Choice("地图数据", "游戏面板")]
     public int MarkerSource = 0;
 
-    [Name("社区地图上也画标记")]
-    [Description("打开后，民间高清地图上也会绘制游戏地图标记；关闭后只有原版制图带这些标记。")]
-    public bool MarkersOnCommunityMap = true;
-
     [Name("标记颜色")]
-    [Description("标记图标的颜色。白色通常在原版羊皮纸和社区地图上都更清楚。")]
+    [Description("选择游戏标记的颜色。")]
     [Choice("白色", "深色")]
     public int MarkerTint = 0;
 
     [Name("标记描边")]
-    [Description("在标记背后绘制深色轮廓，使白色图标在明暗不同的地图区域保持可见。")]
+    [Description("为游戏标记添加深色轮廓。")]
     public bool MarkerOutline = true;
 
     [Name("地名标签")]
-    [Description("在地图上常显米尔顿小镇、盆地、教堂等游戏地名。")]
+    [Description("在地图上显示地名。")]
     public bool ShowMapLabels = true;
 
-    [Name("标记字号")]
-    [Description("地名与悬停提示的文字大小。")]
+    [Name("标签字号")]
+    [Description("调整地名和悬停提示的字号。")]
     [Slider(12, 40, 29)]
     public int LabelFontSize = 20;
 
-    [Name("悬停显示图标名字")]
-    [Description("打开全屏地图后，鼠标停在标记上时显示香蒲、车、洞穴等名称。需要开启「释放鼠标」。")]
+    [Name("悬停显示标记名称")]
+    [Description("鼠标悬停时显示标记名称。")]
     public bool HoverMapLabels = true;
 
-    [Name("悬停提示的深色底片")]
-    [Description("悬停提示文字背后的深色方块。关闭后只显示带浅色描边的文字。")]
+    [Name("悬停提示背景")]
+    [Description("为悬停提示添加深色背景。")]
     public bool ShowHoverPlate = true;
 
 
     [Section("地图标记筛选")]
 
     [Name("资源")]
-    [Description("可采集植物、树枝、鸟巢与动物尸体等资源标记。")]
+    [Description("显示可采集资源标记。")]
     public bool ShowMarkerResources = true;
 
     [Name("结构")]
-    [Description("建筑物、车辆、桥梁、绳点、洞穴等人工地物标记。")]
+    [Description("显示建筑、车辆、桥梁、绳点和洞穴标记。")]
     public bool ShowMarkerStructures = true;
 
     [Name("尸骸")]
-    [Description("尸体标记。")]
+    [Description("显示尸骸标记。")]
     public bool ShowMarkerCorpses = true;
 
     [Name("岩石贮藏处")]
-    [Description("岩石贮藏处标记。")]
+    [Description("显示岩石贮藏处标记。")]
     public bool ShowMarkerRockCaches = true;
 
     [Name("油漆喷罐标记")]
-    [Description("玩家用油漆喷罐在地图上留下的标记。")]
+    [Description("显示玩家留下的喷漆标记。")]
     public bool ShowMarkerSprayMarks = true;
 
 
     [Section("按键与游戏联动")]
 
     [Name("临时隐藏小地图")]
-    [Description("游戏中按此键临时收起小地图，再按一次恢复。不改变保存的设置，也不影响全屏地图。")]
+    [Description("临时隐藏或恢复小地图。")]
     public KeyCode ToggleKey = KeyCode.X;
 
     [Name("启用视图轮换按键")]
-    [Description("允许用一个独立按键在小地图、全屏地图和不显示之间轮换。关闭后不占用按键。")]
+    [Description("启用独立的地图视图轮换按键。")]
     public bool EnableCycleKey = true;
 
     [Name("视图轮换按键")]
-    [Description("按此键在「轮换内容」选定的视图之间循环。默认 V，该键未被游戏默认键位占用。")]
+    [Description("在选定的地图视图之间轮换。")]
     public KeyCode CycleViewKey = KeyCode.V;
 
     [Name("轮换内容")]
-    [Description("小地图＝角落 HUD；大地图＝全屏地图；无＝两个都不显示。")]
+    [Description("选择参与轮换的地图视图。")]
     [Choice("小地图 → 大地图", "小地图 → 大地图 → 无", "小地图 → 无", "大地图 → 无")]
     public int CyclePreset = 1;
 
     [Name("木炭勘测后弹图")]
-    [Description("游戏内置＝保持游戏原样；当前图源＝显示本模组全屏地图；不弹＝阻止木炭勘测后自动打开地图。")]
-    [Choice("游戏内置", "当前图源", "不弹")]
-    public int SurveyPopup = 1;
+    [Description("选择木炭勘测后打开的地图。")]
+    [Choice("原版地图", "模组大地图", "不打开")]
+    public int SurveyPopup = 0;
 
 
     [Section("高级与开发")]
 
     [Name("开发者模式")]
-    [Description("显示并启用地图抓取、配准和标记诊断选项。关闭时隐藏这些项目并保留其设置值。 · sutanm 制作")]
+    [Description("显示地图抓取、校准和诊断选项。")]
     public bool DeveloperMode = false;
 
-    [Name("抓取游戏地图的键")]
-    [Description("开发工具。打开游戏原版地图后按此键，将高分辨率地图抓取到 Mods\\CommunityMinimap，供采集与校准使用。")]
+    [Name("抓取原版地图")]
+    [Description("保存当前原版地图供校准使用。")]
     public KeyCode CaptureMapKey = KeyCode.P;
 
     [Name("显示坐标诊断")]
-    [Description("在小地图下方显示场景名、玩家世界坐标和朝向，供地图配准使用。")]
+    [Description("显示场景、世界坐标和朝向。")]
     public bool ShowDiagnostics = false;
 
     [Name("记录校准点")]
-    [Description("站在容易识别的地标后按此键，将坐标和截图写入校准文件。")]
+    [Description("记录当前位置和截图供校准使用。")]
     public KeyCode RecordPointKey = KeyCode.F11;
 
     [Name("清理已采集的标记（仅报告）")]
@@ -276,7 +286,9 @@ internal sealed class MinimapSettings : JsonModSettings
             SetFieldVisible(nameof(CaptureMapKey), developer);
             SetFieldVisible(nameof(ShowDiagnostics), developer);
             SetFieldVisible(nameof(RecordPointKey), developer);
-            SetFieldVisible(nameof(ReportHarvestedMarkers), developer);
+            // Retain the legacy field for existing config files and diagnostics, but do not expose
+            // a stale report-only switch in the player-facing settings panel.
+            SetFieldVisible(nameof(ReportHarvestedMarkers), false);
 
             SetFieldVisible(nameof(MiniMapPositionX), customPosition);
             SetFieldVisible(nameof(MiniMapPositionY), customPosition);

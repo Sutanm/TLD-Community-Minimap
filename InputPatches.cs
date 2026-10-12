@@ -90,6 +90,7 @@ internal static class InputPatches
 
 // Keep ordinary game interface shortcuts working while the replacement map is open. A generic
 // InputManager context suppressed all of them, so the full map now blocks only player-world input.
+// Movement is separated from camera input because players can explicitly allow it in settings.
 [HarmonyPatch]
 internal static class FullMapBooleanGameplayInputPatches
 {
@@ -127,7 +128,6 @@ internal static class FullMapVectorGameplayInputPatches
 {
     private static IEnumerable<MethodBase> TargetMethods()
     {
-        yield return AccessTools.Method(typeof(InputManager), nameof(InputManager.GetPlayerMovement));
         yield return AccessTools.Method(typeof(InputManager), nameof(InputManager.GetCameraMovementMouse));
         yield return AccessTools.Method(typeof(InputManager), nameof(InputManager.GetCameraMovementGamepad));
     }
@@ -135,6 +135,19 @@ internal static class FullMapVectorGameplayInputPatches
     private static bool Prefix(ref Vector2 __result)
     {
         if (!ModEntry.ShouldBlockFullMapGameplayInput())
+            return true;
+        __result = Vector2.zero;
+        return false;
+    }
+}
+
+
+[HarmonyPatch(typeof(InputManager), nameof(InputManager.GetPlayerMovement))]
+internal static class FullMapPlayerMovementPatch
+{
+    private static bool Prefix(ref Vector2 __result)
+    {
+        if (!ModEntry.ShouldBlockFullMapPlayerMovement())
             return true;
         __result = Vector2.zero;
         return false;

@@ -1,6 +1,6 @@
 # 架构
 
-> 更新：2026-10-07 · 对应源码：10 个 `ModEntry.*.cs` 分部类 + 地图、校准、探针与输入辅助文件。
+> 更新：2026-10-12 · 对应源码：10 个 `ModEntry.*.cs` 分部类 + 地图、校准、洞穴/室内绑定与输入辅助文件。
 
 ## 1. 文件划分
 
@@ -19,10 +19,10 @@
 | `ModEntry.Layers.cs` | 516 | 图层、图源、回退与视图循环 |
 | `ModEntry.CapturedMap.cs` | 327 | 抓取底图的保存与加载 |
 | `ModEntry.StatusToast.cs` | 112 | 无地图、回退和视图状态提示 |
-| `MinimapSettings.cs` | 约 270 | 8 分节、44 项 ModSettings 设置 |
+| `MinimapSettings.cs` | 约 270 | 8 分节、45 个可见 ModSettings 设置 |
 | `CalibrationStore.cs` | 224 | 校准数据读写与最小二乘仿射变换 |
-| `MapDefinition.cs` | 254 | 22 个正式区域、少量内置探针和空间变体 |
-| `ProbeMapStore.cs` | 93 | `probe-maps.json` 的校验、热重载和原子替换 |
+| `MapDefinition.cs` | 约 300 | 22 个室外区域、室内定义和空间变体 |
+| `ProbeMapStore.cs` | 约 100 | `probe-maps.json` 洞穴/室内绑定的校验、热重载和原子替换 |
 | `InputPatches.cs` | 162 | Harmony 输入与游戏 UI 联动 patch |
 | `SceneCatalogExporter.cs` | 64 | 场景目录导出 |
 
@@ -71,7 +71,7 @@ MiniMapSource  →  _layers[LayerMini].RequestedSource
 FullMapSource  →  _layers[LayerFull].RequestedSource
 ```
 
-取值：`0` 自动 / `1` 民间高清 / `2` 原版制图。
+取值：`0` 自动 / `1` 社区地图 / `2` 原版地图。
 
 > **旧的全局键 `MapSource` 已作废。** `ModSettings` 未暴露存档路径，**无法写迁移**，
 > 所以旧键只是被忽略。对当前用户无影响。
@@ -204,7 +204,7 @@ dotnet build .\CommunityMinimap.csproj -c Release -p:GameDirectory='<游戏目�
 
 ---
 
-## 8. 正式地图、开发探针与空间变体
+## 8. 地图绑定、参考模式与空间变体
 
 `MapDefinition.cs` 是 **22 个正式室外区域**的静态表（mapId、中文名、图片文件名）。
 `CalibrationStore.cs` 读 `calibrations.json`（含 `maps[]` 与 `sceneAliases[]`）。
@@ -212,17 +212,18 @@ dotnet build .\CommunityMinimap.csproj -c Release -p:GameDirectory='<游戏目�
 两者是**独立的**：`MapDefinition` 说"有这些区域"，`calibrations.json` 说"这几个校准过"。
 **未校准的区域照样能用**（全屏地图的缩放/平移是纯 uv 数学，不依赖校准）。
 
-洞穴和室内图在开发阶段走另一条目录：
+洞穴和室内图走可热重载的绑定目录：
 
 ```text
 probe-maps.json
     ↓ ProbeMapStore.Load（完整解析成功后才原子替换）
-场景名 → ProbeOnly MapDefinition
-    ↓ 仅 DeveloperMode
-加载独立社区图片；未校准时只画底图，不伪造玩家/标记位置
+场景名 → MapDefinition
+    ↓ EnableInteriorMaps
+加载独立社区图片；未可靠校准时只画完整底图，不伪造玩家/标记位置
 ```
 
-`probe-maps.json` 可以在游戏运行时重载，因此修改场景—图片配对通常不需要退出游戏。图片文件本身由
+`probe-maps.json`、`probe_` mapId 与 `ProbeMapStore` 是为兼容既有校准而保留的内部名称，不是玩家可见状态。
+该 JSON 可以在游戏运行时重载，因此修改场景—图片配对通常不需要退出游戏。图片文件本身由
 纹理缓存管理；若替换同名图片仍显示旧内容，需触发图层重载或重新进入场景。
 
 `MineTransitionZone` 是特殊空间变体：同一场景的上下层相距约 82 个 Y 单位，

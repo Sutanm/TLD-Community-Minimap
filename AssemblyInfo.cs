@@ -8,8 +8,8 @@ using CommunityMinimap;
 [assembly: AssemblyCompany("sutanm")]
 [assembly: AssemblyProduct("社区HUD地图")]
 [assembly: AssemblyCopyright("sutanm")]
-[assembly: AssemblyVersion("0.7.0")]
-[assembly: AssemblyFileVersion("0.7.0")]
-[assembly: MelonInfo(typeof(ModEntry), "社区HUD地图", "0.7.0", "sutanm")]
+[assembly: AssemblyVersion("0.9.0")]
+[assembly: AssemblyFileVersion("0.9.0")]
+[assembly: MelonInfo(typeof(ModEntry), "社区HUD地图", "0.9.0", "sutanm")]
 [assembly: MelonGame("Hinterland", "TheLongDark")]
 // — sutanm · 社区HUD地图

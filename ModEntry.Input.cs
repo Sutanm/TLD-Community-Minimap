@@ -142,8 +142,8 @@ public sealed partial class ModEntry : MelonMod
     // The game locks the mouse during play, so a map drawn by the mod cannot be scrolled or dragged
     // until the cursor is handed over. Do NOT push a generic InputManager context here: the probe
     // showed that it also swallows inventory, clothing, first-aid, crafting and journal shortcuts.
-    // InputPatches suppresses only character movement/actions while the full map is up, leaving the
-    // game's interface shortcuts alive.
+    // InputPatches suppresses character actions and camera movement while the full map is up,
+    // leaving the game's interface shortcuts alive. Player movement has its own opt-in setting.
     // Closing the full map goes through the game's own map action query rather than a key of ours.
     //
     // Opening is intercepted at ExecuteOpenMapAction, so it already follows whatever the player
@@ -271,6 +271,8 @@ public sealed partial class ModEntry : MelonMod
         string text = _settings.ReleaseMouseOnFullMap
             ? "滚轮 缩放      左键拖动 平移      "
             : "";
+        if (_settings.AllowMovementOnFullMap)
+            text += "移动键 移动      ";
         if (_settings.EnableCycleKey && _settings.CycleViewKey != KeyCode.None)
             text += $"{_settings.CycleViewKey} 切换视图      ";
         return $"{text}地图键 / Esc 关闭";
@@ -400,6 +402,14 @@ public sealed partial class ModEntry : MelonMod
 
 
     internal static bool ShouldBlockFullMapGameplayInput() => s_fullMapActive;
+
+
+    internal static bool ShouldBlockFullMapPlayerMovement()
+    {
+        ModEntry mod = s_instance;
+        return s_fullMapActive &&
+               (mod == null || !mod._settings.AllowMovementOnFullMap);
+    }
 
 
     internal static void CloseFullMapForGamePanel()

@@ -42,6 +42,15 @@ public sealed partial class ModEntry : MelonMod
 
     private Vector2 _fullMapDragLast;
 
+    // Some multi-floor community sheets omit the staircase geometry between calibrated landings.
+    // Preserve the last trustworthy projection while crossing such a gap instead of extrapolating
+    // a floor transform until the pointer runs off the drawing.
+    private Vector2 _lastStablePlayerUv;
+
+    private string _lastStablePlayerMapId = "";
+
+    private bool _lastStablePlayerUvValid;
+
     internal static ModEntry s_instance;
 
     private static int s_suppressEscapeThroughFrame = -1;
@@ -138,6 +147,10 @@ public sealed partial class ModEntry : MelonMod
     // Set when the scene changes so both layers re-resolve their source on the next update even
     // though their setting did not change.
     private bool _layersDirty;
+
+    // Cached tri-state (unknown/off/on) so changing the interior-map setting can re-resolve the
+    // current scene immediately without tying a release feature to DeveloperMode.
+    private int _interiorMapsEnabledState = -1;
 
     // Cached separately from each layer because one setting changes the effective source policy
     // of both layers at once. -1 guarantees that a saved non-default value is applied on startup.
@@ -424,7 +437,7 @@ public sealed partial class ModEntry : MelonMod
             message => LoggerInstance.Warning(message));
         _probeMapsLastWriteUtc = File.GetLastWriteTimeUtc(_probeMapsPath);
         _sceneCatalogAfterUtc = DateTime.UtcNow.AddSeconds(5);
-        LoggerInstance.Msg("社区HUD地图 0.7.0 initialized.");
+        LoggerInstance.Msg("社区HUD地图 0.9.0 initialized.");
         LoggerInstance.Msg($"Map directory: {_mapsDirectory}");
     }
 
@@ -541,8 +554,13 @@ public sealed partial class ModEntry : MelonMod
         }
 
         var scene = UnitySceneManager.GetActiveScene();
+        int interiorMapsState = _settings.EnableInteriorMaps ? 1 : 0;
+        bool interiorMapsChanged = _interiorMapsEnabledState != interiorMapsState;
+        _interiorMapsEnabledState = interiorMapsState;
         if (scene.handle != _observedSceneHandle)
             ObserveScene(scene.handle, scene.name);
+        else if (interiorMapsChanged)
+            ObserveScene(scene.handle, scene.name, true);
         RefreshSpatialMapVariant(scene.handle, scene.name);
 
         ProbeRandomResourceReadiness(scene.name);
@@ -913,6 +931,21 @@ public sealed partial class ModEntry : MelonMod
         _mapRect.anchorMax = anchor;
         _mapRect.pivot = anchor;
         _mapRect.anchoredPosition = offset;
+        _mapRect.sizeDelta = size;
+        return size;
+    }
+
+
+    private Vector2 ApplyMiniMapOverviewLayout(Vector2 viewportSize)
+    {
+        // An uncalibrated cave/interior drawing is a reference sheet rather than a navigation
+        // projection. Fit the complete texture inside the normal corner-map footprint without
+        // stretching it. One axis keeps the user's configured minimap size and the other shrinks
+        // to preserve the source artwork's aspect ratio.
+        float aspect = GetTextureAspect();
+        Vector2 size = aspect >= 1f
+            ? new Vector2(viewportSize.x, viewportSize.x / aspect)
+            : new Vector2(viewportSize.y * aspect, viewportSize.y);
         _mapRect.sizeDelta = size;
         return size;
     }

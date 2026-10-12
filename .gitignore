@@ -10,6 +10,7 @@ maps/
 prepared-maps/
 manual-crops/
 calibration_points.csv
+dist/
 
 # Renders produced by the scripts in tools/. Regenerate them rather than storing megabytes of
 # PNG in the repository; the scripts and the data they read are what belongs in version control.

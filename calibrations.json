@@ -1022,6 +1022,1447 @@
           "label": "大坝下层东侧出口区域"
         }
       ]
+    },
+    {
+      "mapId": "probe_interior_mountain_town_cave",
+      "imageWidth": 829,
+      "imageHeight": 1511,
+      "points": [
+        {
+          "worldX": -124.686,
+          "worldZ": -110.253,
+          "mapX": 265.7,
+          "mapY": 1331.8,
+          "label": ""
+        },
+        {
+          "worldX": -113.917,
+          "worldZ": -77.877,
+          "mapX": 267.7,
+          "mapY": 923.4,
+          "label": ""
+        },
+        {
+          "worldX": -87.069,
+          "worldZ": -84.274,
+          "mapX": 528.6,
+          "mapY": 917.4,
+          "label": ""
+        },
+        {
+          "worldX": -68.553,
+          "worldZ": -18.526,
+          "mapX": 514.7,
+          "mapY": 345.7,
+          "label": ""
+        },
+        {
+          "worldX": -63.156,
+          "worldZ": -0.946,
+          "mapX": 498.8,
+          "mapY": 94.6,
+          "label": ""
+        }
+      ]
+    },
+    {
+      "mapId": "probe_cave_mystery_lake_mountain_town",
+      "imageWidth": 4600,
+      "imageHeight": 2300,
+      "points": [
+        {
+          "worldX": -109.936,
+          "worldZ": 76.25,
+          "mapX": 383.1,
+          "mapY": 1185.5,
+          "label": ""
+        },
+        {
+          "worldX": -76.609,
+          "worldZ": 77.004,
+          "mapX": 1138.3,
+          "mapY": 1189.1,
+          "label": ""
+        },
+        {
+          "worldX": -76.574,
+          "worldZ": 68.715,
+          "mapX": 1138.3,
+          "mapY": 1348.1,
+          "label": ""
+        },
+        {
+          "worldX": -51.034,
+          "worldZ": 69.286,
+          "mapX": 1528.5,
+          "mapY": 1337.3,
+          "label": ""
+        },
+        {
+          "worldX": -50.549,
+          "worldZ": 51.182,
+          "mapX": 1543.0,
+          "mapY": 1633.6,
+          "label": ""
+        },
+        {
+          "worldX": -21.551,
+          "worldZ": 48.907,
+          "mapX": 2095.8,
+          "mapY": 1666.1,
+          "label": ""
+        },
+        {
+          "worldX": 34.778,
+          "worldZ": 26.72,
+          "mapX": 2930.5,
+          "mapY": 2020.2,
+          "label": ""
+        },
+        {
+          "worldX": 44.645,
+          "worldZ": 61.899,
+          "mapX": 3129.3,
+          "mapY": 1424.0,
+          "label": ""
+        },
+        {
+          "worldX": 54.121,
+          "worldZ": 93.388,
+          "mapX": 3281.1,
+          "mapY": 968.7,
+          "label": ""
+        },
+        {
+          "worldX": 79.916,
+          "worldZ": 85.824,
+          "mapX": 3718.3,
+          "mapY": 1088.0,
+          "label": ""
+        },
+        {
+          "worldX": 91.425,
+          "worldZ": 125.527,
+          "mapX": 3906.2,
+          "mapY": 426.7,
+          "label": ""
+        }
+      ]
+    },
+    {
+      "mapId": "probe_interior_coal_mine_no3",
+      "imageWidth": 1774,
+      "imageHeight": 976,
+      "points": [
+        {
+          "worldX": -114.298,
+          "worldZ": -12.518,
+          "mapX": 331.7,
+          "mapY": 334.5,
+          "label": ""
+        },
+        {
+          "worldX": -77.548,
+          "worldZ": 1.49,
+          "mapX": 788.8,
+          "mapY": 184.0,
+          "label": ""
+        },
+        {
+          "worldX": -51.964,
+          "worldZ": 8.193,
+          "mapX": 1081.4,
+          "mapY": 124.1,
+          "label": ""
+        },
+        {
+          "worldX": -60.576,
+          "worldZ": -24.39,
+          "mapX": 972.7,
+          "mapY": 446.0,
+          "label": ""
+        },
+        {
+          "worldX": -85.19,
+          "worldZ": -33.476,
+          "mapX": 717.7,
+          "mapY": 578.3,
+          "label": ""
+        },
+        {
+          "worldX": -24.608,
+          "worldZ": -20.867,
+          "mapX": 1386.6,
+          "mapY": 436.2,
+          "label": ""
+        },
+        {
+          "worldX": -21.527,
+          "worldZ": -3.972,
+          "mapX": 1388.0,
+          "mapY": 285.7,
+          "label": ""
+        },
+        {
+          "worldX": 1.341,
+          "worldZ": -14.304,
+          "mapX": 1636.0,
+          "mapY": 380.5,
+          "label": ""
+        }
+      ]
+    },
+    {
+      "mapId": "probe_cave_ash_canyon_timberwolf",
+      "imageWidth": 3770,
+      "imageHeight": 2180,
+      "points": [
+        {
+          "worldX": 122.975,
+          "worldZ": -31.754,
+          "mapX": 3284.3,
+          "mapY": 1486.3,
+          "label": ""
+        },
+        {
+          "worldX": 104.266,
+          "worldZ": -23.877,
+          "mapX": 2905.2,
+          "mapY": 1367.9,
+          "label": ""
+        },
+        {
+          "worldX": 64.506,
+          "worldZ": -21.348,
+          "mapX": 2301.1,
+          "mapY": 1287.9,
+          "label": ""
+        },
+        {
+          "worldX": 58.12,
+          "worldZ": 13.618,
+          "mapX": 2301.1,
+          "mapY": 908.9,
+          "label": ""
+        },
+        {
+          "worldX": 40.77,
+          "worldZ": -15.159,
+          "mapX": 2040.5,
+          "mapY": 1273.1,
+          "label": ""
+        },
+        {
+          "worldX": 40.105,
+          "worldZ": 15.579,
+          "mapX": 2046.4,
+          "mapY": 923.7,
+          "label": ""
+        },
+        {
+          "worldX": 13.688,
+          "worldZ": 20.208,
+          "mapX": 1708.8,
+          "mapY": 823.0,
+          "label": ""
+        },
+        {
+          "worldX": 16.384,
+          "worldZ": 59.612,
+          "mapX": 1738.4,
+          "mapY": 390.6,
+          "label": ""
+        },
+        {
+          "worldX": 42.95,
+          "worldZ": 24.286,
+          "mapX": 2099.7,
+          "mapY": 686.7,
+          "label": ""
+        },
+        {
+          "worldX": -31.623,
+          "worldZ": 21.181,
+          "mapX": 1119.5,
+          "mapY": 817.1,
+          "label": ""
+        },
+        {
+          "worldX": -30.778,
+          "worldZ": 48.748,
+          "mapX": 1113.5,
+          "mapY": 488.3,
+          "label": ""
+        },
+        {
+          "worldX": -74.655,
+          "worldZ": 46.148,
+          "mapX": 473.9,
+          "mapY": 485.4,
+          "label": ""
+        }
+      ]
+    },
+    {
+      "mapId": "probe_interior_ash_local_cave",
+      "imageWidth": 2306,
+      "imageHeight": 2210,
+      "points": [
+        {
+          "worldX": -43.327,
+          "worldZ": -77.29,
+          "mapX": 485.8,
+          "mapY": 1500.6,
+          "label": ""
+        },
+        {
+          "worldX": -45.118,
+          "worldZ": -56.71,
+          "mapX": 497.4,
+          "mapY": 1255.7,
+          "label": ""
+        },
+        {
+          "worldX": -20.758,
+          "worldZ": -68.624,
+          "mapX": 727.4,
+          "mapY": 1365.7,
+          "label": ""
+        },
+        {
+          "worldX": -3.02,
+          "worldZ": -76.678,
+          "mapX": 894.0,
+          "mapY": 1445.7,
+          "label": ""
+        },
+        {
+          "worldX": 23.644,
+          "worldZ": -65.118,
+          "mapX": 1152.2,
+          "mapY": 1329.0,
+          "label": ""
+        },
+        {
+          "worldX": 20.384,
+          "worldZ": -32.573,
+          "mapX": 1113.9,
+          "mapY": 995.8,
+          "label": ""
+        },
+        {
+          "worldX": 2.46,
+          "worldZ": -31.364,
+          "mapX": 910.6,
+          "mapY": 979.2,
+          "label": ""
+        },
+        {
+          "worldX": 5.955,
+          "worldZ": -5.555,
+          "mapX": 937.3,
+          "mapY": 676.0,
+          "label": ""
+        },
+        {
+          "worldX": 42.856,
+          "worldZ": -13.046,
+          "mapX": 1377.1,
+          "mapY": 712.6,
+          "label": ""
+        },
+        {
+          "worldX": 42.858,
+          "worldZ": -30.424,
+          "mapX": 1390.4,
+          "mapY": 939.2,
+          "label": ""
+        },
+        {
+          "worldX": 45.113,
+          "worldZ": -60.394,
+          "mapX": 1437.1,
+          "mapY": 1270.7,
+          "label": ""
+        }
+      ]
+    },
+    {
+      "mapId": "probe_cave_timberwolf_blackrock",
+      "imageWidth": 2822,
+      "imageHeight": 2300,
+      "points": [
+        {
+          "worldX": 125.622,
+          "worldZ": -21.637,
+          "mapX": 2443.4,
+          "mapY": 2033.0,
+          "label": ""
+        },
+        {
+          "worldX": 74.375,
+          "worldZ": -33.082,
+          "mapX": 1921.3,
+          "mapY": 2109.4,
+          "label": ""
+        },
+        {
+          "worldX": 93.096,
+          "worldZ": 2.207,
+          "mapX": 2129.6,
+          "mapY": 1724.4,
+          "label": ""
+        },
+        {
+          "worldX": 76.007,
+          "worldZ": 4.736,
+          "mapX": 1918.6,
+          "mapY": 1729.7,
+          "label": ""
+        },
+        {
+          "worldX": 70.527,
+          "worldZ": -11.538,
+          "mapX": 1868.5,
+          "mapY": 1887.9,
+          "label": ""
+        },
+        {
+          "worldX": 36.775,
+          "worldZ": -7.062,
+          "mapX": 1512.5,
+          "mapY": 1803.5,
+          "label": ""
+        },
+        {
+          "worldX": 37.104,
+          "worldZ": 25.401,
+          "mapX": 1507.3,
+          "mapY": 1444.9,
+          "label": ""
+        },
+        {
+          "worldX": 37.303,
+          "worldZ": 78.26,
+          "mapX": 1523.1,
+          "mapY": 851.6,
+          "label": ""
+        },
+        {
+          "worldX": 25.521,
+          "worldZ": 142.757,
+          "mapX": 1444.0,
+          "mapY": 115.9,
+          "label": ""
+        },
+        {
+          "worldX": -9.135,
+          "worldZ": 132.537,
+          "mapX": 1059.0,
+          "mapY": 205.5,
+          "label": ""
+        },
+        {
+          "worldX": -22.309,
+          "worldZ": 122.478,
+          "mapX": 900.7,
+          "mapY": 318.9,
+          "label": ""
+        },
+        {
+          "worldX": -27.631,
+          "worldZ": 110.345,
+          "mapX": 826.9,
+          "mapY": 434.9,
+          "label": ""
+        },
+        {
+          "worldX": -67.211,
+          "worldZ": 97.893,
+          "mapX": 407.6,
+          "mapY": 551.0,
+          "label": ""
+        }
+      ]
+    },
+    {
+      "mapId": "probe_cave_forlorn_bleak_inlet",
+      "imageWidth": 4288,
+      "imageHeight": 2300,
+      "points": [
+        {
+          "worldX": -132.674,
+          "worldZ": -65.084,
+          "mapX": 286.3,
+          "mapY": 1685.0,
+          "label": ""
+        },
+        {
+          "worldX": -100.009,
+          "worldZ": -82.033,
+          "mapX": 808.4,
+          "mapY": 1998.3,
+          "label": ""
+        },
+        {
+          "worldX": -55.548,
+          "worldZ": -15.864,
+          "mapX": 1539.4,
+          "mapY": 1048.4,
+          "label": ""
+        },
+        {
+          "worldX": -36.919,
+          "worldZ": -4.161,
+          "mapX": 1808.8,
+          "mapY": 900.2,
+          "label": ""
+        },
+        {
+          "worldX": -23.096,
+          "worldZ": 3.937,
+          "mapX": 2027.8,
+          "mapY": 782.3,
+          "label": ""
+        },
+        {
+          "worldX": -10.643,
+          "worldZ": 15.722,
+          "mapX": 2243.4,
+          "mapY": 597.0,
+          "label": ""
+        },
+        {
+          "worldX": 4.388,
+          "worldZ": 3.71,
+          "mapX": 2442.1,
+          "mapY": 778.9,
+          "label": ""
+        },
+        {
+          "worldX": 41.239,
+          "worldZ": -10.911,
+          "mapX": 3018.1,
+          "mapY": 991.1,
+          "label": ""
+        },
+        {
+          "worldX": 69.085,
+          "worldZ": 9.131,
+          "mapX": 3469.5,
+          "mapY": 694.7,
+          "label": ""
+        },
+        {
+          "worldX": 95.352,
+          "worldZ": -12.297,
+          "mapX": 3924.2,
+          "mapY": 1024.8,
+          "label": ""
+        }
+      ]
+    },
+    {
+      "mapId": "probe_cave_hrv_mountain_town",
+      "imageWidth": 2961,
+      "imageHeight": 2380,
+      "points": [
+        {
+          "worldX": 16.112,
+          "worldZ": -0.069,
+          "mapX": 2116.4,
+          "mapY": 2155.2,
+          "label": ""
+        },
+        {
+          "worldX": -5.879,
+          "worldZ": 3.621,
+          "mapX": 1718.0,
+          "mapY": 2089.8,
+          "label": ""
+        },
+        {
+          "worldX": 6.948,
+          "worldZ": 8.813,
+          "mapX": 1918.5,
+          "mapY": 1970.0,
+          "label": ""
+        },
+        {
+          "worldX": -29.734,
+          "worldZ": 9.009,
+          "mapX": 1225.4,
+          "mapY": 1972.7,
+          "label": ""
+        },
+        {
+          "worldX": -20.653,
+          "worldZ": 46.436,
+          "mapX": 1438.2,
+          "mapY": 1274.1,
+          "label": ""
+        },
+        {
+          "worldX": -34.255,
+          "worldZ": 55.901,
+          "mapX": 1199.6,
+          "mapY": 1115.6,
+          "label": ""
+        },
+        {
+          "worldX": -65.426,
+          "worldZ": 63.94,
+          "mapX": 597.8,
+          "mapY": 960.3,
+          "label": ""
+        },
+        {
+          "worldX": -67.178,
+          "worldZ": 91.654,
+          "mapX": 586.8,
+          "mapY": 436.4,
+          "label": ""
+        }
+      ]
+    },
+    {
+      "mapId": "probe_interior_railway_worker_tunnel",
+      "imageWidth": 2788,
+      "imageHeight": 1477,
+      "points": [
+        {
+          "worldX": 26.742,
+          "worldZ": 19.805,
+          "mapX": 2472.6,
+          "mapY": 1184.9,
+          "label": ""
+        },
+        {
+          "worldX": -1.869,
+          "worldZ": 19.696,
+          "mapX": 2461.7,
+          "mapY": 799.5,
+          "label": ""
+        },
+        {
+          "worldX": -11.461,
+          "worldZ": 2.582,
+          "mapX": 2262.4,
+          "mapY": 665.9,
+          "label": ""
+        },
+        {
+          "worldX": -45.732,
+          "worldZ": -3.763,
+          "mapX": 2209.8,
+          "mapY": 234.4,
+          "label": ""
+        },
+        {
+          "worldX": -45.1,
+          "worldZ": -13.753,
+          "mapX": 2087.2,
+          "mapY": 232.2,
+          "label": ""
+        },
+        {
+          "worldX": -43.241,
+          "worldZ": -39.919,
+          "mapX": 1763.0,
+          "mapY": 212.5,
+          "label": ""
+        },
+        {
+          "worldX": -32.164,
+          "worldZ": -55.35,
+          "mapX": 1519.9,
+          "mapY": 328.6,
+          "label": ""
+        },
+        {
+          "worldX": -39.39,
+          "worldZ": -81.538,
+          "mapX": 1222.1,
+          "mapY": 243.2,
+          "label": ""
+        },
+        {
+          "worldX": -22.912,
+          "worldZ": -84.461,
+          "mapX": 1173.9,
+          "mapY": 457.8,
+          "label": ""
+        },
+        {
+          "worldX": -18.419,
+          "worldZ": -67.071,
+          "mapX": 1388.5,
+          "mapY": 530.1,
+          "label": ""
+        },
+        {
+          "worldX": 6.39,
+          "worldZ": -76.677,
+          "mapX": 1250.6,
+          "mapY": 847.6,
+          "label": ""
+        },
+        {
+          "worldX": -3.83,
+          "worldZ": -99.238,
+          "mapX": 957.1,
+          "mapY": 716.2,
+          "label": ""
+        }
+      ]
+    },
+    {
+      "mapId": "probe_interior_desolation_mine",
+      "imageWidth": 1498,
+      "imageHeight": 567,
+      "points": [
+        {
+          "worldX": -6.113,
+          "worldZ": 30.241,
+          "mapX": 667.2,
+          "mapY": 68.0,
+          "label": ""
+        },
+        {
+          "worldX": -5.837,
+          "worldZ": 50.495,
+          "mapX": 500.1,
+          "mapY": 210.3,
+          "label": ""
+        },
+        {
+          "worldX": -42.462,
+          "worldZ": 31.113,
+          "mapX": 863.7,
+          "mapY": 386.9,
+          "label": ""
+        },
+        {
+          "worldX": -35.644,
+          "worldZ": 17.666,
+          "mapX": 939.0,
+          "mapY": 259.8,
+          "label": ""
+        },
+        {
+          "worldX": -54.386,
+          "worldZ": -15.724,
+          "mapX": 1249.7,
+          "mapY": 225.6,
+          "label": ""
+        }
+      ]
+    },
+    {
+      "mapId": "probe_interior_keepers_pass_cave",
+      "imageWidth": 1827,
+      "imageHeight": 1193,
+      "points": [
+        {
+          "worldX": 177.908,
+          "worldZ": -41.449,
+          "mapX": 1618.9,
+          "mapY": 888.8,
+          "label": ""
+        },
+        {
+          "worldX": 177.553,
+          "worldZ": -30.883,
+          "mapX": 1620.3,
+          "mapY": 774.2,
+          "label": ""
+        },
+        {
+          "worldX": 164.465,
+          "worldZ": -25.82,
+          "mapX": 1501.2,
+          "mapY": 732.6,
+          "label": ""
+        },
+        {
+          "worldX": 141.526,
+          "worldZ": -26.648,
+          "mapX": 1323.2,
+          "mapY": 736.9,
+          "label": ""
+        },
+        {
+          "worldX": 140.678,
+          "worldZ": -8.644,
+          "mapX": 1320.4,
+          "mapY": 612.0,
+          "label": ""
+        },
+        {
+          "worldX": 68.627,
+          "worldZ": -9.216,
+          "mapX": 743.8,
+          "mapY": 605.4,
+          "label": ""
+        },
+        {
+          "worldX": 41.072,
+          "worldZ": -17.77,
+          "mapX": 529.2,
+          "mapY": 678.1,
+          "label": ""
+        },
+        {
+          "worldX": 38.083,
+          "worldZ": -8.529,
+          "mapX": 516.0,
+          "mapY": 595.5,
+          "label": ""
+        },
+        {
+          "worldX": 12.349,
+          "worldZ": -8.924,
+          "mapX": 308.1,
+          "mapY": 598.8,
+          "label": ""
+        },
+        {
+          "worldX": 13.454,
+          "worldZ": 18.58,
+          "mapX": 304.8,
+          "mapY": 372.7,
+          "label": ""
+        },
+        {
+          "worldX": -13.56,
+          "worldZ": 29.174,
+          "mapX": 100.1,
+          "mapY": 295.2,
+          "label": ""
+        },
+        {
+          "worldX": -13.48,
+          "worldZ": 43.097,
+          "mapX": 100.1,
+          "mapY": 163.1,
+          "label": ""
+        }
+      ]
+    },
+    {
+      "mapId": "probe_interior_carter_cave",
+      "imageWidth": 2191,
+      "imageHeight": 1109,
+      "points": [
+        { "worldX": -75.486, "worldZ": -39.514, "mapX": 230.6, "mapY": 444.6, "label": "" },
+        { "worldX": -76.512, "worldZ": -21.547, "mapX": 406.2, "mapY": 437.2, "label": "" },
+        { "worldX": -85.468, "worldZ": 20.6, "mapX": 874.3, "mapY": 361.4, "label": "" },
+        { "worldX": -70.686, "worldZ": 38.052, "mapX": 1017.2, "mapY": 485.4, "label": "" },
+        { "worldX": -51.144, "worldZ": 38.37, "mapX": 1027.5, "mapY": 647.2, "label": "" },
+        { "worldX": -50.663, "worldZ": 55.384, "mapX": 1192.7, "mapY": 660.9, "label": "" },
+        { "worldX": -52.098, "worldZ": 91.96, "mapX": 1531.8, "mapY": 642.0, "label": "" },
+        { "worldX": -69.145, "worldZ": 70.274, "mapX": 1318.4, "mapY": 499.1, "label": "" },
+        { "worldX": -50.198, "worldZ": 105.296, "mapX": 1659.2, "mapY": 670.0, "label": "" },
+        { "worldX": -45.496, "worldZ": 92.712, "mapX": 1538.7, "mapY": 711.3, "label": "" },
+        { "worldX": -39.405, "worldZ": 130.315, "mapX": 1872.6, "mapY": 780.2, "label": "" },
+        { "worldX": -77.134, "worldZ": 139.734, "mapX": 1965.5, "mapY": 405.0, "label": "" }
+      ]
+    },
+    {
+      "mapId": "probe_interior_hrv_ice_cave_south",
+      "imageWidth": 1996,
+      "imageHeight": 2898,
+      "points": [
+        { "worldX": 35.844, "worldZ": 62.568, "mapX": 1667.8, "mapY": 1002.1, "label": "" },
+        { "worldX": 14.335, "worldZ": 55.68, "mapX": 1602.2, "mapY": 774.9, "label": "" },
+        { "worldX": -13.989, "worldZ": 54.887, "mapX": 1584.8, "mapY": 512.7, "label": "" },
+        { "worldX": -13.167, "worldZ": 28.87, "mapX": 1340.1, "mapY": 512.7, "label": "" },
+        { "worldX": 12.54, "worldZ": 18.413, "mapX": 1230.8, "mapY": 766.2, "label": "" },
+        { "worldX": 29.531, "worldZ": 27.253, "mapX": 1320.4, "mapY": 943.1, "label": "" },
+        { "worldX": 85.802, "worldZ": 27.754, "mapX": 1329.1, "mapY": 1474.0, "label": "" },
+        { "worldX": 86.16, "worldZ": 55.194, "mapX": 1613.2, "mapY": 1491.5, "label": "" },
+        { "worldX": 67.041, "worldZ": -9.757, "mapX": 975.2, "mapY": 1283.9, "label": "" },
+        { "worldX": 140.016, "worldZ": -8.816, "mapX": 977.4, "mapY": 1972.1, "label": "" },
+        { "worldX": 188.625, "worldZ": -25.258, "mapX": 786.5, "mapY": 2485.1, "label": "" },
+        { "worldX": 205.968, "worldZ": -16.045, "mapX": 874.1, "mapY": 2640.3, "label": "" },
+        { "worldX": 205.649, "worldZ": 47.306, "mapX": 1501.7, "mapY": 2645.0, "label": "" }
+      ]
+    },
+    {
+      "mapId": "probe_interior_hrv_ice_cave_north",
+      "imageWidth": 2005,
+      "imageHeight": 2911,
+      "points": [
+        { "worldX": 130.695, "worldZ": 21.124, "mapX": 792.1, "mapY": 2035.2, "label": "" },
+        { "worldX": 173.895, "worldZ": 5.47, "mapX": 653.3, "mapY": 2466.8, "label": "" },
+        { "worldX": 174.336, "worldZ": -15.855, "mapX": 443.9, "mapY": 2474.4, "label": "" },
+        { "worldX": 144.991, "worldZ": -16.033, "mapX": 423.7, "mapY": 2206.8, "label": "" },
+        { "worldX": 146.716, "worldZ": -25.007, "mapX": 342.9, "mapY": 2196.8, "label": "" },
+        { "worldX": 119.12, "worldZ": -23.063, "mapX": 337.9, "mapY": 1944.4, "label": "" },
+        { "worldX": 108.965, "worldZ": 2.401, "mapX": 600.3, "mapY": 1828.3, "label": "" },
+        { "worldX": 82.426, "worldZ": 1.555, "mapX": 605.4, "mapY": 1581.0, "label": "" },
+        { "worldX": 54.873, "worldZ": 1.336, "mapX": 607.9, "mapY": 1305.9, "label": "" },
+        { "worldX": 54.822, "worldZ": 17.642, "mapX": 761.8, "mapY": 1305.9, "label": "" },
+        { "worldX": 73.101, "worldZ": -24.492, "mapX": 338.5, "mapY": 1497.8, "label": "" },
+        { "worldX": 57.848, "worldZ": -34.069, "mapX": 242.6, "mapY": 1353.9, "label": "" },
+        { "worldX": 36.684, "worldZ": -34.587, "mapX": 250.1, "mapY": 1129.3, "label": "" },
+        { "worldX": 35.202, "worldZ": -6.657, "mapX": 522.7, "mapY": 1121.8, "label": "" },
+        { "worldX": 27.845, "worldZ": -6.297, "mapX": 527.7, "mapY": 1020.8, "label": "" },
+        { "worldX": 26.43, "worldZ": 2.161, "mapX": 623.6, "mapY": 1028.4, "label": "" },
+        { "worldX": 0.011, "worldZ": 2.186, "mapX": 613.5, "mapY": 760.9, "label": "" },
+        { "worldX": -0.003, "worldZ": 11.643, "mapX": 719.5, "mapY": 748.3, "label": "" },
+        { "worldX": -8.996, "worldZ": 11.194, "mapX": 712.0, "mapY": 670.0, "label": "" },
+        { "worldX": -17.541, "worldZ": 20.217, "mapX": 838.1, "mapY": 576.7, "label": "" },
+        { "worldX": -16.148, "worldZ": 52.862, "mapX": 1156.1, "mapY": 581.7, "label": "" },
+        { "worldX": -21.575, "worldZ": 75.55, "mapX": 1393.3, "mapY": 536.3, "label": "" },
+        { "worldX": -30.765, "worldZ": 76.346, "mapX": 1400.9, "mapY": 442.9, "label": "" },
+        { "worldX": -31.236, "worldZ": 103.7, "mapX": 1670.9, "mapY": 432.8, "label": "" },
+        { "worldX": -21.2, "worldZ": 105.181, "mapX": 1681.0, "mapY": 531.2, "label": "" },
+        { "worldX": -21.676, "worldZ": 113.427, "mapX": 1761.8, "mapY": 541.3, "label": "" },
+        { "worldX": 40.099, "worldZ": 113.376, "mapX": 1758.0, "mapY": 1148.4, "label": "" }
+      ]
+    },
+    {
+      "mapId": "probe_interior_ash_gold_mine",
+      "imageWidth": 2315,
+      "imageHeight": 2216,
+      "points": [
+        { "worldX": -101.229, "worldZ": 162.64, "mapX": 2085.1, "mapY": 1013.5, "label": "" },
+        { "worldX": -157.001, "worldZ": 153.108, "mapX": 1723.9, "mapY": 1415.0, "label": "" },
+        { "worldX": -181.645, "worldZ": 180.206, "mapX": 1420.4, "mapY": 1343.9, "label": "" },
+        { "worldX": -145.906, "worldZ": 206.295, "mapX": 1544.5, "mapY": 944.8, "label": "" },
+        { "worldX": -141.825, "worldZ": 228.867, "mapX": 1459.0, "mapY": 745.4, "label": "" },
+        { "worldX": -155.585, "worldZ": 226.74, "mapX": 1383.9, "mapY": 844.4, "label": "" },
+        { "worldX": -199.527, "worldZ": 230.544, "mapX": 999.6, "mapY": 1034.6, "label": "" },
+        { "worldX": -257.971, "worldZ": 262.876, "mapX": 479.0, "mapY": 1136.4, "label": "" },
+        { "worldX": -278.146, "worldZ": 292.257, "mapX": 190.8, "mapY": 1101.8, "label": "" }
+      ]
+    },
+    {
+      "mapId": "probe_interior_timberwolf_cave_lower",
+      "imageWidth": 2276,
+      "imageHeight": 2197,
+      "points": [
+        { "worldX": -27.346, "worldZ": -104.189, "mapX": 1970.5, "mapY": 1037.6, "label": "" },
+        { "worldX": -28.127, "worldZ": -58.686, "mapX": 1491.9, "mapY": 1035.1, "label": "" },
+        { "worldX": -21.252, "worldZ": -65.003, "mapX": 1572.5, "mapY": 952.0, "label": "" },
+        { "worldX": -1.806, "worldZ": -67.318, "mapX": 1567.5, "mapY": 818.5, "label": "" },
+        { "worldX": 23.77, "worldZ": -64.637, "mapX": 1537.2, "mapY": 556.5, "label": "" },
+        { "worldX": 20.152, "worldZ": -32.051, "mapX": 1240.0, "mapY": 561.6, "label": "" },
+        { "worldX": -14.973, "worldZ": -31.549, "mapX": 1202.2, "mapY": 886.5, "label": "" },
+        { "worldX": -15.663, "worldZ": -5.87, "mapX": 920.1, "mapY": 884.0, "label": "" },
+        { "worldX": -4.771, "worldZ": 7.239, "mapX": 779.1, "mapY": 780.7, "label": "" },
+        { "worldX": -6.897, "worldZ": 45.753, "mapX": 355.9, "mapY": 770.6, "label": "" }
+      ]
+    },
+    {
+      "mapId": "probe_interior_timberwolf_cave_upper",
+      "imageWidth": 2279,
+      "imageHeight": 2235,
+      "points": [
+        { "worldX": 120.852, "worldZ": -21.979, "mapX": 2019.7, "mapY": 1375.9, "label": "" },
+        { "worldX": 68.376, "worldZ": -22.281, "mapX": 1614.8, "mapY": 1373.3, "label": "" },
+        { "worldX": 60.035, "worldZ": 30.982, "mapX": 1538.0, "mapY": 983.8, "label": "" },
+        { "worldX": 12.962, "worldZ": 31.438, "mapX": 1222.8, "mapY": 978.7, "label": "" },
+        { "worldX": -24.857, "worldZ": 41.786, "mapX": 943.5, "mapY": 917.2, "label": "" },
+        { "worldX": -11.68, "worldZ": 50.828, "mapX": 1015.2, "mapY": 822.4, "label": "" },
+        { "worldX": -50.475, "worldZ": 51.181, "mapX": 735.9, "mapY": 819.8, "label": "" },
+        { "worldX": -49.373, "worldZ": 78.297, "mapX": 738.5, "mapY": 620.0, "label": "" },
+        { "worldX": -106.918, "worldZ": 77.064, "mapX": 331.0, "mapY": 620.0, "label": "" }
+      ]
+    },
+    {
+      "mapId": "probe_interior_pleasant_valley_cave",
+      "imageWidth": 779,
+      "imageHeight": 1308,
+      "points": [
+        { "worldX": 15.219, "worldZ": -0.239, "mapX": 103.8, "mapY": 1000.2, "label": "" },
+        { "worldX": 6.443, "worldZ": 7.909, "mapX": 237.3, "mapY": 955.2, "label": "" },
+        { "worldX": -12.087, "worldZ": 18.424, "mapX": 321.3, "mapY": 776.7, "label": "" },
+        { "worldX": -24.352, "worldZ": 54.256, "mapX": 649.7, "mapY": 700.2, "label": "" },
+        { "worldX": -51.393, "worldZ": 50.478, "mapX": 639.2, "mapY": 407.8, "label": "" },
+        { "worldX": -85.872, "worldZ": 49.092, "mapX": 666.2, "mapY": 92.9, "label": "" },
+        { "worldX": -72.273, "worldZ": 49.359, "mapX": 649.7, "mapY": 212.9, "label": "" }
+      ]
+    },
+    {
+      "mapId": "probe_interior_desolation_cave",
+      "imageWidth": 1494,
+      "imageHeight": 570,
+      "points": [
+        { "worldX": 26.742, "worldZ": 19.805, "mapX": 1153.6, "mapY": 61.8, "label": "" },
+        { "worldX": -1.424, "worldZ": 19.469, "mapX": 937.7, "mapY": 59.5, "label": "" },
+        { "worldX": -17.631, "worldZ": -53.352, "mapX": 792.2, "mapY": 511.3, "label": "" },
+        { "worldX": -33.021, "worldZ": -22.252, "mapX": 704.2, "mapY": 290.7, "label": "" },
+        { "worldX": -45.835, "worldZ": -4.763, "mapX": 625.5, "mapY": 168.6, "label": "" },
+        { "worldX": -43.373, "worldZ": -40.085, "mapX": 582.1, "mapY": 399.8, "label": "" }
+      ]
+    },
+    {
+      "mapId": "probe_interior_forlorn_cave",
+      "imageWidth": 1514,
+      "imageHeight": 1281,
+      "points": [
+        { "worldX": 100.181, "worldZ": 105.948, "mapX": 1387.8, "mapY": 453.7, "label": "" },
+        { "worldX": 100.583, "worldZ": 129.155, "mapX": 1380.5, "mapY": 276.0, "label": "" },
+        { "worldX": 75.442, "worldZ": 137.212, "mapX": 1201.3, "mapY": 211.4, "label": "" },
+        { "worldX": 28.525, "worldZ": 137.504, "mapX": 857.6, "mapY": 190.8, "label": "" },
+        { "worldX": 0.448, "worldZ": 146.796, "mapX": 650.5, "mapY": 120.3, "label": "" },
+        { "worldX": -10.73, "worldZ": 120.312, "mapX": 596.2, "mapY": 309.8, "label": "" },
+        { "worldX": 6.482, "worldZ": 86.506, "mapX": 687.2, "mapY": 566.8, "label": "" },
+        { "worldX": -10.903, "worldZ": 65.735, "mapX": 543.3, "mapY": 724.0, "label": "" },
+        { "worldX": -24.836, "worldZ": 43.038, "mapX": 431.7, "mapY": 895.8, "label": "" },
+        { "worldX": -33.81, "worldZ": 45.142, "mapX": 359.7, "mapY": 865.0, "label": "" },
+        { "worldX": -47.659, "worldZ": 20.789, "mapX": 248.1, "mapY": 1050.0, "label": "" }
+      ]
+    },
+    {
+      "mapId": "probe_interior_blackrock_steam_tunnels",
+      "imageWidth": 1721,
+      "imageHeight": 1073,
+      "points": [
+        { "worldX": -0.6, "worldZ": -107.36, "mapX": 1656.1, "mapY": 500.5, "label": "" },
+        { "worldX": -16.632, "worldZ": -88.253, "mapX": 1481.7, "mapY": 649.8, "label": "" },
+        { "worldX": -19.108, "worldZ": -65.735, "mapX": 1270.5, "mapY": 673.1, "label": "" },
+        { "worldX": 12.772, "worldZ": -23.108, "mapX": 872.5, "mapY": 366.8, "label": "" },
+        { "worldX": 11.766, "worldZ": 8.278, "mapX": 574.6, "mapY": 386.2, "label": "" },
+        { "worldX": -9.73, "worldZ": 14.664, "mapX": 520.5, "mapY": 591.7, "label": "" },
+        { "worldX": -31.327, "worldZ": 12.291, "mapX": 553.1, "mapY": 795.4, "label": "" },
+        { "worldX": -37.164, "worldZ": 24.534, "mapX": 444.8, "mapY": 849.9, "label": "" },
+        { "worldX": -36.486, "worldZ": 39.975, "mapX": 297.4, "mapY": 841.8, "label": "" },
+        { "worldX": -55.248, "worldZ": 58.679, "mapX": 90.8, "mapY": 1039.2, "label": "" }
+      ]
+    },
+    {
+      "mapId": "probe_interior_sundered_mine",
+      "imageWidth": 2820,
+      "imageHeight": 1540,
+      "points": [
+        { "worldX": -333.778, "worldZ": 97.272, "mapX": 2470.0, "mapY": 818.4, "label": "" },
+        { "worldX": 21.602, "worldZ": -49.632, "mapX": 1012.4, "mapY": 355.4, "label": "" },
+        { "worldX": 18.033, "worldZ": 8.36, "mapX": 983.6, "mapY": 588.0, "label": "" },
+        { "worldX": 144.16, "worldZ": -11.266, "mapX": 423.1, "mapY": 552.5, "label": "" }
+      ]
+    },
+    {
+      "mapId": "probe_interior_blackrock_prison_grounds",
+      "imageWidth": 2480,
+      "imageHeight": 1619,
+      "points": [
+        { "worldX": -227.019, "worldZ": 96.778, "mapX": 660.4, "mapY": 741.0, "label": "" },
+        { "worldX": -192.542, "worldZ": 6.221, "mapX": 613.7, "mapY": 1393.6, "label": "" },
+        { "worldX": -280.598, "worldZ": 109.464, "mapX": 351.2, "mapY": 485.8, "label": "" },
+        { "worldX": -286.632, "worldZ": 122.223, "mapX": 354.5, "mapY": 393.1, "label": "" },
+        { "worldX": -292.646, "worldZ": 134.985, "mapX": 351.5, "mapY": 303.7, "label": "" },
+        { "worldX": -111.151, "worldZ": 111.801, "mapX": 1449.6, "mapY": 953.2, "label": "" },
+        { "worldX": -124.194, "worldZ": 125.204, "mapX": 1411.7, "mapY": 858.0, "label": "" }
+      ]
+    },
+    {
+      "mapId": "probe_interior_coastal_mine_lower",
+      "imageWidth": 1865,
+      "imageHeight": 1418,
+      "points": [
+        { "worldX": -143.232, "worldZ": 324.522, "mapX": 591.9, "mapY": 1284.3, "label": "" },
+        { "worldX": -118.265, "worldZ": 281.597, "mapX": 539.9, "mapY": 933.1, "label": "" },
+        { "worldX": -100.909, "worldZ": 241.356, "mapX": 504.1, "mapY": 633.9, "label": "" },
+        { "worldX": -107.205, "worldZ": 222.917, "mapX": 596.8, "mapY": 533.1, "label": "" }
+      ]
+    },
+    {
+      "mapId": "probe_interior_coastal_mine_elevator",
+      "imageWidth": 1865,
+      "imageHeight": 1418,
+      "points": [
+        { "worldX": -126.649, "worldZ": 223.08, "mapX": 936.6, "mapY": 1068.0, "label": "" },
+        { "worldX": -125.38, "worldZ": 210.176, "mapX": 956.1, "mapY": 1001.4, "label": "" },
+        { "worldX": -118.846, "worldZ": 196.821, "mapX": 936.6, "mapY": 895.7, "label": "" },
+        { "worldX": -89.46, "worldZ": 161.818, "mapX": 839.0, "mapY": 614.4, "label": "" },
+        { "worldX": -81.705, "worldZ": 150.001, "mapX": 827.6, "mapY": 507.1, "label": "" },
+        { "worldX": -63.34, "worldZ": 82.591, "mapX": 854.5, "mapY": 86.85, "label": "" },
+        { "worldX": -59.619, "worldZ": 105.957, "mapX": 795.1, "mapY": 198.2, "label": "" },
+        { "worldX": -111.251, "worldZ": 160.725, "mapX": 965.8, "mapY": 660.0, "label": "" },
+        { "worldX": -132.494, "worldZ": 164.475, "mapX": 1084.5, "mapY": 731.5, "label": "" },
+        { "worldX": -152.225, "worldZ": 155.257, "mapX": 1243.8, "mapY": 718.5, "label": "" },
+        { "worldX": -175.348, "worldZ": 182.517, "mapX": 1319.5, "mapY": 940.6, "label": "" },
+        { "worldX": -167.302, "worldZ": 182.595, "mapX": 1248.0, "mapY": 916.2, "label": "" },
+        { "worldX": -157.743, "worldZ": 188.871, "mapX": 1183.0, "mapY": 942.2, "label": "" },
+        { "worldX": -150.061, "worldZ": 202.484, "mapX": 1100.0, "mapY": 1007.2, "label": "" },
+        { "worldX": -186.043, "worldZ": 246.835, "mapX": 1228.5, "mapY": 1343.8, "label": "" },
+        { "worldX": -202.381, "worldZ": 208.433, "mapX": 1428.4, "mapY": 1173.1, "label": "" },
+        { "worldX": -221.873, "worldZ": 202.446, "mapX": 1543.9, "mapY": 1158.4, "label": "" },
+        { "worldX": -237.117, "worldZ": 191.204, "mapX": 1665.8, "mapY": 1137.3, "label": "" },
+        { "worldX": -242.945, "worldZ": 196.686, "mapX": 1696.7, "mapY": 1181.2, "label": "" }
+      ]
+    },
+    {
+      "mapId": "probe_cave_pleasant_valley_coastal",
+      "imageWidth": 4272,
+      "imageHeight": 2300,
+      "points": [
+        { "worldX": 43.441, "worldZ": 73.44, "mapX": 278.6, "mapY": 605.8, "label": "" },
+        { "worldX": 15.051, "worldZ": 23.245, "mapX": 1410.2, "mapY": 617.0, "label": "" },
+        { "worldX": 2.698, "worldZ": -5.625, "mapX": 2011.3, "mapY": 570.3, "label": "" },
+        { "worldX": -3.976, "worldZ": 30.272, "mapX": 1479.9, "mapY": 1021.9, "label": "" },
+        { "worldX": 3.222, "worldZ": 58.612, "mapX": 953.5, "mapY": 1164.4, "label": "" },
+        { "worldX": -23.588, "worldZ": 68.134, "mapX": 1010.1, "mapY": 1679.7, "label": "" },
+        { "worldX": -33.754, "worldZ": 64.238, "mapX": 1184.6, "mapY": 1854.2, "label": "" },
+        { "worldX": -42.155, "worldZ": 31.335, "mapX": 1815.5, "mapY": 1686.4, "label": "" },
+        { "worldX": -30.924, "worldZ": -9.799, "mapX": 2386.0, "mapY": 1136.0, "label": "" },
+        { "worldX": -37.419, "worldZ": -18.747, "mapX": 2627.6, "mapY": 1139.4, "label": "" },
+        { "worldX": -50.483, "worldZ": -19.812, "mapX": 2708.2, "mapY": 1317.2, "label": "" },
+        { "worldX": -67.415, "worldZ": -24.25, "mapX": 2959.8, "mapY": 1558.8, "label": "" },
+        { "worldX": -80.726, "worldZ": -31.949, "mapX": 3207.3, "mapY": 1724.0, "label": "" },
+        { "worldX": -92.906, "worldZ": -29.198, "mapX": 3298.8, "mapY": 1988.4, "label": "" },
+        { "worldX": -63.424, "worldZ": -17.226, "mapX": 2792.1, "mapY": 1565.6, "label": "" },
+        { "worldX": -92.58, "worldZ": -63.114, "mapX": 3882.7, "mapY": 1622.6, "label": "" }
+      ]
+    },
+    {
+      "mapId": "probe_interior_carter_dam_upper_zone_a",
+      "imageWidth": 2346,
+      "imageHeight": 2224,
+      "points": [
+        { "worldX": 1.519, "worldZ": 2.431, "mapX": 1035.3, "mapY": 1805.8, "label": "" },
+        { "worldX": 1.521, "worldZ": -4.983, "mapX": 1033.0, "mapY": 1615.1, "label": "" },
+        { "worldX": 1.649, "worldZ": -18.083, "mapX": 1039.7, "mapY": 1309.1, "label": "" },
+        { "worldX": -6.249, "worldZ": -21.851, "mapX": 1234.8, "mapY": 1204.9, "label": "" },
+        { "worldX": -12.504, "worldZ": -7.788, "mapX": 1383.4, "mapY": 1539.7, "label": "" },
+        { "worldX": -6.662, "worldZ": -5.222, "mapX": 1243.7, "mapY": 1612.8, "label": "" },
+        { "worldX": 12.102, "worldZ": -14.143, "mapX": 786.9, "mapY": 1406.6, "label": "" },
+        { "worldX": 23.298, "worldZ": -14.042, "mapX": 531.9, "mapY": 1397.8, "label": "" }
+      ]
+    },
+    {
+      "mapId": "probe_interior_carter_dam_upper_zone_b",
+      "imageWidth": 2346,
+      "imageHeight": 2224,
+      "points": [
+        { "worldX": 13.474, "worldZ": -21.044, "mapX": 804.4, "mapY": 983.1, "label": "" },
+        { "worldX": -17.753, "worldZ": -20.73, "mapX": 1533.4, "mapY": 984.5, "label": "" },
+        { "worldX": -17.669, "worldZ": -29.348, "mapX": 1536.3, "mapY": 786.3, "label": "" },
+        { "worldX": -25.351, "worldZ": -40.764, "mapX": 1730.2, "mapY": 528.2, "label": "" },
+        { "worldX": -25.801, "worldZ": -47.853, "mapX": 1722.9, "mapY": 315.4, "label": "" },
+        { "worldX": 10.466, "worldZ": -47.331, "mapX": 893.4, "mapY": 324.1, "label": "" },
+        { "worldX": -25.295, "worldZ": -32.236, "mapX": 1717.1, "mapY": 690.0, "label": "" },
+        { "worldX": 21.337, "worldZ": -46.648, "mapX": 625.1, "mapY": 364.9, "label": "" }
+      ]
+    },
+    {
+      "mapId": "probe_interior_carter_dam_upper_zone_c",
+      "imageWidth": 2346,
+      "imageHeight": 2224,
+      "points": [
+        { "worldX": -6.449, "worldZ": -4.985, "mapX": 1672.7, "mapY": 1605.9, "label": "" },
+        { "worldX": -13.709, "worldZ": -6.404, "mapX": 1836.5, "mapY": 1569.3, "label": "" },
+        { "worldX": -14.628, "worldZ": -15.678, "mapX": 1850.0, "mapY": 1370.7, "label": "" },
+        { "worldX": -9.338, "worldZ": -20.55, "mapX": 1730.5, "mapY": 1262.7, "label": "" },
+        { "worldX": -14.79, "worldZ": -22.027, "mapX": 1842.3, "mapY": 1218.4, "label": "" },
+        { "worldX": -6.408, "worldZ": -22.765, "mapX": 1674.6, "mapY": 1218.4, "label": "" }
+      ]
+    },
+    {
+      "mapId": "probe_interior_carter_dam_upper_stairs_b1",
+      "imageWidth": 2346,
+      "imageHeight": 2224,
+      "points": [
+        { "worldX": -6.473, "worldZ": -3.792, "mapX": 1236.9, "mapY": 1843.1, "label": "" },
+        { "worldX": -14.514, "worldZ": -3.65, "mapX": 1406.6, "mapY": 1843.1, "label": "" },
+        { "worldX": -14.389, "worldZ": -1.516, "mapX": 1406.6, "mapY": 1906.7, "label": "" },
+        { "worldX": -12.215, "worldZ": -1.669, "mapX": 1348.7, "mapY": 1902.8, "label": "" }
+      ]
+    },
+    {
+      "mapId": "probe_interior_carter_dam_upper_stairs_f1",
+      "imageWidth": 2346,
+      "imageHeight": 2224,
+      "points": [
+        { "worldX": -6.486, "worldZ": -4.429, "mapX": 1233.1, "mapY": 1634.8, "label": "" },
+        { "worldX": -6.352, "worldZ": -1.941, "mapX": 1408.5, "mapY": 1640.6, "label": "" },
+        { "worldX": -14.381, "worldZ": -3.345, "mapX": 1240.8, "mapY": 1694.6, "label": "" }
+      ]
+    },
+    {
+      "mapId": "probe_interior_carter_dam_upper_stairs_f2",
+      "imageWidth": 2346,
+      "imageHeight": 2224,
+      "points": [
+        { "worldX": -5.733, "worldZ": -1.734, "mapX": 1672.7, "mapY": 1689.0, "label": "" },
+        { "worldX": -6.058, "worldZ": -3.921, "mapX": 1667.6, "mapY": 1633.3, "label": "" },
+        { "worldX": -14.295, "worldZ": -3.386, "mapX": 1851.5, "mapY": 1642.1, "label": "" },
+        { "worldX": -14.299, "worldZ": -1.601, "mapX": 1851.5, "mapY": 1689.0, "label": "" }
+      ]
+    },
+    {
+      "mapId": "probe_interior_carter_dam_upper_stairs_f3",
+      "imageWidth": 2346,
+      "imageHeight": 2224,
+      "points": [
+        { "worldX": -6.43, "worldZ": -4.197, "mapX": 2062.1, "mapY": 1633.3, "label": "" },
+        { "worldX": -7.523, "worldZ": -1.537, "mapX": 2060.2, "mapY": 1689.2, "label": "" },
+        { "worldX": -14.223, "worldZ": -1.45, "mapX": 2235.6, "mapY": 1681.5, "label": "" }
+      ]
+    },
+    {
+      "mapId": "probe_interior_carter_dam_lower_upper",
+      "imageWidth": 2356,
+      "imageHeight": 1176,
+      "points": [
+        { "worldX": -13.477, "worldZ": -7.087, "mapX": 835.6, "mapY": 681.9, "label": "" },
+        { "worldX": -5.341, "worldZ": -6.878, "mapX": 567.4, "mapY": 673.4, "label": "" },
+        { "worldX": 1.807, "worldZ": -3.46, "mapX": 356.7, "mapY": 775.6, "label": "" },
+        { "worldX": -6.31, "worldZ": 1.026, "mapX": 586.6, "mapY": 922.4, "label": "" }
+      ]
+    },
+    {
+      "mapId": "probe_interior_carter_dam_lower_deep",
+      "imageWidth": 2356,
+      "imageHeight": 1176,
+      "points": [
+        { "worldX": -9.378, "worldZ": 8.341, "mapX": 584.4, "mapY": 1090.6, "label": "" },
+        { "worldX": -44.653, "worldZ": 8.371, "mapX": 1159.1, "mapY": 1097.0, "label": "" },
+        { "worldX": -49.007, "worldZ": 3.631, "mapX": 1261.2, "mapY": 992.7, "label": "" },
+        { "worldX": -83.036, "worldZ": 3.783, "mapX": 1831.6, "mapY": 1001.2, "label": "" },
+        { "worldX": -88.14, "worldZ": -0.134, "mapX": 1955.1, "mapY": 894.8, "label": "" }
+      ]
+    },
+    {
+      "mapId": "probe_interior_carter_dam_lower_middle",
+      "imageWidth": 2356,
+      "imageHeight": 1176,
+      "points": [
+        { "worldX": -87.956, "worldZ": -10.641, "mapX": 1987.0, "mapY": 660.7, "label": "" },
+        { "worldX": -87.087, "worldZ": -16.692, "mapX": 1940.2, "mapY": 464.8, "label": "" },
+        { "worldX": -74.73, "worldZ": -16.445, "mapX": 1603.9, "mapY": 471.2, "label": "" },
+        { "worldX": -64.74, "worldZ": -12.628, "mapX": 1388.9, "mapY": 590.4, "label": "" }
+      ]
+    },
+    {
+      "mapId": "probe_interior_blackrock_prison_floor1",
+      "imageWidth": 2481,
+      "imageHeight": 1490,
+      "points": [
+        { "worldX": 53.72, "worldZ": 9.678, "mapX": 192.5, "mapY": 976.2, "label": "" },
+        { "worldX": 27.384, "worldZ": 9.598, "mapX": 756.3, "mapY": 969.5, "label": "" },
+        { "worldX": 16.532, "worldZ": 9.838, "mapX": 982.5, "mapY": 968.4, "label": "" },
+        { "worldX": 11.833, "worldZ": 6.368, "mapX": 1085.0, "mapY": 899.3, "label": "" },
+        { "worldX": 14.029, "worldZ": 3.186, "mapX": 1036.0, "mapY": 838.0, "label": "" },
+        { "worldX": 13.477, "worldZ": -3.775, "mapX": 1044.9, "mapY": 698.7, "label": "" },
+        { "worldX": 8.258, "worldZ": -9.306, "mapX": 1147.4, "mapY": 584.0, "label": "" },
+        { "worldX": 8.138, "worldZ": -20.614, "mapX": 1149.7, "mapY": 358.9, "label": "" },
+        { "worldX": -0.873, "worldZ": -20.408, "mapX": 1334.3, "mapY": 363.4, "label": "" },
+        { "worldX": -7.465, "worldZ": -16.624, "mapX": 1463.6, "mapY": 426.9, "label": "" },
+        { "worldX": 0.479, "worldZ": -17.088, "mapX": 1299.8, "mapY": 424.7, "label": "" }
+      ]
+    },
+    {
+      "mapId": "probe_interior_blackrock_prison_floor2",
+      "imageWidth": 2481,
+      "imageHeight": 1490,
+      "points": [
+        { "worldX": -5.089, "worldZ": -11.355, "mapX": 1825.4, "mapY": 533.7, "label": "" },
+        { "worldX": -4.855, "worldZ": -19.312, "mapX": 1825.4, "mapY": 386.3, "label": "" },
+        { "worldX": -14.13, "worldZ": -14.069, "mapX": 1999.3, "mapY": 490.9, "label": "" },
+        { "worldX": -14.876, "worldZ": -19.226, "mapX": 2022.9, "mapY": 387.8, "label": "" }
+      ]
+    },
+    {
+      "mapId": "probe_interior_blackrock_prison_floor3",
+      "imageWidth": 2481,
+      "imageHeight": 1490,
+      "points": [
+        { "worldX": -233.133, "worldZ": 161.441, "mapX": 2356.9, "mapY": 477.0, "label": "" },
+        { "worldX": -235.608, "worldZ": 163.054, "mapX": 2332.4, "mapY": 441.4, "label": "" },
+        { "worldX": -240.158, "worldZ": 164.744, "mapX": 2250.0, "mapY": 355.6, "label": "" },
+        { "worldX": -237.459, "worldZ": 157.482, "mapX": 2244.4, "mapY": 501.6, "label": "" }
+      ]
+    },
+    {
+      "mapId": "probe_interior_blackrock_mine_floor1",
+      "imageWidth": 2520,
+      "imageHeight": 2367,
+      "points": [
+        { "worldX": -172.461, "worldZ": 194.795, "mapX": 1285.4, "mapY": 840.8, "label": "" },
+        { "worldX": -188.945, "worldZ": 191.966, "mapX": 1172.1, "mapY": 871.5, "label": "" },
+        { "worldX": -213.602, "worldZ": 212.795, "mapX": 940.8, "mapY": 715.7, "label": "" },
+        { "worldX": -232.444, "worldZ": 220.243, "mapX": 754.4, "mapY": 654.4, "label": "" },
+        { "worldX": -254.876, "worldZ": 228.894, "mapX": 542.0, "mapY": 578.9, "label": "" },
+        { "worldX": -257.328, "worldZ": 249.418, "mapX": 523.1, "mapY": 423.1, "label": "" },
+        { "worldX": -285.787, "worldZ": 258.49, "mapX": 268.3, "mapY": 371.2, "label": "" },
+        { "worldX": -286.852, "worldZ": 231.781, "mapX": 263.5, "mapY": 590.7, "label": "" },
+        { "worldX": -226.17, "worldZ": 231.473, "mapX": 808.7, "mapY": 607.2, "label": "" },
+        { "worldX": -227.754, "worldZ": 270.16, "mapX": 792.2, "mapY": 312.2, "label": "" },
+        { "worldX": -206.229, "worldZ": 284.302, "mapX": 980.9, "mapY": 156.4, "label": "" },
+        { "worldX": -185.642, "worldZ": 279.425, "mapX": 1174.5, "mapY": 173.0, "label": "" },
+        { "worldX": -169.695, "worldZ": 184.778, "mapX": 1337.3, "mapY": 937.6, "label": "" }
+      ]
+    },
+    {
+      "mapId": "probe_interior_blackrock_mine_floor2",
+      "imageWidth": 2520,
+      "imageHeight": 2367,
+      "points": [
+        { "worldX": -169.886, "worldZ": 184.584, "mapX": 1683.2, "mapY": 1149.9, "label": "" },
+        { "worldX": -139.878, "worldZ": 237.051, "mapX": 1938.1, "mapY": 746.3, "label": "" },
+        { "worldX": -89.737, "worldZ": 236.177, "mapX": 2360.5, "mapY": 755.8, "label": "" },
+        { "worldX": -93.598, "worldZ": 223.038, "mapX": 2287.4, "mapY": 854.9, "label": "" }
+      ]
+    },
+    {
+      "mapId": "probe_interior_blackrock_mine_floor3",
+      "imageWidth": 2520,
+      "imageHeight": 2367,
+      "points": [
+        { "worldX": -174.663, "worldZ": 194.876, "mapX": 2037.2, "mapY": 1308.0, "label": "" },
+        { "worldX": -197.709, "worldZ": 186.491, "mapX": 1857.9, "mapY": 1331.6, "label": "" },
+        { "worldX": -214.59, "worldZ": 122.94, "mapX": 1697.4, "mapY": 1805.9, "label": "" },
+        { "worldX": -134.833, "worldZ": 174.461, "mapX": 2329.8, "mapY": 1477.9, "label": "" },
+        { "worldX": -170.058, "worldZ": 185.048, "mapX": 2065.5, "mapY": 1390.6, "label": "" }
+      ]
+    },
+    {
+      "mapId": "probe_interior_concentrator_mining_floor1",
+      "imageWidth": 4762,
+      "imageHeight": 1394,
+      "points": [
+        { "worldX": -11.971, "worldZ": -23.961, "mapX": 1854.9, "mapY": 1160.6, "label": "" },
+        { "worldX": 31.785, "worldZ": -21.004, "mapX": 2577.6, "mapY": 1150.8, "label": "" },
+        { "worldX": -2.695, "worldZ": -3.17, "mapX": 1966.2, "mapY": 869.6, "label": "" },
+        { "worldX": -12.419, "worldZ": -11.4, "mapX": 1819.5, "mapY": 987.0, "label": "" }
+      ]
+    },
+    {
+      "mapId": "probe_interior_concentrator_mining_floor2",
+      "imageWidth": 4762,
+      "imageHeight": 1394,
+      "points": [
+        { "worldX": -4.512, "worldZ": -1.307, "mapX": 1852.7, "mapY": 491.8, "label": "" },
+        { "worldX": -2.922, "worldZ": 6.994, "mapX": 1860.1, "mapY": 351.3, "label": "" },
+        { "worldX": -2.225, "worldZ": 19.875, "mapX": 1907.3, "mapY": 151.6, "label": "" },
+        { "worldX": 18.581, "worldZ": 20.752, "mapX": 2249.4, "mapY": 153.4, "label": "" },
+        { "worldX": 7.173, "worldZ": 19.216, "mapX": 2038.6, "mapY": 154.3, "label": "" }
+      ]
+    },
+    {
+      "mapId": "probe_interior_concentrator_mining_floor3",
+      "imageWidth": 4762,
+      "imageHeight": 1394,
+      "points": [
+        { "worldX": 15.927, "worldZ": 19.702, "mapX": 1420.9, "mapY": 984.0, "label": "" },
+        { "worldX": 2.424, "worldZ": 12.924, "mapX": 1134.0, "mapY": 1060.0, "label": "" },
+        { "worldX": -7.434, "worldZ": 19.672, "mapX": 1046.8, "mapY": 981.2, "label": "" }
+      ]
+    },
+    {
+      "mapId": "probe_interior_concentrator_mining_floor4",
+      "imageWidth": 4762,
+      "imageHeight": 1394,
+      "points": [
+        { "worldX": -7.721, "worldZ": 32.122, "mapX": 1045.4, "mapY": 406.0, "label": "" },
+        { "worldX": 23.772, "worldZ": 20.312, "mapX": 1575.6, "mapY": 563.5, "label": "" },
+        { "worldX": 14.815, "worldZ": 61.149, "mapX": 1444.8, "mapY": 103.7, "label": "" },
+        { "worldX": -2.827, "worldZ": 60.803, "mapX": 1132.6, "mapY": 68.5, "label": "" }
+      ]
+    },
+    {
+      "mapId": "probe_interior_concentrator_mining_floor5",
+      "imageWidth": 4762,
+      "imageHeight": 1394,
+      "points": [
+        { "worldX": 18.63, "worldZ": 61.118, "mapX": 648.8, "mapY": 895.4, "label": "" },
+        { "worldX": 24.408, "worldZ": 53.95, "mapX": 736.0, "mapY": 967.1, "label": "" },
+        { "worldX": -19.704, "worldZ": 54.876, "mapX": 46.9, "mapY": 961.5, "label": "" },
+        { "worldX": -12.419, "worldZ": 41.979, "mapX": 115.8, "mapY": 1076.8, "label": "" }
+      ]
+    },
+    {
+      "mapId": "probe_interior_concentrator_mining_floor6",
+      "imageWidth": 4762,
+      "imageHeight": 1394,
+      "points": [
+        { "worldX": 29.207, "worldZ": 48.793, "mapX": 794.8, "mapY": 370.9, "label": "" },
+        { "worldX": 22.944, "worldZ": 49.967, "mapX": 707.6, "mapY": 359.6, "label": "" },
+        { "worldX": 15.52, "worldZ": 47.743, "mapX": 613.4, "mapY": 384.9, "label": "" },
+        { "worldX": 14.505, "worldZ": 61.46, "mapX": 614.8, "mapY": 275.2, "label": "" },
+        { "worldX": -0.309, "worldZ": 44.681, "mapX": 391.2, "mapY": 415.9, "label": "" }
+      ]
+    },
+    {
+      "mapId": "probe_interior_concentrator_conveyor_floor1",
+      "imageWidth": 4762,
+      "imageHeight": 1394,
+      "points": [
+        { "worldX": 81.408, "worldZ": -10.372, "mapX": 3069.9, "mapY": 827.4, "label": "" },
+        { "worldX": 81.54, "worldZ": 12.865, "mapX": 3065.7, "mapY": 487.1, "label": "" },
+        { "worldX": 83.623, "worldZ": -1.229, "mapX": 3113.5, "mapY": 647.4, "label": "" }
+      ]
+    },
+    {
+      "mapId": "probe_interior_concentrator_conveyor_floor2",
+      "imageWidth": 4762,
+      "imageHeight": 1394,
+      "points": [
+        { "worldX": 83.506, "worldZ": -9.833, "mapX": 3112.1, "mapY": 861.2, "label": "" },
+        { "worldX": 70.532, "worldZ": -9.526, "mapX": 2887.1, "mapY": 859.8, "label": "" },
+        { "worldX": 70.418, "worldZ": 11.313, "mapX": 2881.5, "mapY": 436.5, "label": "" }
+      ]
+    },
+    {
+      "mapId": "probe_interior_concentrator_headframe_floor1",
+      "imageWidth": 4762,
+      "imageHeight": 1394,
+      "points": [
+        { "worldX": 128.604, "worldZ": 22.865, "mapX": 3699.9, "mapY": 792.1, "label": "" },
+        { "worldX": 128.815, "worldZ": -14.192, "mapX": 3666.0, "mapY": 1291.8, "label": "" },
+        { "worldX": 139.484, "worldZ": -3.032, "mapX": 3816.4, "mapY": 1154.3, "label": "" },
+        { "worldX": 121.273, "worldZ": 8.357, "mapX": 3619.1, "mapY": 1003.9, "label": "" }
+      ]
+    },
+    {
+      "mapId": "probe_interior_concentrator_headframe_floor2",
+      "imageWidth": 4762,
+      "imageHeight": 1394,
+      "points": [
+        { "worldX": 127.489, "worldZ": 8.453, "mapX": 3628.8, "mapY": 659.5, "label": "" },
+        { "worldX": 138.993, "worldZ": 17.828, "mapX": 3790.5, "mapY": 494.5, "label": "" },
+        { "worldX": 116.733, "worldZ": 11.072, "mapX": 3447.6, "mapY": 620.6, "label": "" }
+      ]
+    },
+    {
+      "mapId": "probe_interior_concentrator_headframe_roof_upper",
+      "imageWidth": 4762,
+      "imageHeight": 1394,
+      "points": [
+        { "worldX": 132.534, "worldZ": 16.119, "mapX": 3606.1, "mapY": 106.4, "label": "" },
+        { "worldX": 139.21, "worldZ": 15.787, "mapX": 3792.1, "mapY": 111.2, "label": "" },
+        { "worldX": 138.841, "worldZ": 7.238, "mapX": 3790.5, "mapY": 290.7, "label": "" }
+      ]
+    },
+    {
+      "mapId": "probe_interior_concentrator_headframe_roof_lower",
+      "imageWidth": 4762,
+      "imageHeight": 1394,
+      "points": [
+        { "worldX": 135.648, "worldZ": 14.576, "mapX": 3662.7, "mapY": 163.0, "label": "" },
+        { "worldX": 138.834, "worldZ": 15.372, "mapX": 3742.9, "mapY": 164.5, "label": "" },
+        { "worldX": 139.066, "worldZ": 8.495, "mapX": 3738.7, "mapY": 296.6, "label": "" },
+        { "worldX": 133.131, "worldZ": 8.406, "mapX": 3600.9, "mapY": 298.0, "label": "" }
+      ]
+    },
+    {
+      "mapId": "probe_interior_sundered_cave",
+      "imageWidth": 2836,
+      "imageHeight": 2850,
+      "points": [
+        { "worldX": 121.693, "worldZ": -300.141, "mapX": 426.7, "mapY": 1599.6, "label": "" },
+        { "worldX": 113.539, "worldZ": -235.021, "mapX": 805.3, "mapY": 1568.2, "label": "" },
+        { "worldX": 186.465, "worldZ": -109.506, "mapX": 1643.0, "mapY": 1989.9, "label": "" },
+        { "worldX": 7.011, "worldZ": -245.123, "mapX": 684.4, "mapY": 908.2, "label": "" },
+        { "worldX": -10.627, "worldZ": -216.365, "mapX": 851.1, "mapY": 777.5, "label": "" },
+        { "worldX": -59.943, "worldZ": -227.793, "mapX": 792.3, "mapY": 489.9, "label": "" },
+        { "worldX": -55.299, "worldZ": -279.603, "mapX": 459.4, "mapY": 575.0, "label": "" },
+        { "worldX": -12.581, "worldZ": 50.293, "mapX": 2542.2, "mapY": 706.3, "label": "" }
+      ]
     }
   ]
 }

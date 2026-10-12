@@ -115,7 +115,7 @@ if ($ProbeMapsOnly) {
     Copy-Item -LiteralPath $sourceProbeMaps -Destination $temporaryProbeMaps -Force
     Move-Item -LiteralPath $temporaryProbeMaps -Destination $installedProbeMaps -Force
     [System.IO.File]::SetLastWriteTimeUtc($installedProbeMaps, [DateTime]::UtcNow)
-    Write-Host "Hot-synced $(@($probeMapData.maps).Count) probe bindings and images."
+    Write-Host "Hot-synced $(@($probeMapData.maps).Count) interior map bindings and images."
     Write-Host "  $installedProbeMaps"
     return
 }
@@ -217,5 +217,5 @@ Write-Host "Built and installed: $installedAssembly"
 Write-Host "  sha256 $installedHash"
 Write-Host "Installed calibrations: $installedCalibrations"
 Write-Host "  sha256 $installedCalibrationHash"
-Write-Host "Installed probe bindings: $installedProbeMaps"
+Write-Host "Installed interior map bindings: $installedProbeMaps"
 Write-Host "  sha256 $installedProbeHash"

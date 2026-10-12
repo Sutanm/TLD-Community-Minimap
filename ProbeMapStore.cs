@@ -1,4 +1,4 @@
-// 社区HUD地图 · sutanm — 可热重载的室内/洞穴探针绑定
+// 社区HUD地图 · sutanm — 可热重载的室内/洞穴地图绑定
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -22,16 +22,16 @@ internal static class ProbeMapStore
         try
         {
             if (!File.Exists(path))
-                throw new FileNotFoundException("The probe map file does not exist.", path);
+                throw new FileNotFoundException("The interior map binding file does not exist.", path);
 
             var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
             ProbeMapFile file = JsonSerializer.Deserialize<ProbeMapFile>(
                 File.ReadAllText(path), options);
             if (file == null)
-                throw new InvalidDataException("The probe map file is empty.");
+                throw new InvalidDataException("The interior map binding file is empty.");
             if (file.FormatVersion != SupportedFormatVersion)
                 throw new InvalidDataException(
-                    $"Unsupported probe map format {file.FormatVersion}; expected {SupportedFormatVersion}.");
+                    $"Unsupported interior map binding format {file.FormatVersion}; expected {SupportedFormatVersion}.");
 
             var loaded = new Dictionary<string, MapDefinition>(StringComparer.OrdinalIgnoreCase);
             foreach (ProbeMapEntry entry in file.Maps ?? Array.Empty<ProbeMapEntry>())
@@ -40,7 +40,7 @@ internal static class ProbeMapStore
                     string.IsNullOrWhiteSpace(entry.MapId) ||
                     string.IsNullOrWhiteSpace(entry.FileName))
                 {
-                    warn("Ignored a probe map entry missing scene, mapId, or fileName.");
+                    warn("Ignored an interior map entry missing scene, mapId, or fileName.");
                     continue;
                 }
 
@@ -51,15 +51,18 @@ internal static class ProbeMapStore
                     (!entry.FileName.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase) &&
                      !entry.FileName.EndsWith(".png", StringComparison.OrdinalIgnoreCase)))
                 {
-                    warn($"Ignored probe map '{entry.MapId}': invalid fileName '{entry.FileName}'.");
+                    warn($"Ignored interior map '{entry.MapId}': invalid fileName '{entry.FileName}'.");
                     continue;
                 }
 
                 string displayName = string.IsNullOrWhiteSpace(entry.DisplayName)
                     ? entry.MapId
                     : entry.DisplayName;
+                // The JSON file name and legacy probe_ map ids are retained for calibration-data
+                // compatibility, but these bindings are now released interior maps. Development
+                // tools are controlled by DeveloperMode rather than by the map definition.
                 loaded[entry.Scene] = new MapDefinition(entry.MapId, displayName,
-                    entry.FileName, CalibrationProfile.None, true, entry.Scene);
+                    entry.FileName, CalibrationProfile.None, false, entry.Scene);
             }
 
             // Editors may briefly leave a partial file on disk. Commit only after the complete
@@ -67,7 +70,7 @@ internal static class ProbeMapStore
             ByScene.Clear();
             foreach (KeyValuePair<string, MapDefinition> pair in loaded)
                 ByScene[pair.Key] = pair.Value;
-            log($"Loaded {loaded.Count} hot-reloadable probe map bindings.");
+            log($"Loaded {loaded.Count} hot-reloadable interior map bindings.");
             return true;
         }
         catch (Exception ex)

@@ -58,6 +58,12 @@ public sealed partial class ModEntry : MelonMod
         _observedSceneName = sceneName;
         SetUiVisible(false);
 
+        if (sceneChanged)
+        {
+            _lastStablePlayerUvValid = false;
+            _lastStablePlayerMapId = "";
+        }
+
         // Additive scene loads (TracksRegion_WILDLIFE, _SANDBOX, ...) re-fire scene
         // initialisation for the same region. Rebuilding the map there would drop the loaded
         // texture and markers, so only a genuine scene change resets state.
@@ -129,26 +135,19 @@ public sealed partial class ModEntry : MelonMod
         LoggerInstance.Msg(
             $"Active scene mapped: {sceneName} -> {definition.DisplayName} " +
             $"({definition.FileName}, calibrated={definition.IsCalibrated}).");
-        if (definition.ProbeOnly)
-        {
-            LoggerInstance.Msg(
-                $"Interior map probe active: scene={sceneName}, player transform will be " +
-                "recorded with F11; the uncalibrated probe intentionally has no pointer.");
-            ShowStatusToast($"洞穴地图探针已识别：{sceneName}（按 F11 记录）", 4f);
-        }
     }
 
 
     private MapDefinition FindRuntimeMap(string sceneName)
     {
         MapDefinition definition = MapCatalog.Find(sceneName);
-        if (definition != null || _settings == null || !_settings.DeveloperMode)
+        if (definition != null || _settings == null || !_settings.EnableInteriorMaps)
             return definition;
 
         Transform player = GameManager.GetPlayerTransform();
         if (!ReferenceEquals(player, null))
         {
-            MapDefinition spatial = MapCatalog.FindSpatialVariant(sceneName, player.position.y);
+            MapDefinition spatial = MapCatalog.FindSpatialVariant(sceneName, player.position);
             if (spatial != null)
                 return spatial;
         }
@@ -158,14 +157,21 @@ public sealed partial class ModEntry : MelonMod
 
     private void RefreshSpatialMapVariant(int sceneHandle, string sceneName)
     {
-        if (_settings == null || !_settings.DeveloperMode)
+        if (_settings == null || !_settings.EnableInteriorMaps)
             return;
 
         Transform player = GameManager.GetPlayerTransform();
         if (ReferenceEquals(player, null))
             return;
 
-        MapDefinition desired = MapCatalog.FindSpatialVariant(sceneName, player.position.y);
+        // DamTransitionZone's stairs do not exist on the community drawing. Keep whichever floor
+        // was active when the player entered a stair flight, then switch only on the next landing.
+        // This is direction-independent and prevents threshold noise from reloading two maps on
+        // alternating frames.
+        if (MapCatalog.IsSpatialTransition(sceneName, player.position))
+            return;
+
+        MapDefinition desired = MapCatalog.FindSpatialVariant(sceneName, player.position);
         MapDefinition current = _layers[LayerMini].Definition;
         if (desired == null || current == null ||
             string.Equals(desired.Id, current.Id, StringComparison.OrdinalIgnoreCase))
@@ -174,7 +180,42 @@ public sealed partial class ModEntry : MelonMod
         LoggerInstance.Msg(
             $"Spatial map variant changed: {sceneName} Y={player.position.y:F3} -> " +
             $"{desired.DisplayName} ({desired.FileName}).");
-        ObserveScene(sceneHandle, sceneName, true);
+        SwitchSpatialMapVariant(sceneHandle, sceneName, current, desired);
+    }
+
+
+    private void SwitchSpatialMapVariant(int sceneHandle, string sceneName,
+        MapDefinition current, MapDefinition desired)
+    {
+        // Most spatial variants are separate drawings on the same source sheet. Re-running the
+        // full scene load here destroys and decodes that identical texture again, visibly blinking
+        // at every landing. Keep the texture and change only the projection identity.
+        if (!string.Equals(current.FileName, desired.FileName,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            ObserveScene(sceneHandle, sceneName, true);
+            return;
+        }
+
+        for (int i = 0; i < _layers.Length; i++)
+        {
+            MapLayer layer = _layers[i];
+            string previousId = layer.Definition?.Id ?? "";
+            layer.Definition = desired;
+            if (!ReferenceEquals(layer.Texture, null) &&
+                string.Equals(layer.LoadedMapId, previousId,
+                    StringComparison.OrdinalIgnoreCase))
+                layer.LoadedMapId = desired.Id;
+        }
+
+        // Marker and label UVs are projection products, so rebuild them without touching the
+        // shared sheet. The UI remains visible and the player pointer is resolved against the new
+        // floor on this same frame.
+        ClearVanillaIcons();
+        ClearLabels();
+        _markersBuiltForScene = "";
+        _nextMarkerRebuildUtc = DateTime.MinValue;
+        _fullMapCenterValid = false;
     }
 
 

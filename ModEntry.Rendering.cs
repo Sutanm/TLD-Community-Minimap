@@ -410,7 +410,34 @@ public sealed partial class ModEntry : MelonMod
         if (_mapImage.color != mapColor)
             _mapImage.color = mapColor;
 
-        bool hasPosition = TryPlayerToMapUv(player.position, out Vector2 uv);
+        var activeScene = UnitySceneManager.GetActiveScene();
+        bool spatialTransition =
+            MapCatalog.IsSpatialTransition(activeScene.name, player.position);
+        string activeMapId = ActiveLayer.Definition?.Id ?? "";
+        Vector2 uv = default;
+        bool hasPosition;
+        if (spatialTransition)
+        {
+            // The stairs are absent from the source drawing. Freeze at the landing instead of
+            // feeding their coordinates into a neighbouring floor's affine transform. If the
+            // scene happens to spawn directly inside a stair flight there is no trustworthy point
+            // yet, so hide the corner projection until the player reaches a calibrated landing.
+            hasPosition = _lastStablePlayerUvValid &&
+                          string.Equals(_lastStablePlayerMapId, activeMapId,
+                              StringComparison.OrdinalIgnoreCase);
+            if (hasPosition)
+                uv = _lastStablePlayerUv;
+        }
+        else
+        {
+            hasPosition = TryPlayerToMapUv(player.position, out uv);
+            if (hasPosition)
+            {
+                _lastStablePlayerUv = uv;
+                _lastStablePlayerMapId = activeMapId;
+                _lastStablePlayerUvValid = true;
+            }
+        }
         if (fullMap && !_fullMapCenterValid)
         {
             bool preferOverview = ActiveLayer.Definition?.PreferFullMapOverview == true;
@@ -425,6 +452,26 @@ public sealed partial class ModEntry : MelonMod
         }
 
         Vector2 mapSize = fullMap ? ApplyFullMapLayout() : ApplyMiniMapLayout();
+
+        bool uncalibratedReferenceMap =
+            !hasPosition &&
+            !ActiveLayer.UsingVanilla &&
+            ActiveLayer.Definition != null &&
+            !ActiveLayer.Definition.IsCalibrated;
+
+        if (uncalibratedReferenceMap && !fullMap)
+        {
+            // Some hand-drawn cave and interior sheets have no stable world-space reference at
+            // all. Showing a fitted overview is still useful for route planning, but projecting a
+            // player or resource marker onto it would imply precision that the source cannot
+            // provide. Treat this as an explicit reference-only mode.
+            mapSize = ApplyMiniMapOverviewLayout(mapSize);
+            var overviewUv = new Rect(0f, 0f, 1f, 1f);
+            if (_mapImage.uvRect != overviewUv)
+                _mapImage.uvRect = overviewUv;
+            HideReferenceOnlyAnnotations();
+            return;
+        }
 
         if (!hasPosition && !fullMap)
         {
@@ -487,11 +534,21 @@ public sealed partial class ModEntry : MelonMod
                 _mapImage.uvRect = visibleUv;
         }
 
+        // Keep the same honest reference-only contract in the full-map view. Normally no marker
+        // can be projected without calibration anyway, but explicitly clearing cached objects
+        // prevents annotations from the previous scene surviving for a frame.
+        if (uncalibratedReferenceMap)
+        {
+            HideReferenceOnlyAnnotations();
+            return;
+        }
+
         UpdateVanillaIcons(visibleUv, mapSize);
         UpdateMapLabels(visibleUv, mapSize);
 
-        // The markers live in the texture's own uv space, so they are still worth drawing on an
-        // uncalibrated map. Only the player pointer needs a projection.
+        // A calibrated layer can draw its projected map markers even when the player pointer is
+        // temporarily unavailable (for example during a scene transition). Reference-only maps
+        // returned above before marker drawing because they deliberately promise no projection.
         if (!hasPosition || (fullMap && !_settings.ShowFullMapPlayerPointer))
         {
             _markerRoot.SetActive(false);
@@ -515,7 +572,10 @@ public sealed partial class ModEntry : MelonMod
             _markerRect.sizeDelta = markerDimensions;
         ApplyPointerPalette();
 
-        if (TryPlayerToMapUv(player.position + player.forward * 2f, out Vector2 aheadUv))
+        // Keep the last heading on an omitted stair flight as well; its forward sample belongs to
+        // no calibrated floor and can otherwise make the arrow spin while its position is frozen.
+        if (!spatialTransition &&
+            TryPlayerToMapUv(player.position + player.forward * 2f, out Vector2 aheadUv))
         {
             float angle = Mathf.Atan2(aheadUv.x - uv.x, aheadUv.y - uv.y) * Mathf.Rad2Deg;
             var rotation = new Vector3(0f, 0f, -angle);
@@ -527,18 +587,41 @@ public sealed partial class ModEntry : MelonMod
     }
 
 
+    private void HideReferenceOnlyAnnotations()
+    {
+        _markerRoot.SetActive(false);
+        for (int i = 0; i < _vanillaIcons.Count; i++)
+        {
+            VanillaIcon icon = _vanillaIcons[i];
+            if (icon.Root.activeSelf)
+                icon.Root.SetActive(false);
+            if (!ReferenceEquals(icon.Backing, null) && icon.Backing.activeSelf)
+                icon.Backing.SetActive(false);
+        }
+        for (int i = 0; i < _mapLabels.Count; i++)
+        {
+            if (_mapLabels[i].Root.activeSelf)
+                _mapLabels[i].Root.SetActive(false);
+        }
+    }
+
+
     // ScreenSpaceOverlay is composed after every camera, which guarantees that it covers the
     // game's NGUI HUD no matter how low its sortingOrder is. The render-stack probe showed the
     // actual HUD path: Panel_HUD -> Anchor -> Camera, on layer UI, camera depth 3, while the
     // first-person camera returned by GameManager is not a normally enabled Unity camera. Put the
-    // corner canvas on that measured NGUI camera and give it a negative sorting order so the game's
-    // UIPanels (sorting order 0) draw afterwards. Full-screen mode deliberately returns to Overlay.
+    // canvas on that measured NGUI camera and give it a negative sorting order so the game's
+    // UIPanels (sorting order 0) draw afterwards. Mini and full-screen modes each have an explicit
+    // opt-in setting for the old always-on-top Overlay behaviour; both default behind the HUD.
     private void UpdateMapCanvasLayer(bool fullMap)
     {
         if (ReferenceEquals(_mapCanvas, null))
             return;
 
-        bool requestBehindHud = !fullMap && !_settings.MiniMapAlwaysOnTop;
+        bool alwaysOnTop = fullMap
+            ? _settings.FullMapAlwaysOnTop
+            : _settings.MiniMapAlwaysOnTop;
+        bool requestBehindHud = !alwaysOnTop;
         Camera hudCamera = requestBehindHud ? FindHudCamera() : null;
         bool canRenderBehindHud = requestBehindHud && !ReferenceEquals(hudCamera, null) &&
                                   hudCamera.gameObject.activeInHierarchy;
@@ -572,9 +655,10 @@ public sealed partial class ModEntry : MelonMod
         _mapCanvasCamera = null;
         _mapCanvasBehindHud = false;
         if (overlayChanged)
-            LoggerInstance.Msg(fullMap
-                ? "Full map restored to the top Overlay layer."
-                : "No gameplay camera available; corner map is using the Overlay fallback.");
+            LoggerInstance.Msg(alwaysOnTop
+                ? $"{(fullMap ? "Full" : "Corner")} map is using the requested top Overlay layer."
+                : $"No gameplay camera available; {(fullMap ? "full" : "corner")} map is using " +
+                  "the Overlay fallback.");
     }
 
 
