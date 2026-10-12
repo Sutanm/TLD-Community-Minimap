@@ -71,6 +71,8 @@ See [MAPS.md](MAPS.md) and the [calibration checklist](docs/COARSE-CALIBRATION-C
 
 Vanilla maps use the game's own projection and are the most reliable source. Community maps are hand-drawn and can contain non-uniform local stretching. A multi-point affine fit improves global direction and scale but cannot remove distortion in the artwork. Some interior images combine unrelated floors on one sheet, so the mod prefers a safe reference-only view over a misleading pointer.
 
+Vanilla map images are not redistributed with the mod. Without a local capture, the mod reads the game's 1024×1024 region texture. This works as a fallback, but it contains less map content than the complete 2048×2048 panel map; the difference is not resolution alone. To create complete local maps, temporarily disable “Use mod full map,” open the vanilla map panel for about one second in each outdoor region, and then re-enable the mod full map. Captures are saved under `Mods/CommunityMinimap/captured` and used automatically. Developer-mode `P` can recapture the current panel manually.
+
 The game may spawn renewable resources outside reachable terrain; there is no general reachability test yet. Full-map controller zoom and panning are also incomplete.
 
 ## Building and packaging
